@@ -1,13 +1,11 @@
 #ifndef TAR_H
 #define TAR_H
 
+#include <libcdoc/Io.h>
+
 #include <cstring>
 #include <string>
-
 #include <cstdio>
-
-#include "ZStream.h"
-#include "CDoc.h"
 
 namespace libcdoc {
 
@@ -43,7 +41,8 @@ public:
 	int64_t read(uint8_t *dst, size_t size) override final;
 	bool isError() override final;
 	bool isEof() override final;
-	bool next(std::string& name, int64_t& size) override final;
+	size_t getNumComponents() override final { return NOT_IMPLEMENTED; };
+	int next(std::string& name, int64_t& size) override final;
 private:
 	DataSource *_src;
 	bool _owned;

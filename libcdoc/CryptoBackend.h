@@ -20,6 +20,8 @@
  *
  */
 
+#include <libcdoc/CDoc.h>
+
 #include <string>
 #include <vector>
 
@@ -31,8 +33,6 @@ namespace libcdoc {
  *
  */
 struct CryptoBackend {
-	static constexpr int OK = 0;
-	static constexpr int NOT_IMPLEMENTED = -200;
 	static constexpr int INVALID_PARAMS = -201;
 	static constexpr int OPENSSL_ERROR = -202;
 
@@ -40,6 +40,7 @@ struct CryptoBackend {
 
 	/**
 	 * @brief Fill vector with random bytes
+	 *
 	 * Trim vector to requested size and fill it with random bytes. The default implementation uses OpenSSL randomness generator.
 	 * @param dst the destination container for randomness
 	 * @param size the requested amount of random data
@@ -63,6 +64,7 @@ struct CryptoBackend {
 	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep) const = 0;
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
+	 *
 	 * The ConcatKDF key derivation algorithm is defined in Section 5.8.1 of NIST SP 800-56A.
 	 * The default implementation calls derive and performs concatKDF
 	 * @param dst the container for derived key
@@ -78,6 +80,7 @@ struct CryptoBackend {
 		const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo, const std::vector<uint8_t> &party_vinfo);
 	/**
 	 * @brief deriveHMACExtract
+	 *
 	 * The default implementation calls derive and performs HMAC extract
 	 * @param dst the container for derived key
 	 * @param public_key
@@ -95,6 +98,7 @@ struct CryptoBackend {
 	virtual int getSecret(std::vector<uint8_t>& secret, const std::string& label) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
+	 *
 	 * Fetches key material for a given symmetric key (either password or key-based).
 	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based.
 	 * @param key_material the destination container for key material
@@ -106,6 +110,7 @@ struct CryptoBackend {
 	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label);
 	/**
 	 * @brief Get CDoc2 KEK for symmetric key
+	 *
 	 * Fetches KEK (Key Encryption Key) for a given symmetric key (either password or key-based).
 	 * The default implementation calls getKeyMaterial and performs HKDF extract + expand.
 	 * @param kek the destination container for KEK

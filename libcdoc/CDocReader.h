@@ -20,12 +20,11 @@
  *
  */
 
-#include "Configuration.h"
-#include "CryptoBackend.h"
-#include "Io.h"
-#include "Lock.h"
-#include "NetworkBackend.h"
-#include "Recipient.h"
+#include <libcdoc/Configuration.h>
+#include <libcdoc/CryptoBackend.h>
+#include <libcdoc/Io.h>
+#include <libcdoc/Lock.h>
+#include <libcdoc/NetworkBackend.h>
 
 namespace libcdoc {
 
@@ -46,6 +45,7 @@ public:
 	virtual const std::vector<Lock *>& getLocks() = 0;
 	/**
 	 * @brief Fetches the lock for certificate
+	 *
 	 * Returns the foirst lock that can be opened by the private key of given certificate holder.
 	 * @param cert a x509 certificate (der)
 	 * @return the lock or nullptr if not found
@@ -53,6 +53,7 @@ public:
 	virtual const Lock *getDecryptionLock(const std::vector<uint8_t>& cert) = 0;
 	/**
 	 * @brief Fetches FMK from provided lock
+	 *
 	 * Fetches FMK (File Master Key) from the provided decryption lock. Depending on the lock type it uses a relevant CryptoBackend and/or
 	 * NetworkBackend method to either fetch secret and derive key or perform external decryption of encrypted KEK.
 	 * @param fmk The FMK of the document
@@ -62,10 +63,11 @@ public:
 	virtual int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock) = 0;
 
 	// Pull interface
-	int beginDecryption(const std::vector<uint8_t>& fmk);
-	bool next(std::string& name, size_t& size);
-	int64_t read(uint8_t *dst, size_t size);
-	int finishDecryption();
+	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
+	virtual int nextFile(std::string& name, int64_t& size) = 0;
+	virtual int64_t read(uint8_t *dst, size_t size) = 0;
+	virtual int finishDecryption() = 0;
+
 
 	// Push interface
 	/**
@@ -76,11 +78,12 @@ public:
 	 * @return error code or OK
 	 */
 	virtual int decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer) = 0;
+
 	/**
 	 * @brief get the textual error of the last failed operation
 	 * @return error description, empty string of no errors
 	 */
-	std::string getLastErrorStr() { return last_error; }
+	std::string getLastErrorStr() const { return last_error; }
 
 	// Returns < 0 if not CDoc file
 	/**

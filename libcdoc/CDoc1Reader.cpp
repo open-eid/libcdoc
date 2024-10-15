@@ -155,6 +155,30 @@ CDoc1Reader::getLocks()
 	return d->locks;
 }
 
+int
+CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Reader::finishDecryption()
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Reader::nextFile(std::string& name, int64_t& size)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int64_t
+CDoc1Reader::read(uint8_t *dst, size_t size)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
 /**
  * CDoc1Reader constructor.
  * @param file File to open reading

@@ -2,12 +2,11 @@
 
 #include "CDoc1Writer.h"
 #include "CDoc2Reader.h"
-#include "Crypto.h"
-#include <iostream>
+#include "CDoc2Writer.h"
 #include "CDoc1Reader.h"
 
-
-#include "CDoc.h"
+#include "CDoc2.h"
+#include "header_generated.h"
 
 namespace libcdoc {
 
@@ -84,6 +83,23 @@ CDocWriter::createWriter(int version, Configuration *conf, CryptoBackend *crypto
 	writer->crypto = crypto;
 	writer->network = network;
 	return writer;
+}
+
+// Get salt bitstring for HKDF expand method
+
+std::string
+libcdoc::CDoc2::getSaltForExpand(const std::string& label)
+{
+	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
+}
+
+// Get salt bitstring for HKDF expand method
+std::string
+libcdoc::CDoc2::getSaltForExpand(const std::vector<uint8_t>& key_material, const std::vector<uint8_t>& rcpt_key)
+{
+	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
+			std::string(rcpt_key.cbegin(), rcpt_key.cend()) +
+			std::string(key_material.cbegin(), key_material.cend());
 }
 
 

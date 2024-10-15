@@ -23,6 +23,7 @@
 namespace libcdoc {
 
 static constexpr int OK = 0;
+static constexpr int END_OF_STREAM = -1;
 static constexpr int NOT_IMPLEMENTED = -100;
 static constexpr int NOT_SUPPORTED = -101;
 static constexpr int WRONG_ARGUMENTS = -102;
@@ -30,8 +31,9 @@ static constexpr int WORKFLOW_ERROR = -103;
 static constexpr int IO_ERROR = -104;
 static constexpr int DATA_FORMAT_ERROR = -105;
 static constexpr int CRYPTO_ERROR = -106;
-static constexpr int HASH_MISMATCH = -107;
-static constexpr int UNSPECIFIED_ERROR = -108;
+static constexpr int ZLIB_ERROR = -107;
+static constexpr int HASH_MISMATCH = -108;
+static constexpr int UNSPECIFIED_ERROR = -109;
 
 }; // namespace libcdoc
 

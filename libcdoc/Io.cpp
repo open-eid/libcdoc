@@ -47,6 +47,9 @@ DataConsumer::writeAll(DataSource& src)
 	while (!src.isEof()) {
 		int64_t n_read = src.read(buf, BUF_SIZE);
 		if (n_read < 0) return n_read;
+		if (n_read == 0) {
+			return n_read;
+		}
 		n_read = write(buf, n_read);
 		if (n_read < 0) return n_read;
 		total_read += n_read;
@@ -111,20 +114,20 @@ FileListSource::getNumComponents()
 	return _files.size();
 }
 
-bool
+int
 FileListSource::next(std::string& name, int64_t& size)
 {
 	_ifs.close();
 	++_current;
-	if (_current >= _files.size()) return false;
+	if (_current >= _files.size()) return END_OF_STREAM;
 	std::filesystem::path path(_base);
 	path.append(_files[_current]);
-	if (!std::filesystem::exists(path)) return false;
+	if (!std::filesystem::exists(path)) return IO_ERROR;
 	_ifs.open(path, std::ios_base::in);
-	if (!_ifs) return false;
+	if (!_ifs) return IO_ERROR;
 	name = _files[_current];
 	size = std::filesystem::file_size(path);
-	return true;
+	return OK;
 }
 
 } // namespace libcdoc

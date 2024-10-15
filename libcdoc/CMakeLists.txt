@@ -19,7 +19,6 @@ set(PUBLIC_HEADERS
 )
 
 set(CDOC_SOURCES
-    CDoc.cpp
     Io.cpp
     Recipient.cpp
     Lock.cpp
@@ -35,11 +34,13 @@ set_property(TARGET cdoc_obj PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(cdoc_obj PUBLIC
     ${LIBXML2_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
+    ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 set(CDOC_PRIV_SOURCES
+    CDoc.cpp
     Certificate.cpp
     Crypto.cpp
     Tar.cpp
@@ -66,6 +67,7 @@ set_property(TARGET cdoc_priv_obj PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(cdoc_priv_obj PUBLIC
     ${LIBXML2_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
+    ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -84,6 +86,7 @@ set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(cdoc_priv PUBLIC
     ${LIBXML2_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
+    ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -114,7 +117,7 @@ set_target_properties(cdoc PROPERTIES
 )
 
 target_include_directories(cdoc PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(cdoc PRIVATE

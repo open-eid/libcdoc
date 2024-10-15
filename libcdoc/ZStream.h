@@ -128,27 +128,32 @@ struct ZConsumer : public ChainedConsumer {
 struct ZSource : public ChainedSource {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
 	z_stream _s {};
-	bool _fail = false;
+	int64_t _error = OK;
 	std::vector<uint8_t> buf;
 	int flush = Z_NO_FLUSH;
 	ZSource(DataSource *src, bool take_ownership = false) : ChainedSource(src, take_ownership) {
-		if (inflateInit2(&_s, MAX_WBITS) != Z_OK) _fail = true;
+		if (inflateInit2(&_s, MAX_WBITS) != Z_OK) {
+			_error = ZLIB_ERROR;
+		}
 	}
 	~ZSource() {
-		if (!_fail) inflateEnd(&_s);
+		if (!_error) inflateEnd(&_s);
 	}
 
 	int64_t read(uint8_t *dst, size_t size) override final {
-		if (_fail) return 0;
+		if (_error) return _error;
 		_s.next_out = (Bytef *) dst;
 		_s.avail_out = uInt (size);
 		uint8_t in[CHUNK];
 		int res = Z_OK;
 		while((_s.avail_out > 0) && (res == Z_OK)) {
 			size_t readlen = CHUNK;
-			size_t rsize = _src->read(in, readlen);
-			if (rsize > 0) {
-				buf.insert(buf.end(), in, in + rsize);
+			int64_t n_read = _src->read(in, readlen);
+			if (n_read > 0) {
+				buf.insert(buf.end(), in, in + n_read);
+			} else if (n_read != 0) {
+				_error = n_read;
+				return _error;
 			}
 			_s.next_in = (z_const Bytef *) buf.data();
 			_s.avail_in = uInt(buf.size());
@@ -161,15 +166,15 @@ struct ZSource : public ChainedSource {
 				buf.clear();
 				break;
 			default:
-				_fail = true;
-				return INPUT_ERROR;
+				_error = ZLIB_ERROR;
+				return _error;
 			}
 		}
 		return size - _s.avail_out;
 	}
 
 	virtual bool isError() override final {
-		return _fail || ChainedSource::isError();
+		return (_error != OK) || ChainedSource::isError();
 	};
 
 	virtual bool isEof() override final {

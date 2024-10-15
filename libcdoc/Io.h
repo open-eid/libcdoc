@@ -57,7 +57,7 @@ struct MultiDataConsumer : public DataConsumer {
 
 struct MultiDataSource : public DataSource {
 	virtual size_t getNumComponents() = 0;
-	virtual bool next(std::string& name, int64_t& size) = 0;
+	virtual int next(std::string& name, int64_t& size) = 0;
 };
 
 struct ChainedConsumer : public DataConsumer {
@@ -210,7 +210,7 @@ struct FileListSource : public MultiDataSource {
 	bool isError() override final;
 	bool isEof() override final;
 	size_t getNumComponents() override final;
-	bool next(std::string& name, int64_t& size) override final;
+	int next(std::string& name, int64_t& size) override final;
 
 	std::filesystem::path _base;
 	const std::vector<std::string>& _files;
