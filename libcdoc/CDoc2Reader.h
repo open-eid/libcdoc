@@ -15,7 +15,7 @@ public:
 	// Pull interface
 	int beginDecryption(const std::vector<uint8_t>& fmk) override final;
 	int nextFile(std::string& name, int64_t& size) override final;
-	int64_t read(uint8_t *dst, size_t size) override final;
+	int64_t readData(uint8_t *dst, size_t size) override final;
 	int finishDecryption() override final;
 
 	CDoc2Reader(libcdoc::DataSource *src, bool take_ownership = false);

@@ -22,6 +22,7 @@
 
 #include <libcdoc/Configuration.h>
 #include <libcdoc/CryptoBackend.h>
+#include <libcdoc/Exports.h>
 #include <libcdoc/Io.h>
 #include <libcdoc/Lock.h>
 #include <libcdoc/NetworkBackend.h>
@@ -32,7 +33,7 @@ namespace libcdoc {
  * @brief The CDocReader class
  * An abstract class fro CDoc1 and CDoc2 readers. Provides unified interface for loading and decryption.
  */
-class CDocReader {
+class CDOC_EXPORT CDocReader {
 public:
 	virtual ~CDocReader() = default;
 
@@ -46,7 +47,7 @@ public:
 	/**
 	 * @brief Fetches the lock for certificate
 	 *
-	 * Returns the foirst lock that can be opened by the private key of given certificate holder.
+	 * Returns the first lock that can be opened by the private key of given certificate holder.
 	 * @param cert a x509 certificate (der)
 	 * @return the lock or nullptr if not found
 	 */
@@ -65,7 +66,7 @@ public:
 	// Pull interface
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
 	virtual int nextFile(std::string& name, int64_t& size) = 0;
-	virtual int64_t read(uint8_t *dst, size_t size) = 0;
+	virtual int64_t readData(uint8_t *dst, size_t size) = 0;
 	virtual int finishDecryption() = 0;
 
 

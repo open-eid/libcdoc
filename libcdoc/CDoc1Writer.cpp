@@ -14,6 +14,12 @@
 
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
+struct FileEntry {
+	std::string name;
+	size_t size;
+	std::vector<uint8_t> data;
+};
+
 /**
  * @class CDoc1Writer
  * @brief CDoc1Writer is used for encrypt data.
@@ -22,8 +28,13 @@
 class CDoc1Writer::Private
 {
 public:
+	std::unique_ptr<XMLWriter> _xml;
+	std::vector<FileEntry> files;
+	std::vector<libcdoc::Recipient> rcpts;
+
 	static const XMLWriter::NS DENC, DS, XENC11, DSIG11;
 	std::string method, documentFormat = "ENCDOC-XML|1.1", lastError;
+
 	bool writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, libcdoc::Crypto::Key transportKey);
 };
 
@@ -163,11 +174,6 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 	return true;
 }
 
-struct FileEntry {
-	std::string name;
-	int64_t size;
-};
-
 /**
  * Encrypt data
  */
@@ -175,31 +181,36 @@ int
 CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
-	XMLWriter *xmlw = new XMLWriter(&dst);
-	xmlw->writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", src.getNumComponents() > 1 ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}});
-	xmlw->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", d->method}});
-	xmlw->writeStartElement(Private::DS, "KeyInfo", {});
+
+	int n_components = src.getNumComponents();
+	bool use_ddoc = (n_components > 1) || (n_components == libcdoc::NOT_IMPLEMENTED);
+
+	d->_xml = std::make_unique<XMLWriter>(&dst);
+	d->_xml->writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}});
+	d->_xml->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", d->method}});
+	d->_xml->writeStartElement(Private::DS, "KeyInfo", {});
 	for (const libcdoc::Recipient& key : keys) {
 		if (!key.isCertificate()) {
 			d->lastError = "Invalid recipient type";
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
-		if(!d->writeRecipient(xmlw, key.cert, transportKey)) {
+		if(!d->writeRecipient(d->_xml.get(), key.cert, transportKey)) {
 			d->lastError = "Failed to write Recipient info";
 			return libcdoc::IO_ERROR;
 		}
 	}
-	xmlw->writeEndElement(Private::DS); // KeyInfo
+	d->_xml->writeEndElement(Private::DS); // KeyInfo
 
 	std::vector<FileEntry> files;
-	xmlw->writeElement(Private::DENC, "CipherData", [&]{
-		if(src.getNumComponents() > 1) {
+	d->_xml->writeElement(Private::DENC, "CipherData", [&]{
+		if(use_ddoc) {
 			std::vector<uint8_t> data(4096);
 			DDOCWriter ddoc(data);
 			std::string name;
 			int64_t size;
-			while (src.next(name, size)) {
-				files.push_back({name, size});
+			int64_t result = src.next(name, size);
+			while (result == libcdoc::OK) {
+				files.push_back({name, (size_t) size, {}});
 				std::vector<uint8_t> contents;
 				libcdoc::VectorConsumer vcons(contents);
 				src.readAll(vcons);
@@ -208,12 +219,13 @@ CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, 
 			ddoc.close();
 			libcdoc::vectorwrapbuf databuf(data);
 			std::istream in(&databuf);
-			xmlw->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
-		} else if (src.getNumComponents() == 1) {
+			d->_xml->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
+		} else {
 			std::string name;
 			int64_t size;
 			src.next(name, size);
-			files.push_back({name, size});
+			if (size < 0) return libcdoc::IO_ERROR;
+			files.push_back({name, (size_t) size});
 
 			std::vector<uint8_t> data;
 			libcdoc::VectorConsumer vcons(data);
@@ -221,50 +233,109 @@ CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, 
 
 			libcdoc::vectorwrapbuf databuf(data);
 			std::istream in(&databuf);
-			xmlw->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
+			d->_xml->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
 		}
 	});
-	xmlw->writeElement(Private::DENC, "EncryptionProperties", [&]{
-		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "LibraryVersion"}}, "cdoc|0.0.1");
-		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "DocumentFormat"}}, d->documentFormat);
-		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "Filename"}}, files.size() == 1 ? files.at(0).name : "tmp.ddoc");
+	d->_xml->writeElement(Private::DENC, "EncryptionProperties", [&]{
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "LibraryVersion"}}, "cdoc|0.0.1");
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "DocumentFormat"}}, d->documentFormat);
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "Filename"}}, files.size() == 1 ? files.at(0).name : "tmp.ddoc");
 		for(const FileEntry &file: files)
 		{
-			xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "orig_file"}},
+			d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "orig_file"}},
 				file.name + "|" + std::to_string(file.size) + "|" + "application/octet-stream" + "|D0");
 		}
 	});
-	xmlw->writeEndElement(Private::DENC); // EncryptedData
-	xmlw->close();
+	d->_xml->writeEndElement(Private::DENC); // EncryptedData
+	d->_xml->close();
+	d->_xml.reset();
 	return libcdoc::OK;
 }
 
 int
 CDoc1Writer::beginEncryption(libcdoc::DataConsumer& dst)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+	d->_xml = std::make_unique<XMLWriter>(&dst);
+	return libcdoc::OK;
 }
 
 int
 CDoc1Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+	d->rcpts.push_back(rcpt);
+	return libcdoc::OK;
 }
 
 int
 CDoc1Writer::addFile(const std::string& name, size_t size)
 {
+	d->files.push_back({name, size, {}});
 	return libcdoc::NOT_IMPLEMENTED;
 }
 
 int
 CDoc1Writer::writeData(const uint8_t *src, size_t size)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+	if (d->files.empty()) return libcdoc::WORKFLOW_ERROR;
+	d->files.back().data.insert(d->files.back().data.end(), src, src + size);
+	return libcdoc::OK;
 }
 
 int
 CDoc1Writer::finishEncryption(bool close_dst)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+	if (!d->_xml) return libcdoc::WORKFLOW_ERROR;
+	if (d->rcpts.empty()) return libcdoc::WORKFLOW_ERROR;
+	if (d->files.empty()) return libcdoc::WORKFLOW_ERROR;
+	bool use_ddoc = d->files.size() > 1;
+
+	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
+
+	d->_xml->writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}});
+	d->_xml->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", d->method}});
+	d->_xml->writeStartElement(Private::DS, "KeyInfo", {});
+	for (const libcdoc::Recipient& key : d->rcpts) {
+		if (!key.isCertificate()) {
+			d->lastError = "Invalid recipient type";
+			return libcdoc::UNSPECIFIED_ERROR;
+		}
+		if(!d->writeRecipient(d->_xml.get(), key.cert, transportKey)) {
+			d->lastError = "Failed to write Recipient info";
+			return libcdoc::IO_ERROR;
+		}
+	}
+	d->_xml->writeEndElement(Private::DS); // KeyInfo
+
+	d->_xml->writeElement(Private::DENC, "CipherData", [&]{
+		if(use_ddoc) {
+			std::vector<uint8_t> data(4096);
+			DDOCWriter ddoc(data);
+			for (const FileEntry& file : d->files) {
+				std::vector<uint8_t> contents;
+				ddoc.addFile(file.name, "application/octet-stream", file.data);
+			}
+			ddoc.close();
+			libcdoc::vectorwrapbuf databuf(data);
+			std::istream in(&databuf);
+			d->_xml->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
+		} else {
+			libcdoc::vectorwrapbuf databuf(d->files.back().data);
+			std::istream in(&databuf);
+			d->_xml->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
+		}
+	});
+	d->_xml->writeElement(Private::DENC, "EncryptionProperties", [&]{
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "LibraryVersion"}}, "cdoc|0.0.1");
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "DocumentFormat"}}, d->documentFormat);
+		d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "Filename"}}, use_ddoc ? "tmp.ddoc" : d->files.at(0).name);
+		for(const FileEntry &file: d->files)
+		{
+			d->_xml->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "orig_file"}},
+				file.name + "|" + std::to_string(file.size) + "|" + "application/octet-stream" + "|D0");
+		}
+	});
+	d->_xml->writeEndElement(Private::DENC); // EncryptedData
+	d->_xml->close();
+	d->_xml.reset();
+	return libcdoc::OK;
 }

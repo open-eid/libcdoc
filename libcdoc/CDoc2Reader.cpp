@@ -20,6 +20,23 @@
 // fixme: Placeholder
 #define t_(t) t
 
+// Get salt bitstring for HKDF expand method
+
+std::string
+libcdoc::CDoc2::getSaltForExpand(const std::string& label)
+{
+	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
+}
+
+// Get salt bitstring for HKDF expand method
+std::string
+libcdoc::CDoc2::getSaltForExpand(const std::vector<uint8_t>& key_material, const std::vector<uint8_t>& rcpt_key)
+{
+	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
+			std::string(rcpt_key.cbegin(), rcpt_key.cend()) +
+			std::string(key_material.cbegin(), key_material.cend());
+}
+
 struct CDoc2Reader::Private {
 	Private(libcdoc::DataSource *src, bool take_ownership) : _src(src), _owned(take_ownership) {
 	}
@@ -77,7 +94,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 		// Symmetric key
 		const libcdoc::LockSymmetric &sk = static_cast<const libcdoc::LockSymmetric&>(*lock);
 		std::string info_str = libcdoc::CDoc2::getSaltForExpand(sk.label);
-		crypto->getKEK(kek, sk.salt, sk.pw_salt, sk.kdf_iter, sk.label, info_str);
+		std::vector<uint8_t> kek_pm;
+		crypto->extractHKDF(kek_pm, sk.salt, sk.pw_salt, sk.kdf_iter, libcdoc::CDoc2::KEY_LEN, sk.label);
+		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+		if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 	} else {
 		// Public/private key
 		const libcdoc::LockPKI &pki = static_cast<const libcdoc::LockPKI&>(*lock);
@@ -98,14 +118,15 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 		std::cerr << "Key material: " << libcdoc::Crypto::toHex(key_material) << std::endl;
 #endif
 		if (pki.pk_type == libcdoc::Lock::PKType::RSA) {
-			int result = crypto->decryptRSA(kek, key_material, true);
+			int result = crypto->decryptRSA(kek, key_material, true, pki.label);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
 				return result;
 			}
 		} else {
 			std::vector<uint8_t> kek_pm;
-			int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), libcdoc::CDoc2::KEY_LEN);
+			int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()),
+												   libcdoc::CDoc2::KEY_LEN, pki.label);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
 				return result;
@@ -121,7 +142,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 		}
 	}
 #ifndef NDEBUG
-	std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
+	std::cerr << "KEK: " << libcdoc::Crypto::toHex(kek) << std::endl;
 #endif
 
 	if(kek.empty()) {
@@ -153,7 +174,6 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 	int result = beginDecryption(fmk);
 	if (result != libcdoc::OK) return result;
 	bool warning = false;
-//	libcdoc::TarSource tar(&zsrc, false);
 	std::string name;
 	int64_t size;
 	result = nextFile(name, size);
@@ -215,7 +235,7 @@ CDoc2Reader::nextFile(std::string& name, int64_t& size)
 }
 
 int64_t
-CDoc2Reader::read(uint8_t *dst, size_t size)
+CDoc2Reader::readData(uint8_t *dst, size_t size)
 {
 	if (!priv->tar) return libcdoc::WORKFLOW_ERROR;
 	return priv->tar->read(dst, size);

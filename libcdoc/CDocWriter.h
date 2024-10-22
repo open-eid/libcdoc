@@ -20,16 +20,17 @@
  *
  */
 
-#include "Recipient.h"
-#include "Io.h"
+#include <libcdoc/Recipient.h>
+#include <libcdoc/Io.h>
 
-#include "Configuration.h"
-#include "CryptoBackend.h"
-#include "NetworkBackend.h"
+#include <libcdoc/Configuration.h>
+#include <libcdoc/CryptoBackend.h>
+#include <libcdoc/Exports.h>
+#include <libcdoc/NetworkBackend.h>
 
 namespace libcdoc {
 
-class CDocWriter {
+class CDOC_EXPORT CDocWriter {
 public:
 	virtual ~CDocWriter() = default;
 

@@ -21,6 +21,7 @@
  */
 
 #include <libcdoc/CDoc.h>
+#include <libcdoc/Exports.h>
 
 #include <string>
 #include <vector>
@@ -32,9 +33,12 @@ namespace libcdoc {
  * Implements cryptographic methods that potentially need either user action (supplying password) or external communication (PKCS11).
  *
  */
-struct CryptoBackend {
+struct CDOC_EXPORT CryptoBackend {
 	static constexpr int INVALID_PARAMS = -201;
 	static constexpr int OPENSSL_ERROR = -202;
+
+	CryptoBackend() = default;
+	virtual ~CryptoBackend() = default;
 
 	virtual std::string getLastErrorStr(int code) const;
 
@@ -49,24 +53,28 @@ struct CryptoBackend {
 	virtual int random(std::vector<uint8_t>& dst, uint32_t size);
 	/**
 	 * @brief Derive shared secret
-	 * @param dst the destination container for shared key
-	 * @param public_key ECDH public Key used to derive shared secret
+	 *
+	 * Derive a shared secret from private key of given lock label and public key using ECDH1 algorithm.
+	 * @param dst the container for shared secret
+	 * @param public_key ECDH public key used to derive shared secret
+	 * @param label Label of the lock
 	 * @return error code or OK
 	 */
-	virtual int derive(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key) { return NOT_IMPLEMENTED; }
+	virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief decryptRSA
 	 * @param dst the destination container for decrypted data
 	 * @param data encrypted data
 	 * @param oaep
+	 * @param label Label of the lock
 	 * @return error code or OK
 	 */
-	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep) const = 0;
+	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) = 0;
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *
 	 * The ConcatKDF key derivation algorithm is defined in Section 5.8.1 of NIST SP 800-56A.
-	 * The default implementation calls derive and performs concatKDF
+	 * The default implementation calls deriveECDH1 and performs local concatKDF
 	 * @param dst the container for derived key
 	 * @param public_key ECDH public Key used to derive shared secret
 	 * @param digest Digest method to use for ConcatKDF algorithm
@@ -74,21 +82,26 @@ struct CryptoBackend {
 	 * @param algorithm_id OtherInfo info parameters to input
 	 * @param party_uinfo OtherInfo info parameters to input
 	 * @param party_vinfo OtherInfo info parameters to input
+	 * @param label Label of the lock that the key belongs to
 	 * @return error code or OK
 	 */
 	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest, int key_size,
-		const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo, const std::vector<uint8_t> &party_vinfo);
+								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
+								 const std::vector<uint8_t> &party_vinfo, const std::string& label);
 	/**
-	 * @brief deriveHMACExtract
+	 * @brief Get CDoc2 KEK pre-master from ECC key
 	 *
-	 * The default implementation calls derive and performs HMAC extract
+	 * Calculates KEK (Key Encryption Key) pre-master from an ECC public key with given label.
+	 * The default implementation calls deriveECDH1 and performs local HMAC extract
 	 * @param dst the container for derived key
 	 * @param public_key
 	 * @param salt
-	 * @param key_size
+	 * @param key_len
+	 * @param label Label of the lock that the key belongs to
 	 * @return error code or OK
 	 */
-	virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, int key_size);
+	virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, int key_len,
+								  const std::string& label);
 	/**
 	 * @brief Get secret value (either password or symmetric key)
 	 * @param secret the destination container for secret
@@ -107,22 +120,26 @@ struct CryptoBackend {
 	 * @param label the label of the capsule (key)
 	 * @return error code or OK
 	 */
-	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label);
+	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt,
+							   int32_t kdf_iter, const std::string& label);
 	/**
-	 * @brief Get CDoc2 KEK for symmetric key
+	 * @brief Get CDoc2 KEK pre-master from symmetric key
 	 *
-	 * Fetches KEK (Key Encryption Key) for a given symmetric key (either password or key-based).
-	 * The default implementation calls getKeyMaterial and performs HKDF extract + expand.
-	 * @param kek the destination container for KEK
+	 * Calculates KEK (Key Encryption Key) pre-master from a symmetric key (either password or key-based) with given label.
+	 * The default implementation calls getKeyMaterial and performs local HKDF extract.
+	 * @param dst the destination container for KEK pre-master
 	 * @param salt the salt value for HKDF extract
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
+	 * @param key_len the length of extracted key
 	 * @param label the label of the capsule (key)
-	 * @param expand_salt the salt for HKDF expand
 	 * @return error code or OK
 	 */
-	virtual int getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
-				const std::string& label, const std::string& expand_salt);
+	virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
+							int32_t kdf_iter, int key_len, const std::string& label);
+
+	CryptoBackend (const CryptoBackend&) = delete;
+	CryptoBackend& operator= (const CryptoBackend&) = delete;
 };
 
 } // namespace libcdoc

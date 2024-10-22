@@ -20,12 +20,14 @@
  *
  */
 
+#include <libcdoc/Exports.h>
+
 #include <string>
 #include <vector>
 
 namespace libcdoc {
 
-struct Lock
+struct CDOC_EXPORT Lock
 {
 public:
 	enum Type : uint8_t {
@@ -69,7 +71,7 @@ private:
 // Usage:
 // CDoc2:decrypt LT
 
-struct LockSymmetric : public Lock {
+struct CDOC_EXPORT LockSymmetric : public Lock {
 	std::vector<uint8_t> salt;
 	// PBKDF
 	std::vector<uint8_t> pw_salt;
@@ -84,7 +86,7 @@ struct LockSymmetric : public Lock {
 // Usage:
 // CDoc2:encrypt
 
-struct LockPKI : public Lock {
+struct CDOC_EXPORT LockPKI : public Lock {
 	// Recipient's public key
 	PKType pk_type;
 	std::vector<uint8_t> rcpt_key;
@@ -99,7 +101,7 @@ protected:
 // Usage:
 // CDoc1:encrypt
 
-struct LockCert : public LockPKI {
+struct CDOC_EXPORT LockCert : public LockPKI {
 	std::vector<uint8_t> cert;
 
 	LockCert(const std::string& label, const std::vector<uint8_t> &cert) : LockCert(Lock::Type::CERTIFICATE, label, cert) {};
@@ -115,7 +117,7 @@ protected:
 // Usage:
 // CDoc2: decrypt
 
-struct LockPublicKey : public libcdoc::LockPKI {
+struct CDOC_EXPORT LockPublicKey : public libcdoc::LockPKI {
 	// Either ECC public key or RSA encrypted kek
 	std::vector<uint8_t> key_material;
 
@@ -127,7 +129,7 @@ struct LockPublicKey : public libcdoc::LockPKI {
 // Usage:
 // CDoc2: decrypt
 
-struct LockServer : public libcdoc::LockPKI {
+struct CDOC_EXPORT LockServer : public libcdoc::LockPKI {
 	// Server info
 	std::string keyserver_id;
 	std::string transaction_id;
@@ -142,7 +144,7 @@ protected:
 // Usage:
 // CDoc1:decrypt
 
-struct LockCDoc1 : public libcdoc::LockCert {
+struct CDOC_EXPORT LockCDoc1 : public libcdoc::LockCert {
 
 	std::vector<uint8_t> publicKey;
 	std::string concatDigest, method;

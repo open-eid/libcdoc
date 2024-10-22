@@ -20,11 +20,13 @@
  *
  */
 
+#include <libcdoc/Exports.h>
+
 #include <string>
 
 namespace libcdoc {
 
-struct Recipient {
+struct CDOC_EXPORT Recipient {
 	enum Type : unsigned char {
 		NONE,
 		// Symmetric key (plain or PBKDF)

@@ -154,7 +154,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
 				std::cerr << "encrytpedKek" << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
 	#endif
-				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
+				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
 					auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
 																					  builder.CreateVector(pki.rcpt_key),
 																					  builder.CreateVector(encrytpedKek));
@@ -216,7 +216,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
 				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
 	#endif
-				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
+				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
 					auto eccPublicKey = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
 																					  cdoc20::recipients::EllipticCurve::secp384r1,
 																					  builder.CreateVector(pki.rcpt_key),
@@ -255,17 +255,19 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 		} else if (key.isSymmetric()) {
 			const libcdoc::Recipient& sk = key;
 			std::string info_str = libcdoc::CDoc2::getSaltForExpand(sk.label);
-			std::vector<uint8_t> kek(32);
+			std::vector<uint8_t> kek_pm(32);
 			std::vector<uint8_t> salt;
 			crypto->random(salt, 32);
 			std::vector<uint8_t> pw_salt;
 			crypto->random(pw_salt, 32);
-			crypto->getKEK(kek, salt, pw_salt, sk.kdf_iter, sk.label, info_str);
+			crypto->extractHKDF(kek_pm, salt, pw_salt, sk.kdf_iter, libcdoc::CDoc2::KEY_LEN, sk.label);
+			std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+			if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
+				setLastError("Internal error");
+				return libcdoc::CRYPTO_ERROR;
+			}
 			if (sk.kdf_iter > 0) {
-				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
-					setLastError("Internal error");
-					return libcdoc::CRYPTO_ERROR;
-				}
 				auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder,
 																	   builder.CreateVector(salt),
 																	   builder.CreateVector(pw_salt),
@@ -279,10 +281,6 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 																  cdoc20::header::FMKEncryptionMethod::XOR);
 				recipients.push_back(offs);
 			} else {
-				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
-					setLastError("Internal error");
-					return libcdoc::CRYPTO_ERROR;
-				}
 				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
 																			 builder.CreateVector(salt));
 				auto offs = cdoc20::header::CreateRecipientRecord(builder,

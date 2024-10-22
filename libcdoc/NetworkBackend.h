@@ -20,15 +20,20 @@
  *
  */
 
+#include <libcdoc/Exports.h>
+
 #include <vector>
 
 namespace libcdoc {
 
-struct NetworkBackend {
+struct CDOC_EXPORT NetworkBackend {
 	static constexpr int OK = 0;
 	static constexpr int NOT_IMPLEMENTED = -300;
 	static constexpr int INVALID_PARAMS = -301;
 	static constexpr int NETWORK_ERROR = -302;
+
+	NetworkBackend() = default;
+	virtual ~NetworkBackend() = default;
 
 	virtual std::string getLastErrorStr(int code) const;
 
@@ -49,6 +54,9 @@ struct NetworkBackend {
 	 * @return error code or OK
 	 */
 	virtual int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) = 0;
+
+	NetworkBackend (const NetworkBackend&) = delete;
+	NetworkBackend& operator= (const NetworkBackend&) = delete;
 };
 
 } // namespace libcdoc

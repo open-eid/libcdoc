@@ -34,23 +34,25 @@ CryptoBackend::random(std::vector<uint8_t>& dst, uint32_t size)
 }
 
 int
-CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo)
+CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int key_size,
+	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
+							   const std::string& label)
 {
 	std::vector<uint8_t> shared_secret;
-	int result = derive(shared_secret, publicKey);
+	int result = deriveECDH1(shared_secret, publicKey, label);
 	if (result != OK) return result;
-	dst = libcdoc::Crypto::concatKDF(digest, keySize, shared_secret, algorithmID, partyUInfo, partyVInfo);
+	dst = libcdoc::Crypto::concatKDF(digest, key_size, shared_secret, algorithmID, partyUInfo, partyVInfo);
 	return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 int
-CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize)
+CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, int key_len,
+								 const std::string& label)
 {
 	std::vector<uint8_t> shared_secret;
-	int result = derive(shared_secret, publicKey);
+	int result = deriveECDH1(shared_secret, public_key, label);
 	if (result != OK) return result;
-	dst = libcdoc::Crypto::extract(shared_secret, salt, keySize);
+	dst = libcdoc::Crypto::extract(shared_secret, salt, key_len);
 	return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
@@ -79,24 +81,19 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 }
 
 int
-CryptoBackend::getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
-			const std::string& label, const std::string& expand_salt)
+CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
+						   int32_t kdf_iter, int key_len, const std::string& label)
 {
-	if (salt.empty() || expand_salt.empty()) return INVALID_PARAMS;
+	if (salt.empty()) return INVALID_PARAMS;
 	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
 	std::vector<uint8_t> key_material;
 	int result = getKeyMaterial(key_material, pw_salt, kdf_iter, label);
 	if (result) return result;
-	std::vector<uint8_t> tmp = libcdoc::Crypto::extract(key_material, salt, 32);
+	kek_pm = libcdoc::Crypto::extract(key_material, salt, key_len);
 	std::fill(key_material.begin(), key_material.end(), 0);
-	if (tmp.empty()) return OPENSSL_ERROR;
+	if (kek_pm.empty()) return OPENSSL_ERROR;
 #ifdef LOCAL_DEBUG
-	std::cerr << "Extract: " << Crypto::toHex(tmp) << std::endl;
-#endif
-	kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(expand_salt.cbegin(), expand_salt.cend()), 32);
-	if (kek.empty()) return OPENSSL_ERROR;
-#ifdef LOCAL_DEBUG
-	std::cerr << "KEK: " << Crypto::toHex(kek) << std::endl;
+	std::cerr << "Extract: " << Crypto::toHex(kek_pm) << std::endl;
 #endif
 	return OK;
 }

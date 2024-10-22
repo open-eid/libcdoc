@@ -88,14 +88,14 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 	setLastError({});
 	std::vector<uint8_t> decrypted_key;
 	if (ckey.pk_type == libcdoc::Lock::PKType::RSA) {
-		int result = crypto->decryptRSA(decrypted_key, ckey.encrypted_fmk, false);
+		int result = crypto->decryptRSA(decrypted_key, ckey.encrypted_fmk, false, ckey.label);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
 			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
 		int result = crypto->deriveConcatKDF(decrypted_key, ckey.publicKey, ckey.concatDigest,
-				libcdoc::Crypto::keySize(ckey.method), ckey.AlgorithmID, ckey.PartyUInfo, ckey.PartyVInfo);
+				libcdoc::Crypto::keySize(ckey.method), ckey.AlgorithmID, ckey.PartyUInfo, ckey.PartyVInfo, ckey.label);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
 			return libcdoc::CRYPTO_ERROR;
@@ -174,7 +174,7 @@ CDoc1Reader::nextFile(std::string& name, int64_t& size)
 }
 
 int64_t
-CDoc1Reader::read(uint8_t *dst, size_t size)
+CDoc1Reader::readData(uint8_t *dst, size_t size)
 {
 	return libcdoc::NOT_IMPLEMENTED;
 }

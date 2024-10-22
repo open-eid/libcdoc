@@ -6,6 +6,8 @@
 
 namespace libcdoc {
 
+static constexpr size_t BLOCK_SIZE = 65536;
+
 std::string
 DataConsumer::getLastErrorStr(int code) const
 {
@@ -47,19 +49,17 @@ DataConsumer::writeAll(DataSource& src)
 	while (!src.isEof()) {
 		int64_t n_read = src.read(buf, BUF_SIZE);
 		if (n_read < 0) return n_read;
-		if (n_read == 0) {
-			return n_read;
+		if (n_read > 0) {
+			int64_t n_written = write(buf, n_read);
+			if (n_written < 0) return n_written;
+			total_read += n_written;
 		}
-		n_read = write(buf, n_read);
-		if (n_read < 0) return n_read;
-		total_read += n_read;
 	}
 	return total_read;
 }
 
 int64_t
 DataSource::skip(size_t size) {
-	static constexpr size_t BLOCK_SIZE = 65536;
 	uint8_t b[BLOCK_SIZE];
 	size_t total_read = 0;
 	while (total_read < size) {
@@ -81,22 +81,23 @@ OStreamConsumer::OStreamConsumer(const std::string& path)
 {
 }
 
-FileListSource::FileListSource(const std::string& base, const std::vector<std::string>& files) : _base(base), _files(files), _current(-1)
+FileListSource::FileListSource(const std::string& base, const std::vector<std::string>& files)
+	: _base(base), _files(files), _current(-1)
 {
 }
 
 int64_t
 FileListSource::read(uint8_t *dst, size_t size)
 {
-	if ((_current < 0) || (_current >= _files.size())) return 0;
+	if ((_current < 0) || (_current >= _files.size())) return WORKFLOW_ERROR;
 	_ifs.read((char *) dst, size);
-	return _ifs.gcount();
+	return (_ifs.bad()) ? INPUT_STREAM_ERROR : _ifs.gcount();
 }
 
 bool
 FileListSource::isError()
 {
-	if ((_current < 0) || (_current >= _files.size())) return 0;
+	if ((_current < 0) || (_current >= _files.size())) return OK;
 	return _ifs.bad();
 }
 
@@ -118,13 +119,13 @@ int
 FileListSource::next(std::string& name, int64_t& size)
 {
 	_ifs.close();
-	++_current;
+	_current += 1;
 	if (_current >= _files.size()) return END_OF_STREAM;
 	std::filesystem::path path(_base);
 	path.append(_files[_current]);
 	if (!std::filesystem::exists(path)) return IO_ERROR;
 	_ifs.open(path, std::ios_base::in);
-	if (!_ifs) return IO_ERROR;
+	if (_ifs.bad()) return IO_ERROR;
 	name = _files[_current];
 	size = std::filesystem::file_size(path);
 	return OK;

@@ -11,8 +11,6 @@ public:
 	CDoc1Writer(const std::string &method = "http://www.w3.org/2009/xmlenc11#aes256-gcm");
 	~CDoc1Writer();
 
-	std::string last_error;
-
 	int beginEncryption(libcdoc::DataConsumer& dst) override final;
 	int addRecipient(const libcdoc::Recipient& rcpt) override final;
 	int addFile(const std::string& name, size_t size) override final;

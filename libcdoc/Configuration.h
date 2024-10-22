@@ -20,6 +20,8 @@
  *
  */
 
+#include <libcdoc/Exports.h>
+
 #include <string>
 
 namespace libcdoc {
@@ -28,12 +30,18 @@ namespace libcdoc {
  * @brief A configuration provider.
  * Subclasses can implement different configuration systems (registry, .ini files etc.) by overriding getValue.
  */
-struct Configuration {
-	static inline const char *USE_KEYSERVER = "USE_KEYSERVER";
+struct CDOC_EXPORT Configuration {
+	static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
+
+	Configuration() = default;
+	virtual ~Configuration() = default;
 
 	virtual std::string getValue(const std::string& param) = 0;
 
 	bool getBoolean(const std::string& param);
+
+	Configuration (const Configuration&) = delete;
+	Configuration& operator= (const Configuration&) = delete;
 };
 
 } // namespace libcdoc
