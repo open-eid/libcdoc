@@ -43,15 +43,16 @@ public:
 	 * @brief Get decryption locks in given document
 	 * @return a vector of locks
 	 */
-	virtual const std::vector<Lock *>& getLocks() = 0;
+	virtual std::vector<Lock> getLocks() = 0;
 	/**
 	 * @brief Fetches the lock for certificate
 	 *
-	 * Returns the first lock that can be opened by the private key of given certificate holder.
+	 * Returns the first lock that can be opened by the private key of the certificate holder.
+	 * @param lock reference to result
 	 * @param cert a x509 certificate (der)
-	 * @return the lock or nullptr if not found
+	 * @return true if lock was found
 	 */
-	virtual const Lock *getDecryptionLock(const std::vector<uint8_t>& cert) = 0;
+	virtual bool getLockForCert(Lock& lock, const std::vector<uint8_t>& cert) = 0;
 	/**
 	 * @brief Fetches FMK from provided lock
 	 *
@@ -61,7 +62,7 @@ public:
 	 * @param lock a lock (from document lock list)
 	 * @return error code or OK
 	 */
-	virtual int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock) = 0;
+	virtual int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock) = 0;
 
 	// Pull interface
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
@@ -81,12 +82,11 @@ public:
 	virtual int decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer) = 0;
 
 	/**
-	 * @brief get the textual error of the last failed operation
-	 * @return error description, empty string of no errors
+	 * @brief get the error text of the last failed operation
+	 * @return error description, empty string if no errors
 	 */
 	std::string getLastErrorStr() const { return last_error; }
 
-	// Returns < 0 if not CDoc file
 	/**
 	 * @brief try to determine the cdoc file version
 	 * @param path a path to file

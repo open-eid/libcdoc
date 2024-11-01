@@ -21,9 +21,6 @@ namespace libcdoc {
 const std::string Crypto::SHA256_MTH = "http://www.w3.org/2001/04/xmlenc#sha256";
 const std::string Crypto::SHA384_MTH = "http://www.w3.org/2001/04/xmlenc#sha384";
 const std::string Crypto::SHA512_MTH = "http://www.w3.org/2001/04/xmlenc#sha512";
-const char *Crypto::KWAES128_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes128";
-const char *Crypto::KWAES192_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes192";
-const char *Crypto::KWAES256_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes256";
 const char *Crypto::AES128CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes128-cbc";
 const char *Crypto::AES192CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes192-cbc";
 const char *Crypto::AES256CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes256-cbc";

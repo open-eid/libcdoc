@@ -31,8 +31,11 @@ public:
 		int blockSize() const;
 	};
 
+	static constexpr std::string_view KWAES128_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes128";
+	static constexpr std::string_view KWAES192_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes192";
+	static constexpr std::string_view KWAES256_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes256";
+
 	static const std::string SHA256_MTH, SHA384_MTH, SHA512_MTH;
-	static const char *KWAES128_MTH, *KWAES192_MTH, *KWAES256_MTH;
 	static const char *AES128CBC_MTH, *AES192CBC_MTH, *AES256CBC_MTH, *AES128GCM_MTH, *AES192GCM_MTH, *AES256GCM_MTH;
 	static const std::string RSA_MTH, CONCATKDF_MTH, AGREEMENT_MTH;
 

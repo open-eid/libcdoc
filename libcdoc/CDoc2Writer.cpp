@@ -260,7 +260,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			crypto->random(salt, 32);
 			std::vector<uint8_t> pw_salt;
 			crypto->random(pw_salt, 32);
-			crypto->extractHKDF(kek_pm, salt, pw_salt, sk.kdf_iter, libcdoc::CDoc2::KEY_LEN, sk.label);
+			crypto->extractHKDF(kek_pm, salt, pw_salt, sk.kdf_iter, sk.label);
 			std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 			if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
@@ -357,7 +357,7 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 	return libcdoc::OK;
 }
 
-int
+int64_t
 CDoc2Writer::writeData(const uint8_t *src, size_t size)
 {
 	if (!priv) {

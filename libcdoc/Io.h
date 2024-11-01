@@ -122,14 +122,14 @@ public:
 	~ChainedConsumer() {
 		if (_owned) delete _dst;
 	}
-	int64_t write(const uint8_t *src, size_t size) {
+	int64_t write(const uint8_t *src, size_t size) override {
 		return _dst->write(src, size);
 	}
-	int close() {
+	int close() override {
 		if (_owned) return _dst->close();
 		return OK;
 	}
-	bool isError() {
+	bool isError() override {
 		return _dst->isError();
 	}
 protected:

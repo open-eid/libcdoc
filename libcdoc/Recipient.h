@@ -62,12 +62,13 @@ struct CDOC_EXPORT Recipient {
 	bool isTheSameRecipient(const Recipient &other) const;
 	bool isTheSameRecipient(const std::vector<uint8_t>& public_key) const;
 
-	bool operator== (const Recipient& other) const = default;
-
 	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
 	static Recipient makeCertificate(const std::string& label, const std::vector<uint8_t>& cert);
+
+	bool operator== (const Recipient& other) const = default;
 protected:
 	Recipient(Type _type) : type(_type) {};
+private:
 };
 
 } // namespace libcdoc

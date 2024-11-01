@@ -34,13 +34,13 @@ class CDOC_EXPORT CDocWriter {
 public:
 	virtual ~CDocWriter() = default;
 
-	int version;
+	const int version;
 
 	/* Push interface */
 	virtual int beginEncryption(DataConsumer& dst) = 0;
-	virtual int addRecipient(const libcdoc::Recipient& rcpt) = 0;
+	virtual int addRecipient(const Recipient& rcpt) = 0;
 	virtual int addFile(const std::string& name, size_t size) = 0;
-	virtual int writeData(const uint8_t *src, size_t size) = 0;
+	virtual int64_t writeData(const uint8_t *src, size_t size) = 0;
 	virtual int finishEncryption(bool close_dst = true) = 0;
 
 	/* Pull interface */

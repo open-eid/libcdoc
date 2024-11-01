@@ -7,9 +7,9 @@ class CDoc2Reader final: public libcdoc::CDocReader {
 public:
 	~CDoc2Reader() final;
 
-	const std::vector<libcdoc::Lock *>& getLocks() override final;
-	const libcdoc::Lock *getDecryptionLock(const std::vector<uint8_t>& cert) final;
-	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock) override final;
+	std::vector<libcdoc::Lock> getLocks() override final;
+	bool getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cert) override final;
+	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock) override final;
 	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
 
 	// Pull interface

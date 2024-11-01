@@ -6,6 +6,7 @@
 #include "libcdoc/Lock.h"
 #include "libcdoc/CDocWriter.h"
 #include "libcdoc/CDocReader.h"
+#include "libcdoc/Recipient.h"
 %}
 
 // Handle standard C++ types
@@ -16,47 +17,148 @@
 %include "typemaps.i"
 
 #ifdef SWIGJAVA
+%include "enums.swg"
+%javaconst(1);
+%apply long long { int64_t }
+%apply int { int32_t }
+
+// int64_t write(cont uint8_t *src, size_t pos, size_t len) -> long read(byte[] src, long pos, long len)
+%extend libcdoc::CDocWriter {
+    int64_t writeData(const uint8_t *src, size_t pos, size_t size) {
+        return $self->writeData(src + pos, size);
+    }
+};
+%typemap(in) (const uint8_t *src) %{
+    $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
+%}
+%typemap(javain) const uint8_t *src "$javainput"
+%typemap(jni) const uint8_t *src "jbyteArray"
+%typemap(jtype) const uint8_t *src "byte[]"
+%typemap(jstype) const uint8_t *src "byte[]"
+
+// int64_t write(const uint8_t *src, size_t len) -> long read(byte[] src)
 %typemap(in) (const uint8_t *src, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
-%typemap(freearg) (const uint8_t *src, size_t size) %{
-    jenv->ReleaseByteArrayElements($input, (jbyte *) $1, JNI_ABORT);
-%}
-%typemap(out) (const uint8_t *src, size_t size) %{
-    jresult = jenv->NewByteArray(size);
-%}
+%typemap(javain) (const uint8_t *src, size_t size) "$javainput"
 %typemap(jni) (const uint8_t *src, size_t size) "jbyteArray"
-%typemap(jtype) (const uint8_t *src, size_t size) "jbyteArray"
+%typemap(jtype) (const uint8_t *src, size_t size) "byte[]"
 %typemap(jstype) (const uint8_t *src, size_t size) "byte[]"
-
-%typemap(in) std::vector<uint8_t> %{
-    jbyte *$input_ptr = jenv->GetByteArrayElements($input, NULL);
-    jsize $input_size = jenv->GetArrayLength($input);
-    std::vector<uint8_t> $1_data($input_ptr, $input_ptr+$input_size);
-    $1 = $1_data;
-    jenv->ReleaseByteArrayElements($input, $input_ptr, JNI_ABORT);
+// int64_t read(uint8_t *dst, size_t size)
+%typemap(in) (uint8_t *dst, size_t size) %{
+    $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
+    $2 = jenv->GetArrayLength($input);
 %}
+%typemap(freearg) (uint8_t *dst, size_t size) %{
+    jenv->ReleaseByteArrayElements($input, (jbyte *) $1, 0);
+%}
+%typemap(javain) (uint8_t *dst, size_t size) "$javainput"
+%typemap(jni) (uint8_t *dst, size_t size) "jbyteArray"
+%typemap(jtype) (uint8_t *dst, size_t size) "byte[]"
+%typemap(jstype) (uint8_t *dst, size_t size) "byte[]"
+
+// Lock
+%ignore libcdoc::Lock::type;
+%ignore libcdoc::Lock::pk_type;
+%ignore libcdoc::Lock::label;
+%ignore libcdoc::Lock::encrypted_fmk;
+%ignore libcdoc::Lock::setBytes;
+%ignore libcdoc::Lock::setString;
+%ignore libcdoc::Lock::setInt;
+%ignore libcdoc::Lock::setCertificate;
+%extend libcdoc::Lock {
+    Type getType() {
+        return $self->type;
+    }
+    PKType getPKType() {
+        return $self->pk_type;
+    }
+    std::string getLabel() {
+        return $self->label;
+    }
+    std::vector<uint8_t> getEncryptedFMK() {
+        return $self->encrypted_fmk;
+    }
+}
+
+// DataSource
+%ignore libcdoc::DataConsumer::write(const std::vector<uint8_t>& src);
+%ignore libcdoc::DataConsumer::write(const std::string& str);
+
+#if 0
+%typemap(in) (std::vector<uint8_t>& dst) %{
+    $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
+    $2 = jenv->GetArrayLength($input);
+%}
+%typemap(javain) (std::vector<uint8_t>& dst) "$javainput"
+%typemap(jni) (std::vector<uint8_t>& dst) "jbyteArray"
+%typemap(jtype) (std::vector<uint8_t>& dst) "byte[]"
+%typemap(jstype) (std::vector<uint8_t>& dst) "byte[]"
+
+%extend libcdoc::CDocReader {
+    std::vector<uint8_t> readData(size_t size) {
+        std::vector<uint8_t> tmp(size);
+        $self->readData(tmp.data(), size);
+        return std::move(tmp);
+    }
+};
+#endif
+
 %typemap(out) std::vector<uint8_t> %{
     jresult = jenv->NewByteArray((&result)->size());
     jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
 %}
-%typemap(jtype) const std::vector<uint8_t>& "byte[]"
-%typemap(jstype) const std::vector<uint8_t>& "byte[]"
+%typemap(jtype) std::vector<uint8_t> "byte[]"
+%typemap(jstype) std::vector<uint8_t> "byte[]"
 %typemap(jni) std::vector<uint8_t> "jbyteArray"
-%typemap(javain) std::vector<uint8_t> "$javainput"
 %typemap(javaout) std::vector<uint8_t> {
     return $jnicall;
-  }
+}
+
+%typemap(in) (std::vector<uint8_t>& dst) %{
+    jsize $input_size = jenv->GetArrayLength($input);
+    std::vector<uint8_t> $1_data($input_size);
+    $1 = &$1_data;
+%}
+%typemap(freearg) (std::vector<uint8_t>& dst) %{
+    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
+%}
+%typemap(out) std::vector<uint8_t>& %{
+    jresult = jenv->NewByteArray((&result)->size());
+    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%}
+%typemap(jtype) std::vector<uint8_t>& "byte[]"
+%typemap(jstype) std::vector<uint8_t>& "byte[]"
+%typemap(jni) std::vector<uint8_t>& "jbyteArray"
+%typemap(javaout) std::vector<uint8_t>& {
+    return $jnicall;
+}
+
+%typemap(out) std::string_view %{
+    std::string tmp(result.cbegin(), result.cend());
+    jresult = jenv->NewStringUTF(tmp.c_str());
+%}
+%typemap(jtype) std::string_view "String"
+%typemap(jstype) std::string_view "String"
+%typemap(jni) std::string_view "jstring"
+%typemap(javaout) std::string_view {
+    return $jnicall;
+}
 #endif
 
 // Swig does not like visibility/declspec attributes
 #define CDOC_EXPORT
 
+%include "CDoc.h"
 %include "Io.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "Lock.h"
+%include "Recipient.h"
 %include "CDocReader.h"
 %include "CDocWriter.h"
+
+#ifdef SWIGJAVA
+#endif

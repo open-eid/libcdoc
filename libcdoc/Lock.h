@@ -24,133 +24,91 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 namespace libcdoc {
 
 struct CDOC_EXPORT Lock
 {
-public:
-	enum Type : uint8_t {
+	enum Type : unsigned char {
+		INVALID,
+		// Plain symmetric key
 		SYMMETRIC_KEY,
+		// PBKDF based symmetric key
+		PASSWORD,
 		PUBLIC_KEY,
+		// PKI lock with certificate data
 		CERTIFICATE,
+		// CDoc1 lock - PKI with additional data
 		CDOC1,
+		// PKI lock with key material stored in server
 		SERVER
 	};
 
-	enum PKType : uint8_t {
+	enum PKType : unsigned char {
 		ECC,
 		RSA
 	};
 
-	Type type;
-	std::string label;
+	enum Params : unsigned int {
+		// SYMMETRIC_KEY, PASSWORD
+		SALT,
+		// PASSWORD
+		PW_SALT,
+		// PASSWORD
+		KDF_ITER,
+		// PUBLIC_KEY, CERTIFICATE, CDOC1, SERVER
+		RCPT_KEY,
+		// CERTIFICATE
+		CERT,
+		// CDoc1: ECC ephemereal key
+		// CDoc2: Either ECC ephemereal key or RSA encrypted KEK
+		KEY_MATERIAL,
+		// SERVER
+		KEYSERVER_ID,
+		// SERVER
+		TRANSACTION_ID,
+		// CDOC1
+		CONCAT_DIGEST,
+		METHOD,
+		ALGORITHM_ID,
+		PARTY_UINFO,
+		PARTY_VINFO
+	};
 
-	// Decryption data
+	std::vector<uint8_t> getBytes(Params key) const { return params.at(key); };
+	std::string getString(Params key) const;
+	int32_t getInt(Params key) const;
+
+	Type type = Type::INVALID;
+	PKType pk_type = PKType::ECC;
+
+	std::string label;
 	std::vector<uint8_t> encrypted_fmk;
 
-	// Recipients public key
-	// QByteArray key;
-
-	bool isSymmetric() const { return type == Type::SYMMETRIC_KEY; }
+	bool isValid() const { return (type != Type::INVALID) && !label.empty() && !encrypted_fmk.empty(); }
+	bool isSymmetric() const { return (type == Type::SYMMETRIC_KEY) || (type == Type::PASSWORD); }
 	bool isPKI() const { return (type == Type::CERTIFICATE) || (type == Type::CDOC1) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
 	bool isCertificate() const { return (type == Type::CERTIFICATE) || (type == Type::CDOC1); }
 	bool isCDoc1() const { return type == Type::CDOC1; }
+	bool isRSA() const { return pk_type == PKType::RSA; }
 
 	bool hasTheSameKey(const Lock &key) const;
 	bool hasTheSameKey(const std::vector<uint8_t>& public_key) const;
 
-	virtual ~Lock() = default;
-protected:
+	Lock() = default;
 	Lock(Type _type) : type(_type) {};
+
+	void setBytes(Params key, const std::vector<uint8_t>& val) { params[key] = val; }
+	void setString(Params key, const std::string& val) { params[key] = std::vector<uint8_t>(val.cbegin(), val.cend()); }
+	void setInt(Params key, int32_t val);
+
+	bool operator== (const Lock& other) const = default;
+
+	// Set certificate, rcpt_key and pk_type values
+	void setCertificate(const std::vector<uint8_t>& cert);
 private:
-	bool operator==(const Lock &other) const { return false; }
-};
-
-// Symmetric key (plain or PBKDF)
-// Usage:
-// CDoc2:decrypt LT
-
-struct CDOC_EXPORT LockSymmetric : public Lock {
-	std::vector<uint8_t> salt;
-	// PBKDF
-	std::vector<uint8_t> pw_salt;
-	// 0 symmetric key, >0 password
-	int32_t kdf_iter;
-
-	LockSymmetric(const std::vector<uint8_t>& _salt) : Lock(Type::SYMMETRIC_KEY), salt(_salt), kdf_iter(0) {}
-	LockSymmetric(const std::vector<uint8_t>& _salt, const std::vector<uint8_t>& _pw_salt, int32_t _kdf_iter) : Lock(Type::SYMMETRIC_KEY), salt(_salt), pw_salt(_pw_salt), kdf_iter(_kdf_iter) {}
-};
-
-// Base PKI key
-// Usage:
-// CDoc2:encrypt
-
-struct CDOC_EXPORT LockPKI : public Lock {
-	// Recipient's public key
-	PKType pk_type;
-	std::vector<uint8_t> rcpt_key;
-
-protected:
-	LockPKI(Type _type) : Lock(_type), pk_type(PKType::ECC) {};
-	LockPKI(Type _type, PKType _pk_type, const std::vector<uint8_t>& _rcpt_key) : Lock(_type), pk_type(_pk_type), rcpt_key(_rcpt_key) {};
-	LockPKI(Type _type, PKType _pk_type, const uint8_t *key_data, size_t key_len) : Lock(_type), pk_type(_pk_type), rcpt_key(key_data, key_data + key_len) {};
-};
-
-// Public key with additonal information
-// Usage:
-// CDoc1:encrypt
-
-struct CDOC_EXPORT LockCert : public LockPKI {
-	std::vector<uint8_t> cert;
-
-	LockCert(const std::string& label, const std::vector<uint8_t> &cert) : LockCert(Lock::Type::CERTIFICATE, label, cert) {};
-
-	void setCert(const std::vector<uint8_t> &_cert);
-
-protected:
-	LockCert(Type _type) : LockPKI(_type) {};
-	LockCert(Type _type, const std::string& label, const std::vector<uint8_t> &_cert);
-};
-
-// CDoc2 PKI key with key material
-// Usage:
-// CDoc2: decrypt
-
-struct CDOC_EXPORT LockPublicKey : public libcdoc::LockPKI {
-	// Either ECC public key or RSA encrypted kek
-	std::vector<uint8_t> key_material;
-
-	LockPublicKey(PKType _pk_type, const std::vector<uint8_t>& _rcpt_key) : LockPKI(Type::PUBLIC_KEY, _pk_type, _rcpt_key) {};
-	LockPublicKey(PKType _pk_type, const uint8_t *_key_data, size_t _key_len) : LockPKI(Type::PUBLIC_KEY, _pk_type, _key_data, _key_len) {};
-};
-
-// CDoc2 PKI key with server info
-// Usage:
-// CDoc2: decrypt
-
-struct CDOC_EXPORT LockServer : public libcdoc::LockPKI {
-	// Server info
-	std::string keyserver_id;
-	std::string transaction_id;
-
-	static LockServer *fromKey(const std::vector<uint8_t> _key, PKType _pk_type);
-protected:
-	LockServer(const std::vector<uint8_t>& _rcpt_key, PKType _pk_type) : LockPKI(Type::SERVER, _pk_type, _rcpt_key) {};
-	LockServer(const uint8_t *_key_data, size_t _key_size, PKType _pk_type) : LockPKI(Type::SERVER, _pk_type, _key_data, _key_size) {};
-};
-
-// CDoc1 decryption key (with additional information from file)
-// Usage:
-// CDoc1:decrypt
-
-struct CDOC_EXPORT LockCDoc1 : public libcdoc::LockCert {
-
-	std::vector<uint8_t> publicKey;
-	std::string concatDigest, method;
-	std::vector<uint8_t> AlgorithmID, PartyUInfo, PartyVInfo;
-
-	LockCDoc1() : LockCert(Type::CDOC1) {};
+	std::map<int,std::vector<uint8_t>> params;
 };
 
 } // namespace libcdoc

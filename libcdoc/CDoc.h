@@ -32,8 +32,9 @@ static constexpr int IO_ERROR = -104;
 static constexpr int DATA_FORMAT_ERROR = -105;
 static constexpr int CRYPTO_ERROR = -106;
 static constexpr int ZLIB_ERROR = -107;
-static constexpr int HASH_MISMATCH = -108;
-static constexpr int UNSPECIFIED_ERROR = -109;
+static constexpr int PKCS11_ERROR = -108;
+static constexpr int HASH_MISMATCH = -109;
+static constexpr int UNSPECIFIED_ERROR = -110;
 
 }; // namespace libcdoc
 

@@ -14,7 +14,7 @@ public:
 	int beginEncryption(libcdoc::DataConsumer& dst) override final;
 	int addRecipient(const libcdoc::Recipient& rcpt) override final;
 	int addFile(const std::string& name, size_t size) override final;
-	int writeData(const uint8_t *src, size_t size) override final;
+	int64_t writeData(const uint8_t *src, size_t size) override final;
 	int finishEncryption(bool close_dst) override final;
 
 	int encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) final;

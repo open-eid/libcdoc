@@ -1,81 +1,29 @@
+#define __CDOC_TOOL_CPP__
+
 #include <cstring>
 #include <iostream>
-#include <fstream>
 #include <sstream>
 #include <map>
 
+#include "CDocReader.h"
 #include "CDocWriter.h"
 #include "CDoc.h"
+#include "PKCS11Backend.h"
+#include "Utils.h"
 
 
-#ifdef _WIN32
-#include <Windows.h>
-
-static std::wstring toWide(UINT codePage, const std::string &in)
-{
-	std::wstring result;
-	if(in.empty())
-		return result;
-	int len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), nullptr, 0);
-	result.resize(size_t(len), 0);
-	len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), &result[0], len);
-	return result;
-}
-
-static std::string toMultiByte(UINT codePage, const std::wstring &in)
-{
-	std::string result;
-	if(in.empty())
-		return result;
-	int len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), nullptr, 0, nullptr, nullptr);
-	result.resize(size_t(len), 0);
-	len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), &result[0], len, nullptr, nullptr);
-	return result;
-}
-#endif
-
-static std::string toUTF8(const std::string &in)
-{
-#ifdef _WIN32
-	return toMultiByte(CP_UTF8, toWide(CP_ACP, in));
-#else
-	return in;
-#endif
-}
-
-static std::vector<unsigned char> readFile(const std::string &path)
-{
-	std::vector<unsigned char> data;
-#ifdef _WIN32
-	std::ifstream f(toWide(CP_UTF8, path).c_str(), std::ifstream::binary);
-#else
-	std::ifstream f(path, std::ifstream::binary);
-#endif
-	if (!f)
-		return data;
-	f.seekg(0, std::ifstream::end);
-	data.resize(size_t(f.tellg()));
-	f.clear();
-	f.seekg(0);
-	f.read((char*)data.data(), std::streamsize(data.size()));
-	return data;
-}
-
-static void writeFile(const std::string &path, const std::vector<unsigned char> &data)
-{
-#ifdef _WIN32
-	std::ofstream f(toWide(CP_UTF8, path).c_str(), std::ofstream::binary);
-#else
-	std::ofstream f(path.c_str(), std::ofstream::binary);
-#endif
-	f.write((const char*)data.data(), std::streamsize(data.size()));
-}
-
-struct Recipient {
-	enum Type { CERT, PASSWORD, KEY };
+struct RcptInfo {
+	enum Type {
+		CERT, PASSWORD, KEY, P11
+	};
 	Type type;
-	std::string label;
-	std::vector<uint8_t> data;
+	std::vector<uint8_t> cert;
+	std::vector<uint8_t> secret;
+	int slot = 0;
+	std::string pin;
+	int key_index = -1;
+	std::string key_id;
+	std::string key_label;
 };
 
 static void
@@ -127,68 +75,159 @@ struct ToolConf : public libcdoc::Configuration {
 	}
 };
 
+struct ToolPKCS11 : public libcdoc::PKCS11Backend {
+	const std::map<std::string, RcptInfo>& rcpts;
+
+	ToolPKCS11(const std::string& library, const std::map<std::string, RcptInfo>& map) : libcdoc::PKCS11Backend(library), rcpts(map) {}
+
+	int connectToKey(const std::string& label) override final {
+		const RcptInfo& rcpt = rcpts.at(label);
+		int result = useSecretKey(rcpt.slot, rcpt.pin, rcpt.key_index, rcpt.key_id, rcpt.key_label);
+		if (result != libcdoc::OK) return result;
+		return libcdoc::OK;
+	}
+};
+
 struct ToolCrypto : public libcdoc::CryptoBackend {
-	const std::map<std::string,std::vector<uint8_t>>& _secrets;
-	ToolCrypto(const std::map<std::string,std::vector<uint8_t>>& secrets) : _secrets(secrets) {}
-	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override final { return {}; }
-	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label) override final { return {}; }
-	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize, const std::string& label) override final { return {}; }
+	std::map<std::string, RcptInfo> rcpts;
+	std::unique_ptr<ToolPKCS11> p11;
+
+	ToolCrypto() = default;
+
+	bool connectLibrary(const std::string& library) {
+		p11 = std::make_unique<ToolPKCS11>(library, rcpts);
+		return true;
+	}
+
+	int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override final {
+		if (p11) return p11->decryptRSA(dst, data, oaep, label);
+		return libcdoc::NOT_IMPLEMENTED;
+	}
+	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
+		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label) override final {
+		if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, label);
+		return libcdoc::NOT_IMPLEMENTED;
+	}
+	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, const std::string& label) override final {
+		if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, label);
+		return libcdoc::NOT_IMPLEMENTED;
+	}
+	int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label) override {
+		if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, label);
+		return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, label);
+	}
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final {
-		secret =_secrets.at(label);
+		const RcptInfo& rcpt = rcpts.at(label);
+		secret =rcpt.secret;
 		return (secret.empty()) ? INVALID_PARAMS : libcdoc::OK;
 	}
 };
 
 #define PUSH true
 
+//
+// cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]
+// Where RECIPIENT has a format:
+//   label:cert:CERTIFICATE_HEX
+//	 label:key:SECRET_KEY_HEX
+//   label:pw:PASSWORD
+//	 label:p11:SLOT:[PIN]:[INDEX]:[ID]:[LABEL]
+//
+
 int
 encrypt(int argc, char *argv[])
 {
 	std::cerr << "Encrypting" << std::endl;
-	std::vector<Recipient> rcpts;
+
+	ToolCrypto crypto;
+
+	std::string library;
 	std::vector<std::string> files;
 	std::string out;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
 			std::vector<std::string> parts = split(argv[i + 1]);
-			if (parts.size() != 3) print_usage(std::cerr, 1);
+			if (parts.size() < 3) print_usage(std::cerr, 1);
+			const std::string& label = parts[0];
 			if (parts[1] == "cert") {
-				rcpts.push_back({Recipient::CERT, parts[0], readFile(toUTF8(parts[2]))});
+				if (parts.size() != 3) print_usage(std::cerr, 1);
+				crypto.rcpts[label] = {
+					RcptInfo::CERT,
+					libcdoc::readFile(libcdoc::toUTF8(parts[2])),
+					{}
+				};
 			} else if (parts[1] == "key") {
-				rcpts.push_back({Recipient::KEY, parts[0], fromHex(parts[2])});
+				if (parts.size() != 3) print_usage(std::cerr, 1);
+				crypto.rcpts[label] = {
+					RcptInfo::KEY,
+					{},
+					fromHex(parts[2])
+				};
 			} else if (parts[1] == "pw") {
-				rcpts.push_back({Recipient::PASSWORD, parts[0], std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())});
+				if (parts.size() != 3) print_usage(std::cerr, 1);
+				crypto.rcpts[label] = {
+					RcptInfo::PASSWORD,
+					{},
+					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
+				};
+			} else if (parts[1] == "p11") {
+				if (parts.size() < 5) print_usage(std::cerr, 1);
+				int slot = std::stoi(parts[2]);
+				std::string& pin = parts[3];
+				int key_idx = (!parts[4].empty()) ? stoi(parts[4]) : -1;
+				std::string key_id = (parts.size() >= 6) ? parts[5] : "";
+				std::string key_label = (parts.size() >= 7) ? parts[6] : "";
+				crypto.rcpts[label] = {
+					RcptInfo::PASSWORD,
+					{},
+					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend()),
+					slot, pin, key_idx, key_id, key_label
+				};
 			} else {
+				std::cerr << "Unkown method: " << parts[1] << std::endl;
 				print_usage(std::cerr, 1);
 			}
 			i += 1;
 		} else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
 			out = argv[i + 1];
 			i += 1;
+		} else if (!strcmp(argv[i], "--library") && ((i + 1) <= argc)) {
+			library = argv[i + 1];
+			i += 1;
+		} else if (argv[i][0] == '-') {
+			print_usage(std::cerr, 1);
 		} else {
 			files.push_back(argv[i]);
 		}
 	}
-	if (rcpts.empty() || files.empty() || out.empty()) print_usage(std::cerr, 1);
+	if (crypto.rcpts.empty()) {
+		std::cerr << "No recipients" << std::endl;
+		print_usage(std::cerr, 1);
+	}
+	if (files.empty()) {
+		std::cerr << "No files specified" << std::endl;
+		print_usage(std::cerr, 1);
+	}
+	if (out.empty()) {
+		std::cerr << "No output specified" << std::endl;
+		print_usage(std::cerr, 1);
+	}
 	std::vector<libcdoc::Recipient> keys;
-	std::map<std::string,std::vector<uint8_t>> secrets;
-	for (const Recipient& r : rcpts) {
+	for (const std::pair<std::string, RcptInfo> pair : crypto.rcpts) {
+		const std::string label = pair.first;
+		const RcptInfo& rcpt = pair.second;
 		libcdoc::Recipient key;
-		if (r.type == Recipient::Type::CERT) {
-			key = libcdoc::Recipient::makeCertificate(r.label, r.data);
-			secrets[r.label] = {};
-		} else if (r.type == Recipient::Type::KEY) {
-			key = libcdoc::Recipient::makeSymmetric(r.label, 0);
-			secrets[r.label] = r.data;
-		} else if (r.type == Recipient::Type::PASSWORD) {
-			key = libcdoc::Recipient::makeSymmetric(r.label, 65535);
-			secrets[r.label] = r.data;
+		if (rcpt.type == RcptInfo::Type::CERT) {
+			key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+		} else if (rcpt.type == RcptInfo::Type::KEY) {
+			key = libcdoc::Recipient::makeSymmetric(label, 0);
+		} else if (rcpt.type == RcptInfo::Type::PASSWORD) {
+			key = libcdoc::Recipient::makeSymmetric(label, 65535);
 		}
 		keys.push_back(key);
 	}
+	if (!library.empty()) crypto.connectLibrary(library);
 	ToolConf conf;
-	ToolCrypto crypto(secrets);
 	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr);
 
 	libcdoc::OStreamConsumer ofs(out);
@@ -225,6 +264,71 @@ encrypt(int argc, char *argv[])
 	return 0;
 }
 
+//
+// cdoc-tool decrypt --label LABEL [--secret SECRET] FILE
+//
+
+int
+decrypt(int argc, char *argv[])
+{
+	ToolCrypto crypto;
+
+	std::string label;
+	std::vector<uint8_t> secret;
+	std::string file;
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--label") && ((i + 1) <= argc)) {
+			label = argv[i + 1];
+			i += 1;
+		} else if (!strcmp(argv[i], "--password") && ((i + 1) <= argc)) {
+			std::string s(argv[i + 1]);
+			secret = std::vector<uint8_t>(s.cbegin(), s.cend());
+			i += 1;
+		} else {
+			file = argv[i];
+		}
+	}
+	crypto.rcpts[label] = {
+		RcptInfo::PASSWORD,
+		{},
+		secret
+	};
+	ToolConf conf;
+	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], &conf, &crypto, nullptr);
+	std::cerr << "Reader created\n";
+	std::vector<libcdoc::Lock> locks = rdr->getLocks();
+	for (libcdoc::Lock& lock : locks) {
+		if (lock.label == label) {
+			std::vector<uint8_t> fmk;
+			rdr->getFMK(fmk, lock);
+			rdr->beginDecryption(fmk);
+			std::string name;
+			int64_t size;
+			while (rdr->nextFile(name, size) == libcdoc::OK) {
+				std::cerr << name << ":" << size << std::endl;
+			}
+			return 0;
+		}
+	}
+	return 0;
+}
+
+//
+// cdoc-tool locks FILE
+//
+
+int
+locks(int argc, char *argv[])
+{
+	if (argc < 1) print_usage(std::cerr, 1);
+	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr);
+	std::vector<libcdoc::Lock> locks = rdr->getLocks();
+	for (libcdoc::Lock& lock : locks) {
+		fprintf(stdout, "%s\n", lock.label.c_str());
+	}
+	return 0;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -232,6 +336,10 @@ main(int argc, char *argv[])
 	std::cerr << "Command: " << argv[1] << std::endl;
 	if (!strcmp(argv[1], "encrypt")) {
 		return encrypt(argc - 2, argv + 2);
+	} else if (!strcmp(argv[1], "decrypt")) {
+		return decrypt(argc - 2, argv + 2);
+	} else if (!strcmp(argv[1], "locks")) {
+		return locks(argc - 2, argv + 2);
 	} else if(argc >= 5 && strcmp(argv[1], "encrypt") == 0) {
 #if 0
 		CDOC1Writer w(toUTF8(argv[argc-1]));

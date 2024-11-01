@@ -30,12 +30,17 @@ namespace libcdoc {
 
 /**
  * @brief An authentication provider
- * Implements cryptographic methods that potentially need either user action (supplying password) or external communication (PKCS11).
  *
+ * Implements cryptographic methods that may need either user action (supplying password) or external communication (PKCS11).
+ * At minimum one should implement deriveECDH1 for ECC keys, decryptRSA for RSA keys and getSecret for symmetric keys. ECC and
+ * symmetric keys have also frontend methods; implementing these allows the program to perform certain cryptographic procedures in controlled
+ * environment and (in case of symmetric keys) avoid exposing secret keys/passwords.
  */
 struct CDOC_EXPORT CryptoBackend {
 	static constexpr int INVALID_PARAMS = -201;
 	static constexpr int OPENSSL_ERROR = -202;
+
+	static constexpr int ECC_KEY_LEN = 32;
 
 	CryptoBackend() = default;
 	virtual ~CryptoBackend() = default;
@@ -50,7 +55,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param size the requested amount of random data
 	 * @return  error code or OK
 	 */
-	virtual int random(std::vector<uint8_t>& dst, uint32_t size);
+	virtual int random(std::vector<uint8_t>& dst, int size);
 	/**
 	 * @brief Derive shared secret
 	 *
@@ -69,7 +74,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label Label of the lock
 	 * @return error code or OK
 	 */
-	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) = 0;
+	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *
@@ -78,14 +83,13 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param dst the container for derived key
 	 * @param public_key ECDH public Key used to derive shared secret
 	 * @param digest Digest method to use for ConcatKDF algorithm
-	 * @param key_size Key size to output
 	 * @param algorithm_id OtherInfo info parameters to input
 	 * @param party_uinfo OtherInfo info parameters to input
 	 * @param party_vinfo OtherInfo info parameters to input
 	 * @param label Label of the lock that the key belongs to
 	 * @return error code or OK
 	 */
-	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest, int key_size,
+	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
 								 const std::vector<uint8_t> &party_vinfo, const std::string& label);
 	/**
@@ -96,14 +100,13 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param dst the container for derived key
 	 * @param public_key
 	 * @param salt
-	 * @param key_len
 	 * @param label Label of the lock that the key belongs to
 	 * @return error code or OK
 	 */
-	virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, int key_len,
+	virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt,
 								  const std::string& label);
 	/**
-	 * @brief Get secret value (either password or symmetric key)
+	 * @brief Get secret value (either password or symmetric key) for a lock with given label
 	 * @param secret the destination container for secret
 	 * @param label label the label of the capsule (key)
 	 * @return error code or OK
@@ -112,7 +115,7 @@ struct CDOC_EXPORT CryptoBackend {
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 *
-	 * Fetches key material for a given symmetric key (either password or key-based).
+	 * Fetches key material for a symmetric key (either password or key-based) with given label.
 	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based.
 	 * @param key_material the destination container for key material
 	 * @param pw_salt the salt value for PBKDF
@@ -131,12 +134,11 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param salt the salt value for HKDF extract
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
-	 * @param key_len the length of extracted key
 	 * @param label the label of the capsule (key)
 	 * @return error code or OK
 	 */
 	virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
-							int32_t kdf_iter, int key_len, const std::string& label);
+							int32_t kdf_iter, const std::string& label);
 
 	CryptoBackend (const CryptoBackend&) = delete;
 	CryptoBackend& operator= (const CryptoBackend&) = delete;

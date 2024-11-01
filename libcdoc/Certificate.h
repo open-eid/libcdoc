@@ -16,7 +16,7 @@ public:
 
 	std::vector<uint8_t> cert;
 
-	Certificate(const std::vector<uint8_t> _cert) : cert(_cert) {}
+	Certificate(const std::vector<uint8_t> cert) : cert(cert) {}
 
 	std::string getCommonName() const;
 	std::string getGivenName() const;

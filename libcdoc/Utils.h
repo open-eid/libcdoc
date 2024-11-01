@@ -2,12 +2,76 @@
 #define UTILS_H
 
 #include <algorithm>
+#include <codecvt>
 #include <iostream>
 #include <vector>
 
 #include "Io.h"
 
 namespace libcdoc {
+
+#ifdef _WIN32
+#include <Windows.h>
+
+static std::wstring toWide(UINT codePage, const std::string &in)
+{
+	std::wstring result;
+	if(in.empty())
+		return result;
+	int len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), nullptr, 0);
+	result.resize(size_t(len), 0);
+	len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), &result[0], len);
+	return result;
+}
+
+static std::string toMultiByte(UINT codePage, const std::wstring &in)
+{
+	std::string result;
+	if(in.empty())
+		return result;
+	int len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), nullptr, 0, nullptr, nullptr);
+	result.resize(size_t(len), 0);
+	len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), &result[0], len, nullptr, nullptr);
+	return result;
+}
+#endif
+
+static std::string toUTF8(const std::string &in)
+{
+#ifdef _WIN32
+	return toMultiByte(CP_UTF8, toWide(CP_ACP, in));
+#else
+	return in;
+#endif
+}
+
+static std::vector<unsigned char> readFile(const std::string &path)
+{
+	std::vector<unsigned char> data;
+#ifdef _WIN32
+	std::ifstream f(toWide(CP_UTF8, path).c_str(), std::ifstream::binary);
+#else
+	std::ifstream f(path, std::ifstream::binary);
+#endif
+	if (!f)
+		return data;
+	f.seekg(0, std::ifstream::end);
+	data.resize(size_t(f.tellg()));
+	f.clear();
+	f.seekg(0);
+	f.read((char*)data.data(), std::streamsize(data.size()));
+	return data;
+}
+
+static void writeFile(const std::string &path, const std::vector<unsigned char> &data)
+{
+#ifdef _WIN32
+	std::ofstream f(toWide(CP_UTF8, path).c_str(), std::ofstream::binary);
+#else
+	std::ofstream f(path.c_str(), std::ofstream::binary);
+#endif
+	f.write((const char*)data.data(), std::streamsize(data.size()));
+}
 
 class vectorwrapbuf : public std::streambuf {
 public:

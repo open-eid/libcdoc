@@ -116,7 +116,7 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 			uint8_t *p = SsDer.data();
 			i2d_PublicKey(pkey.get(), &p);
 
-			std::string encryptionMethod = libcdoc::Crypto::KWAES256_MTH;
+			std::string encryptionMethod(libcdoc::Crypto::KWAES256_MTH);
 			std::string concatDigest = libcdoc::Crypto::SHA384_MTH;
 			switch ((SsDer.size() - 1) / 2) {
 			case 32: concatDigest = libcdoc::Crypto::SHA256_MTH; break;
@@ -273,7 +273,7 @@ CDoc1Writer::addFile(const std::string& name, size_t size)
 	return libcdoc::NOT_IMPLEMENTED;
 }
 
-int
+int64_t
 CDoc1Writer::writeData(const uint8_t *src, size_t size)
 {
 	if (d->files.empty()) return libcdoc::WORKFLOW_ERROR;

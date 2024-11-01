@@ -1,52 +1,77 @@
 #define __LOCK_CPP__
 
-#include "Certificate.h"
-
 #include "Lock.h"
 
+#include "Certificate.h"
+
+#include <string_view>
+
 namespace libcdoc {
+
+std::string
+Lock::getString(Params key) const
+{
+	const std::vector<uint8_t>& bytes = params.at(key);
+	return std::string((const char *) bytes.data(), bytes.size());
+}
+
+int32_t
+Lock::getInt(Params key) const
+{
+	const std::vector<uint8_t>& bytes = params.at(key);
+	int32_t val = 0;
+	for (int i = 0; (i < bytes.size()) && (i < 4); i++) {
+		val = (val << 8) | bytes.at(i);
+	}
+	return val;
+}
+
+void
+Lock::setInt(Params key, int32_t val)
+{
+	std::vector<uint8_t> bytes(4);
+	for (int i = 0; i < 4; i++) {
+		bytes[3 - i] = (val & 0xff);
+		val = val >> 8;
+	}
+	params[key] = bytes;
+}
 
 bool
 Lock::hasTheSameKey(const Lock& other) const
 {
 	if (!isPKI()) return false;
 	if (!other.isPKI()) return false;
-	const LockPKI& pki = static_cast<const LockPKI&>(*this);
-	const LockPKI& other_pki = static_cast<const LockPKI&>(other);
-	return pki.rcpt_key == other_pki.rcpt_key;
+	if (!params.contains(Params::RCPT_KEY)) return false;
+	if (!other.params.contains(Params::RCPT_KEY)) return false;
+	std::vector<uint8_t> pki = getBytes(Params::RCPT_KEY);
+	if (pki.empty()) return false;
+	std::vector<uint8_t> other_pki = other.getBytes(Params::RCPT_KEY);
+	if (other_pki.empty()) return false;
+	return pki == other_pki;
 }
 
 bool
 Lock::hasTheSameKey(const std::vector<uint8_t>& public_key) const
 {
 	if (!isPKI()) return false;
-	const LockPKI& pki = static_cast<const LockPKI&>(*this);
-	if (pki.rcpt_key.empty() || public_key.empty()) return false;
-	return pki.rcpt_key == public_key;
-}
-
-LockCert::LockCert(Type _type, const std::string& _label, const std::vector<uint8_t> &c)
-	: LockPKI(_type)
-{
-	label = _label;
-	setCert(c);
+	if (!params.contains(Params::RCPT_KEY)) return false;
+	if (public_key.empty()) return false;
+	std::vector<uint8_t> pki = getBytes(Params::RCPT_KEY);
+	if (pki.empty()) return false;
+	return pki == public_key;
 }
 
 void
-LockCert::setCert(const std::vector<uint8_t> &_cert)
+Lock::setCertificate(const std::vector<uint8_t> &_cert)
 {
-	cert = _cert;
+	setBytes(Params::CERT, _cert);
 	Certificate ssl(_cert);
 	std::vector<uint8_t> pkey = ssl.getPublicKey();
 	Certificate::Algorithm algo = ssl.getAlgorithm();
 
-	rcpt_key = pkey;
+	setBytes(Params::RCPT_KEY, pkey);
 	pk_type = (algo == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
-}
-
-LockServer *
-LockServer::fromKey(const std::vector<uint8_t> _key, PKType _pk_type) {
-	return new LockServer(_key, _pk_type);
 }
 
 } // namespace libcdoc
