@@ -23,6 +23,7 @@
 #include <libcdoc/Exports.h>
 
 #include <string>
+#include <vector>
 
 namespace libcdoc {
 
