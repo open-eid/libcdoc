@@ -137,7 +137,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 int
 encrypt(int argc, char *argv[])
 {
-	std::cerr << "Encrypting" << std::endl;
+    std::cout << "Encrypting" << std::endl;
 
 	ToolCrypto crypto;
 
@@ -226,9 +226,11 @@ encrypt(int argc, char *argv[])
 		}
 		keys.push_back(key);
 	}
-	if (!library.empty()) crypto.connectLibrary(library);
+    if (!library.empty())
+        crypto.connectLibrary(library);
+
 	ToolConf conf;
-	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr);
+    auto writer {std::unique_ptr<libcdoc::CDocWriter>(libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr))};
 
 	libcdoc::OStreamConsumer ofs(out);
 	if (PUSH) {
@@ -265,49 +267,69 @@ encrypt(int argc, char *argv[])
 }
 
 //
-// cdoc-tool decrypt --label LABEL [--secret SECRET] FILE
+// cdoc-tool decrypt --label LABEL [--secret SECRET] FILE [OUTPUT DIR]
 //
 
-int
-decrypt(int argc, char *argv[])
+int decrypt(int argc, char *argv[])
 {
 	ToolCrypto crypto;
 
 	std::string label;
 	std::vector<uint8_t> secret;
 	std::string file;
-	for (int i = 0; i < argc; i++) {
+    std::string basePath;
+    for (int i = 0; i < argc; i++)
+    {
 		if (!strcmp(argv[i], "--label") && ((i + 1) <= argc)) {
 			label = argv[i + 1];
 			i += 1;
-		} else if (!strcmp(argv[i], "--password") && ((i + 1) <= argc)) {
+        }
+        else if (!strcmp(argv[i], "--password") && ((i + 1) <= argc)) {
 			std::string s(argv[i + 1]);
 			secret = std::vector<uint8_t>(s.cbegin(), s.cend());
 			i += 1;
-		} else {
-			file = argv[i];
+        }
+        else
+        {
+            if (file.empty())
+                file = argv[i];
+            else
+                basePath = argv[i];
 		}
 	}
+
+    if (file.empty())
+    {
+        std::cerr << "No file to decrypt" << std::endl;
+        return 1;
+    }
+
+    // If output directory was not specified, use current directory
+    if (basePath.empty())
+        basePath = "./";
+
 	crypto.rcpts[label] = {
 		RcptInfo::PASSWORD,
 		{},
 		secret
 	};
 	ToolConf conf;
-	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], &conf, &crypto, nullptr);
-	std::cerr << "Reader created\n";
+    auto rdr {std::unique_ptr<libcdoc::CDocReader>(libcdoc::CDocReader::createReader(file, &conf, &crypto, nullptr))};
+    std::cout << "Reader created" << std::endl;
 	std::vector<libcdoc::Lock> locks = rdr->getLocks();
-	for (libcdoc::Lock& lock : locks) {
+    for (const libcdoc::Lock& lock : locks) {
 		if (lock.label == label) {
 			std::vector<uint8_t> fmk;
 			rdr->getFMK(fmk, lock);
-			rdr->beginDecryption(fmk);
-			std::string name;
-			int64_t size;
-			while (rdr->nextFile(name, size) == libcdoc::OK) {
-				std::cerr << name << ":" << size << std::endl;
-			}
-			return 0;
+            libcdoc::FileListConsumer fileWriter(basePath);
+            rdr->decrypt(fmk, &fileWriter);
+            // rdr->beginDecryption(fmk);
+            // std::string name;
+            // int64_t size;
+            // while (rdr->nextFile(name, size) == libcdoc::OK) {
+   //              std::cout << name << ":" << size << std::endl;
+            // }
+            break;
 		}
 	}
 	return 0;
@@ -323,8 +345,8 @@ locks(int argc, char *argv[])
 	if (argc < 1) print_usage(std::cerr, 1);
 	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr);
 	std::vector<libcdoc::Lock> locks = rdr->getLocks();
-	for (libcdoc::Lock& lock : locks) {
-		fprintf(stdout, "%s\n", lock.label.c_str());
+    for (const libcdoc::Lock& lock : locks) {
+        std::cout << lock.label << std::endl;
 	}
 	return 0;
 }
@@ -332,8 +354,10 @@ locks(int argc, char *argv[])
 int
 main(int argc, char *argv[])
 {
-	if (argc < 2) print_usage(std::cerr, 1);
-	std::cerr << "Command: " << argv[1] << std::endl;
+    if (argc < 2)
+        print_usage(std::cerr, 1);
+
+    std::cout << "Command: " << argv[1] << std::endl;
 	if (!strcmp(argv[1], "encrypt")) {
 		return encrypt(argc - 2, argv + 2);
 	} else if (!strcmp(argv[1], "decrypt")) {
