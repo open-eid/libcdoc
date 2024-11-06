@@ -11,6 +11,7 @@
 #include "PKCS11Backend.h"
 #include "Utils.h"
 
+using namespace std;
 
 struct RcptInfo {
 	enum Type {
@@ -26,8 +27,7 @@ struct RcptInfo {
 	std::string key_label;
 };
 
-static void
-print_usage(std::ostream& ofs, int exit_value)
+static void print_usage(ostream& ofs)
 {
 	ofs
 		//<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
@@ -39,7 +39,6 @@ print_usage(std::ostream& ofs, int exit_value)
 #endif
 		<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
 		<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
-	exit(exit_value);
 }
 
 static std::vector<uint8_t>
@@ -147,31 +146,52 @@ encrypt(int argc, char *argv[])
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
 			std::vector<std::string> parts = split(argv[i + 1]);
-			if (parts.size() < 3) print_usage(std::cerr, 1);
+            if (parts.size() < 3)
+            {
+                print_usage(std::cerr);
+                return 1;
+            }
 			const std::string& label = parts[0];
 			if (parts[1] == "cert") {
-				if (parts.size() != 3) print_usage(std::cerr, 1);
+                if (parts.size() != 3)
+                {
+                    print_usage(std::cerr);
+                    return 1;
+                }
 				crypto.rcpts[label] = {
 					RcptInfo::CERT,
 					libcdoc::readFile(libcdoc::toUTF8(parts[2])),
 					{}
 				};
 			} else if (parts[1] == "key") {
-				if (parts.size() != 3) print_usage(std::cerr, 1);
+                if (parts.size() != 3)
+                {
+                    print_usage(std::cerr);
+                    return 1;
+                }
+
 				crypto.rcpts[label] = {
 					RcptInfo::KEY,
 					{},
 					fromHex(parts[2])
 				};
 			} else if (parts[1] == "pw") {
-				if (parts.size() != 3) print_usage(std::cerr, 1);
+                if (parts.size() != 3)
+                {
+                    print_usage(std::cerr);
+                    return 1;
+                }
 				crypto.rcpts[label] = {
 					RcptInfo::PASSWORD,
 					{},
 					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
 				};
 			} else if (parts[1] == "p11") {
-				if (parts.size() < 5) print_usage(std::cerr, 1);
+                if (parts.size() < 5)
+                {
+                    print_usage(std::cerr);
+                    return 1;
+                }
 				int slot = std::stoi(parts[2]);
 				std::string& pin = parts[3];
 				int key_idx = (!parts[4].empty()) ? stoi(parts[4]) : -1;
@@ -185,7 +205,8 @@ encrypt(int argc, char *argv[])
 				};
 			} else {
 				std::cerr << "Unkown method: " << parts[1] << std::endl;
-				print_usage(std::cerr, 1);
+                print_usage(std::cerr);
+                return 1;
 			}
 			i += 1;
 		} else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
@@ -195,22 +216,26 @@ encrypt(int argc, char *argv[])
 			library = argv[i + 1];
 			i += 1;
 		} else if (argv[i][0] == '-') {
-			print_usage(std::cerr, 1);
+            print_usage(std::cerr);
+            return 1;
 		} else {
 			files.push_back(argv[i]);
 		}
 	}
 	if (crypto.rcpts.empty()) {
 		std::cerr << "No recipients" << std::endl;
-		print_usage(std::cerr, 1);
+        print_usage(std::cerr);
+        return 1;
 	}
 	if (files.empty()) {
 		std::cerr << "No files specified" << std::endl;
-		print_usage(std::cerr, 1);
+        print_usage(std::cerr);
+        return 1;
 	}
 	if (out.empty()) {
 		std::cerr << "No output specified" << std::endl;
-		print_usage(std::cerr, 1);
+        print_usage(std::cerr);
+        return 1;
 	}
 	std::vector<libcdoc::Recipient> keys;
 	for (const std::pair<std::string, RcptInfo> pair : crypto.rcpts) {
@@ -230,7 +255,7 @@ encrypt(int argc, char *argv[])
         crypto.connectLibrary(library);
 
 	ToolConf conf;
-    auto writer {std::unique_ptr<libcdoc::CDocWriter>(libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr))};
+    auto writer { std::unique_ptr<libcdoc::CDocWriter>(libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr)) };
 
 	libcdoc::OStreamConsumer ofs(out);
 	if (PUSH) {
@@ -285,8 +310,8 @@ int decrypt(int argc, char *argv[])
 			i += 1;
         }
         else if (!strcmp(argv[i], "--password") && ((i + 1) <= argc)) {
-			std::string s(argv[i + 1]);
-			secret = std::vector<uint8_t>(s.cbegin(), s.cend());
+            string_view s(argv[i + 1]);
+            secret.assign(s.cbegin(), s.cend());
 			i += 1;
         }
         else
@@ -306,7 +331,10 @@ int decrypt(int argc, char *argv[])
 
     // If output directory was not specified, use current directory
     if (basePath.empty())
-        basePath = "./";
+    {
+        basePath = ".";
+        basePath += filesystem::path::preferred_separator;
+    }
 
 	crypto.rcpts[label] = {
 		RcptInfo::PASSWORD,
@@ -339,25 +367,30 @@ int decrypt(int argc, char *argv[])
 // cdoc-tool locks FILE
 //
 
-int
-locks(int argc, char *argv[])
+int locks(int argc, char *argv[])
 {
-	if (argc < 1) print_usage(std::cerr, 1);
-	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr);
-	std::vector<libcdoc::Lock> locks = rdr->getLocks();
+    if (argc < 1)
+    {
+        print_usage(cerr);
+        return 1;
+    }
+    auto rdr { unique_ptr<libcdoc::CDocReader>(libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr)) };
+    vector<libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
-        std::cout << lock.label << std::endl;
+        cout << lock.label << endl;
 	}
 	return 0;
 }
 
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     if (argc < 2)
-        print_usage(std::cerr, 1);
+    {
+        print_usage(cerr);
+        return 1;
+    }
 
-    std::cout << "Command: " << argv[1] << std::endl;
+    cout << "Command: " << argv[1] << endl;
 	if (!strcmp(argv[1], "encrypt")) {
 		return encrypt(argc - 2, argv + 2);
 	} else if (!strcmp(argv[1], "decrypt")) {
@@ -409,7 +442,8 @@ main(int argc, char *argv[])
 	}
 	else
 	{
-		print_usage(std::cout, 0);
+        print_usage(cout);
+        return 0;
 	}
 	return 0;
 }
