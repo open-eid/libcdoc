@@ -222,8 +222,8 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 	_current_size = size;
 	Header h {};
 	std::string filename(name);
-	std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
-	std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
+    std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
+    std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
 
 	if(filename.size() > 100 || size > 07777777) {
 		h.typeflag = 'x';
@@ -232,10 +232,9 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 			paxData += toPaxRecord("path", filename);
 		if(size > 07777777)
 			paxData += toPaxRecord("size", std::to_string(size));
-		if(!writeHeader(_dst, h, paxData.size()) ||
-			_dst->write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
-			!writePadding(_dst, paxData.size()))
-			return false;
+        return writeHeader(_dst, h, paxData.size()) &&
+            _dst->write((const uint8_t *) paxData.data(), paxData.size()) == paxData.size() &&
+            writePadding(_dst, paxData.size()) ? OK : OUTPUT_ERROR;
 	}
 
 	h.typeflag = '0';

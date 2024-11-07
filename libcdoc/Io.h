@@ -284,11 +284,25 @@ public:
 		return ofs.bad();
 	}
 	int open(const std::string& name, int64_t size) override final {
-		std::filesystem::path path = base.append(name);
+        std::string fileName;
+        if (ofs.is_open()) {
+            ofs.close();
+        }
+        size_t lastSlashPos = name.find_last_of("\\/");
+        if (lastSlashPos != std::string::npos)
+        {
+            fileName = name.substr(lastSlashPos + 1);
+        }
+        else
+        {
+            fileName = name;
+        }
+        std::filesystem::path path = base;
+        path.append(fileName);
 		ofs.open(path.string(), std::ios_base::out);
-		if (ofs.bad()) return OUTPUT_STREAM_ERROR;
-		return OK;
+        return ofs.bad() ? OK : OUTPUT_STREAM_ERROR;
 	}
+
 protected:
 	std::filesystem::path base;
 	std::ofstream ofs;
