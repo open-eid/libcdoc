@@ -43,7 +43,7 @@ public:
 	 * @brief Get decryption locks in given document
 	 * @return a vector of locks
 	 */
-	virtual std::vector<Lock> getLocks() = 0;
+	virtual const std::vector<const Lock> getLocks() = 0;
 	/**
 	 * @brief Fetches the lock for certificate
 	 *

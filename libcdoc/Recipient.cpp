@@ -16,6 +16,16 @@ Recipient::makeSymmetric(const std::string& label, int32_t kdf_iter)
 }
 
 Recipient
+Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type)
+{
+	Recipient rcpt(Type::PUBLIC_KEY);
+	rcpt.label = label;
+	rcpt.rcpt_key = public_key;
+	rcpt.pk_type = pk_type;
+	return rcpt;
+}
+
+Recipient
 Recipient::makeCertificate(const std::string& label, const std::vector<uint8_t>& cert)
 {
 	Recipient rcpt(Type::CERTIFICATE);

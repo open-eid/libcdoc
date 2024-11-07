@@ -69,10 +69,10 @@ CDoc2Reader::~CDoc2Reader()
 	}
 }
 
-std::vector<libcdoc::Lock>
+const std::vector<const libcdoc::Lock>
 CDoc2Reader::getLocks()
 {
-	std::vector<libcdoc::Lock> locks;
+	std::vector<const libcdoc::Lock> locks;
 	for (libcdoc::Lock *l : priv->locks) locks.push_back(*l);
 	return locks;
 }

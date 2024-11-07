@@ -1,4 +1,4 @@
-%module cdoc
+%module(directors="1") cdoc
 
 %{
 #include "libcdoc/Io.h"
@@ -17,11 +17,15 @@
 %include "typemaps.i"
 
 #ifdef SWIGJAVA
+%include "arrays_java.i"
 %include "enums.swg"
 %javaconst(1);
 %apply long long { int64_t }
 %apply int { int32_t }
 
+// CDocWriter
+%ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+%ignore libcdoc::CDocWriter::encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients);
 // int64_t write(cont uint8_t *src, size_t pos, size_t len) -> long read(byte[] src, long pos, long len)
 %extend libcdoc::CDocWriter {
     int64_t writeData(const uint8_t *src, size_t pos, size_t size) {
@@ -45,7 +49,20 @@
 %typemap(jni) (const uint8_t *src, size_t size) "jbyteArray"
 %typemap(jtype) (const uint8_t *src, size_t size) "byte[]"
 %typemap(jstype) (const uint8_t *src, size_t size) "byte[]"
-// int64_t read(uint8_t *dst, size_t size)
+
+// CDocReader
+// Use LockVector object to encapsulate the vector of locks
+%template(LockVector) std::vector<libcdoc::Lock>;
+// Custom wrapper do away with cont qualifiers
+%extend libcdoc::CDocReader {
+    std::vector<libcdoc::Lock> getLocks() {
+        static const std::vector<const libcdoc::Lock> locks = $self->getLocks();
+        std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
+        return std::move(p);
+    }
+};
+%ignore libcdoc::CDocReader::getLocks();
+// int64_t read(uint8_t *dst, size_t const ssize)
 %typemap(in) (uint8_t *dst, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
@@ -59,6 +76,7 @@
 %typemap(jstype) (uint8_t *dst, size_t size) "byte[]"
 
 // Lock
+%ignore libcdoc::Lock::Lock;
 %ignore libcdoc::Lock::type;
 %ignore libcdoc::Lock::pk_type;
 %ignore libcdoc::Lock::label;
@@ -145,6 +163,9 @@
 %typemap(javaout) std::string_view {
     return $jnicall;
 }
+
+%feature("director") CryptoBackend;
+
 #endif
 
 // Swig does not like visibility/declspec attributes

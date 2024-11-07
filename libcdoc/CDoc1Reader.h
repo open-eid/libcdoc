@@ -13,7 +13,7 @@ public:
 	CDoc1Reader(const std::string &file);
 	~CDoc1Reader();
 
-	std::vector<libcdoc::Lock> getLocks() override final;
+	const std::vector<const libcdoc::Lock> getLocks() override final;
 	bool getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cert) override final;
 	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock) override final;
 	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst) override final;

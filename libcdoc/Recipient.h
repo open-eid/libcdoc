@@ -64,6 +64,7 @@ struct CDOC_EXPORT Recipient {
 	bool isTheSameRecipient(const std::vector<uint8_t>& public_key) const;
 
 	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
+	static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
 	static Recipient makeCertificate(const std::string& label, const std::vector<uint8_t>& cert);
 
 	bool operator== (const Recipient& other) const = default;

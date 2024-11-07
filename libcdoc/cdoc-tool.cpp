@@ -10,19 +10,19 @@
 #include "CDoc.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
+#include "Crypto.h"
 
 
 struct RcptInfo {
 	enum Type {
-		CERT, PASSWORD, KEY, P11
+		CERT, PASSWORD, KEY, P11_SYMMETRIC, P11_PKI
 	};
 	Type type;
 	std::vector<uint8_t> cert;
 	std::vector<uint8_t> secret;
-	int slot = 0;
+	long slot = 0;
 	std::string pin;
-	int key_index = -1;
-	std::string key_id;
+	std::vector<uint8_t> key_id;
 	std::string key_label;
 };
 
@@ -82,7 +82,12 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 
 	int connectToKey(const std::string& label) override final {
 		const RcptInfo& rcpt = rcpts.at(label);
-		int result = useSecretKey(rcpt.slot, rcpt.pin, rcpt.key_index, rcpt.key_id, rcpt.key_label);
+		int result = libcdoc::CRYPTO_ERROR;
+		if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
+			result = useSecretKey(rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
+		} else if (rcpt.type == RcptInfo::Type::P11_PKI) {
+			result = usePublicKey(rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
+		}
 		if (result != libcdoc::OK) return result;
 		return libcdoc::OK;
 	}
@@ -131,7 +136,8 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 //   label:cert:CERTIFICATE_HEX
 //	 label:key:SECRET_KEY_HEX
 //   label:pw:PASSWORD
-//	 label:p11:SLOT:[PIN]:[INDEX]:[ID]:[LABEL]
+//	 label:p11sk:SLOT:[PIN]:[ID]:[LABEL]
+//	 label:p11pk:SLOT:[PIN]:[ID]:[LABEL]
 //
 
 int
@@ -170,18 +176,37 @@ encrypt(int argc, char *argv[])
 					{},
 					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
 				};
-			} else if (parts[1] == "p11") {
+			} else if (parts[1] == "p11sk") {
 				if (parts.size() < 5) print_usage(std::cerr, 1);
-				int slot = std::stoi(parts[2]);
+				long slot;
+				if (parts[2].starts_with("0x")) {
+					slot = std::stol(parts[2].substr(2), nullptr, 16);
+				} else {
+					slot = std::stol(parts[2]);
+				}
 				std::string& pin = parts[3];
-				int key_idx = (!parts[4].empty()) ? stoi(parts[4]) : -1;
-				std::string key_id = (parts.size() >= 6) ? parts[5] : "";
-				std::string key_label = (parts.size() >= 7) ? parts[6] : "";
+				std::vector<uint8_t> key_id = fromHex(parts[4]);
+				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
-					RcptInfo::PASSWORD,
-					{},
-					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend()),
-					slot, pin, key_idx, key_id, key_label
+					RcptInfo::P11_SYMMETRIC,
+					{}, {},
+					slot, pin, key_id, key_label
+				};
+			} else if (parts[1] == "p11pk") {
+				if (parts.size() < 5) print_usage(std::cerr, 1);
+				long slot;
+				if (parts[2].starts_with("0x")) {
+					slot = std::stol(parts[2].substr(2), nullptr, 16);
+				} else {
+					slot = std::stol(parts[2]);
+				}
+				std::string& pin = parts[3];
+				std::vector<uint8_t> key_id = fromHex(parts[4]);
+				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
+				crypto.rcpts[label] = {
+					RcptInfo::P11_PKI,
+					{}, {},
+					slot, pin, key_id, key_label
 				};
 			} else {
 				std::cerr << "Unkown method: " << parts[1] << std::endl;
@@ -212,8 +237,9 @@ encrypt(int argc, char *argv[])
 		std::cerr << "No output specified" << std::endl;
 		print_usage(std::cerr, 1);
 	}
+	if (!library.empty()) crypto.connectLibrary(library);
 	std::vector<libcdoc::Recipient> keys;
-	for (const std::pair<std::string, RcptInfo> pair : crypto.rcpts) {
+	for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
 		const std::string label = pair.first;
 		const RcptInfo& rcpt = pair.second;
 		libcdoc::Recipient key;
@@ -221,18 +247,30 @@ encrypt(int argc, char *argv[])
 			key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
 		} else if (rcpt.type == RcptInfo::Type::KEY) {
 			key = libcdoc::Recipient::makeSymmetric(label, 0);
+			std::cerr << "Creating symmetric key:" << std::endl;
+		} else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
+			key = libcdoc::Recipient::makeSymmetric(label, 0);
+		} else if (rcpt.type == RcptInfo::Type::P11_PKI) {
+			std::vector<uint8_t> val;
+			bool rsa;
+			int result = crypto.p11->getPublicKey(val, rsa, rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
+			if (result != libcdoc::OK) {
+				std::cerr << "No such public key: " << rcpt.key_label << std::endl;
+				continue;
+			}
+			std::cerr << "Public key (" << (rsa ? "rsa" : "ecc") << "):" << libcdoc::Crypto::toHex(val) << std::endl;
+			key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
 		} else if (rcpt.type == RcptInfo::Type::PASSWORD) {
+			std::cerr << "Creating password key:" << std::endl;
 			key = libcdoc::Recipient::makeSymmetric(label, 65535);
 		}
 		keys.push_back(key);
 	}
-	if (!library.empty()) crypto.connectLibrary(library);
 	ToolConf conf;
-	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr);
-
 	libcdoc::OStreamConsumer ofs(out);
+	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &ofs, false, &conf, &crypto, nullptr);
 	if (PUSH) {
-		writer->beginEncryption(ofs);
+		writer->beginEncryption();
 		for (const libcdoc::Recipient& rcpt : keys) {
 			writer->addRecipient(rcpt);
 		}
@@ -255,10 +293,12 @@ encrypt(int argc, char *argv[])
 				writer->writeData(b, len);
 			}
 		}
-		writer->finishEncryption(true);
+		writer->finishEncryption();
+		ofs.close();
 	} else {
 		libcdoc::FileListSource src({}, files);
-		writer->encrypt(ofs, src, keys);
+		writer->encrypt(src, keys);
+		ofs.close();
 	}
 
 	return 0;
@@ -296,8 +336,11 @@ decrypt(int argc, char *argv[])
 	ToolConf conf;
 	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], &conf, &crypto, nullptr);
 	std::cerr << "Reader created\n";
-	std::vector<libcdoc::Lock> locks = rdr->getLocks();
-	for (libcdoc::Lock& lock : locks) {
+	const std::vector<const libcdoc::Lock> locks = rdr->getLocks();
+	for (const libcdoc::Lock& lock : locks) {
+		std::cerr << "Lock: " + lock.label << std::endl;
+	}
+	for (const libcdoc::Lock& lock : locks) {
 		if (lock.label == label) {
 			std::vector<uint8_t> fmk;
 			rdr->getFMK(fmk, lock);
@@ -322,8 +365,8 @@ locks(int argc, char *argv[])
 {
 	if (argc < 1) print_usage(std::cerr, 1);
 	libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr);
-	std::vector<libcdoc::Lock> locks = rdr->getLocks();
-	for (libcdoc::Lock& lock : locks) {
+	const std::vector<const libcdoc::Lock> locks = rdr->getLocks();
+	for (const libcdoc::Lock& lock : locks) {
 		fprintf(stdout, "%s\n", lock.label.c_str());
 	}
 	return 0;

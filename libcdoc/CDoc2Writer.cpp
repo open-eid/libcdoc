@@ -15,7 +15,7 @@
 #include <iostream>
 
 struct CDoc2Writer::Private {
-	Private(libcdoc::DataConsumer *_dst) : dst(_dst) {
+	Private(libcdoc::DataConsumer *dst) {
 		fmk = libcdoc::Crypto::extract(libcdoc::Crypto::random(libcdoc::CDoc2::KEY_LEN), std::vector<uint8_t>(libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()));
 		cek = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()));
 		hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
@@ -32,7 +32,6 @@ struct CDoc2Writer::Private {
 		cipher.reset();
 		tar.reset();
 	}
-	libcdoc::DataConsumer *dst;
 	std::vector<uint8_t> fmk;
 	std::vector<uint8_t> cek;
 	std::vector<uint8_t> hhk;
@@ -43,8 +42,8 @@ struct CDoc2Writer::Private {
 	bool header_written = false;
 };
 
-CDoc2Writer::CDoc2Writer()
-	: CDocWriter(2)
+CDoc2Writer::CDoc2Writer(libcdoc::DataConsumer *dst, bool take_ownership)
+	: CDocWriter(2, dst, take_ownership)
 {
 }
 
@@ -53,10 +52,10 @@ CDoc2Writer::~CDoc2Writer()
 }
 
 int
-CDoc2Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
+CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	last_error.clear();
-	priv = std::make_unique<Private>(&dst);
+	priv = std::make_unique<Private>(dst);
 #ifndef NDEBUG
 	std::cerr << "fmk: " << libcdoc::Crypto::toHex(priv->fmk) << std::endl;
 	std::cerr << "cek: " << libcdoc::Crypto::toHex(priv->cek) << std::endl;
@@ -64,6 +63,7 @@ CDoc2Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, 
 #endif
 	int result = encryptInternal(src, keys);
 	priv.reset();
+	if (owned) dst->close();
 	return result;
 }
 
@@ -97,8 +97,7 @@ CDoc2Writer::encryptInternal(libcdoc::MultiDataSource& src, const std::vector<li
 #ifndef NDEBUG
 	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
 #endif
-	priv->dst->write(tag.data(), tag.size());
-	priv->dst->close();
+	dst->write(tag.data(), tag.size());
 	return libcdoc::OK;
 }
 
@@ -118,11 +117,11 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 	uint32_t hs = uint32_t(header.size());
 	uint8_t header_len[] {uint8_t(hs >> 24), uint8_t((hs >> 16) & 0xff), uint8_t((hs >> 8) & 0xff), uint8_t(hs & 0xff)};
 
-	priv->dst->write((const uint8_t *) libcdoc::CDoc2::LABEL.data(), libcdoc::CDoc2::LABEL.size());
-	priv->dst->write((const uint8_t *) &header_len, 4);
-	priv->dst->write(header.data(), header.size());
-	priv->dst->write(headerHMAC.data(), headerHMAC.size());
-	priv->dst->write(priv->nonce.data(), priv->nonce.size());
+	dst->write((const uint8_t *) libcdoc::CDoc2::LABEL.data(), libcdoc::CDoc2::LABEL.size());
+	dst->write((const uint8_t *) &header_len, 4);
+	dst->write(header.data(), header.size());
+	dst->write(headerHMAC.data(), headerHMAC.size());
+	dst->write(priv->nonce.data(), priv->nonce.size());
 	return libcdoc::OK;
 }
 
@@ -137,7 +136,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 		if (key.isPKI()) {
 			const libcdoc::Recipient& pki = key;
 			if(pki.pk_type == libcdoc::Recipient::PKType::RSA) {
-				std::vector<uint8_t> kek = libcdoc::Crypto::random(libcdoc::CDoc2::KEY_LEN);
+				std::vector<uint8_t> kek;
+				crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
 				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 					setLastError("Internal error");
 					return libcdoc::CRYPTO_ERROR;
@@ -306,14 +306,14 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 }
 
 int
-CDoc2Writer::beginEncryption(libcdoc::DataConsumer& dst)
+CDoc2Writer::beginEncryption()
 {
 	if (priv) {
 		setLastError("Encryption workflow already started");
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	last_error.clear();
-	priv = std::make_unique<Private>(&dst);
+	priv = std::make_unique<Private>(dst);
 	return libcdoc::OK;
 }
 
@@ -379,7 +379,7 @@ CDoc2Writer::writeData(const uint8_t *src, size_t size)
 }
 
 int
-CDoc2Writer::finishEncryption(bool close_dst)
+CDoc2Writer::finishEncryption()
 {
 	if (!priv) {
 		setLastError("Encryption workflow not started");
@@ -403,8 +403,8 @@ CDoc2Writer::finishEncryption(bool close_dst)
 #ifndef NDEBUG
 	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
 #endif
-	priv->dst->write(tag.data(), tag.size());
-	if (close_dst) priv->dst->close();
+	dst->write(tag.data(), tag.size());
+	if (owned) dst->close();
 
 	return libcdoc::OK;
 }

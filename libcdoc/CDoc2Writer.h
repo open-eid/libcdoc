@@ -5,16 +5,16 @@
 
 class CDoc2Writer final: public libcdoc::CDocWriter {
 public:
-	explicit CDoc2Writer();
+	explicit CDoc2Writer(libcdoc::DataConsumer *dst, bool take_ownership);
 	~CDoc2Writer();
 
-	int beginEncryption(libcdoc::DataConsumer& dst) override final;
+	int beginEncryption() override final;
 	int addRecipient(const libcdoc::Recipient& rcpt) override final;
 	int addFile(const std::string& name, size_t size) override final;
 	int64_t writeData(const uint8_t *src, size_t size) override final;
-	int finishEncryption(bool close_dst = true) override final;
+	int finishEncryption() override final;
 
-	int encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) override final;
+	int encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) override final;
 private:
 	struct Private;
 

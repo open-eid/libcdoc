@@ -43,12 +43,8 @@ const XMLWriter::NS CDoc1Writer::Private::DS{ "ds", "http://www.w3.org/2000/09/x
 const XMLWriter::NS CDoc1Writer::Private::XENC11{ "xenc11", "http://www.w3.org/2009/xmlenc11#" };
 const XMLWriter::NS CDoc1Writer::Private::DSIG11{ "dsig11", "http://www.w3.org/2009/xmldsig11#" };
 
-/**
- * CDoc1Writer constructor.
- * @param method Encrypton method to be used
- */
-CDoc1Writer::CDoc1Writer(const std::string &method)
-	: CDocWriter(1), d(new Private())
+CDoc1Writer::CDoc1Writer(libcdoc::DataConsumer *dst, bool take_ownership, const std::string &method)
+	: CDocWriter(1, dst, take_ownership), d(new Private())
 {
 	d->method = method;
 }
@@ -178,14 +174,14 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
  * Encrypt data
  */
 int
-CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
+CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
 
 	int n_components = src.getNumComponents();
 	bool use_ddoc = (n_components > 1) || (n_components == libcdoc::NOT_IMPLEMENTED);
 
-	d->_xml = std::make_unique<XMLWriter>(&dst);
+	d->_xml = std::make_unique<XMLWriter>(dst);
 	d->_xml->writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}});
 	d->_xml->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", d->method}});
 	d->_xml->writeStartElement(Private::DS, "KeyInfo", {});
@@ -249,13 +245,14 @@ CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, 
 	d->_xml->writeEndElement(Private::DENC); // EncryptedData
 	d->_xml->close();
 	d->_xml.reset();
+	if (owned) dst->close();
 	return libcdoc::OK;
 }
 
 int
-CDoc1Writer::beginEncryption(libcdoc::DataConsumer& dst)
+CDoc1Writer::beginEncryption()
 {
-	d->_xml = std::make_unique<XMLWriter>(&dst);
+	d->_xml = std::make_unique<XMLWriter>(dst);
 	return libcdoc::OK;
 }
 
@@ -282,7 +279,7 @@ CDoc1Writer::writeData(const uint8_t *src, size_t size)
 }
 
 int
-CDoc1Writer::finishEncryption(bool close_dst)
+CDoc1Writer::finishEncryption()
 {
 	if (!d->_xml) return libcdoc::WORKFLOW_ERROR;
 	if (d->rcpts.empty()) return libcdoc::WORKFLOW_ERROR;
@@ -337,5 +334,6 @@ CDoc1Writer::finishEncryption(bool close_dst)
 	d->_xml->writeEndElement(Private::DENC); // EncryptedData
 	d->_xml->close();
 	d->_xml.reset();
+	if (owned) dst->close();
 	return libcdoc::OK;
 }

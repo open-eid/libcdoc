@@ -32,39 +32,86 @@ namespace libcdoc {
 
 class CDOC_EXPORT CDocWriter {
 public:
-	virtual ~CDocWriter() = default;
+	virtual ~CDocWriter();
 
 	const int version;
 
 	/* Push interface */
-	virtual int beginEncryption(DataConsumer& dst) = 0;
+	/**
+	 * @brief prepares the stream for encryption
+	 *
+	 * This may involve creating cryptographic ciphers, building headers and writing the
+	 * initial part of the stream
+	 * @return error code or OK
+	 */
+	virtual int beginEncryption() = 0;
+	/**
+	 * @brief add recipient to container
+	 * @param rcpt a Recipient structure
+	 * @return error code or OK
+	 */
 	virtual int addRecipient(const Recipient& rcpt) = 0;
+	/**
+	 * @brief start new file
+	 *
+	 * Start streaming the new file into output stream
+	 * @param name the name to be used in stream
+	 * @param size the size of the file
+	 * @return  error code or OK
+	 */
 	virtual int addFile(const std::string& name, size_t size) = 0;
+	/**
+	 * @brief write the data of current file to encrypted stream
+	 *
+	 * A single file may safely be written in multiple parts as long as the total size matches
+	 * @param src a source buffer
+	 * @param size the size of data in buffer
+	 * @return size or error code
+	 */
 	virtual int64_t writeData(const uint8_t *src, size_t size) = 0;
-	virtual int finishEncryption(bool close_dst = true) = 0;
+	/**
+	 * @brief finalizes the encryption stream
+	 *
+	 * This may involve flushing file, calculating checksum and closing the stream (if owned by CDocWriter)
+	 * @return error code or OK
+	 */
+	virtual int finishEncryption() = 0;
 
 	/* Pull interface */
 	/**
 	 * @brief encrypt data and send to the output
-	 * @param dst DataConsumer where output is written
 	 * @param src MultiDataSource providing input files (named chunks)
 	 * @param recipients a list of recipients for whom locks will be encoded into file
 	 * @return error code or OK
 	 */
-	virtual int encrypt(DataConsumer& dst, MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) = 0;
+	virtual int encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) = 0;
 	/**
 	 * @brief get the textual error of the last failed operation
 	 * @return error description, empty string of no errors
 	 */
 	std::string getLastErrorStr() { return last_error; }
 
-	static CDocWriter *createWriter(int version, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+	/**
+	 * @brief create CDoc writer
+	 * @param version
+	 * @param dst DataConsumer where output is written
+	 * @param take_ownership whether to close dst at the end of encryption and delete with CDocWiter
+	 * @param conf
+	 * @param crypto
+	 * @param network
+	 * @return
+	 */
+	static CDocWriter *createWriter(int version, DataConsumer *dst, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+	static CDocWriter *createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+	static CDocWriter *createWriter(int version, const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 protected:
-	explicit CDocWriter(int _version) : version(_version) {};
+	explicit CDocWriter(int _version, DataConsumer *dst, bool take_ownership);
 
 	void setLastError(const std::string& message) { last_error = message; }
 
 	std::string last_error;
+	DataConsumer *dst;
+	bool owned;
 
 	Configuration *conf = nullptr;
 	CryptoBackend *crypto = nullptr;

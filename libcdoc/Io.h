@@ -30,8 +30,8 @@ public:
 	 * @brief write write bytes to output object
 	 *
 	 * The following invariant holds:
-	 * If there no error result == size
-	 * If there is error then result < 0
+	 * If there was no error then result == size
+	 * If there was an error then result < 0
 	 * @param src source block
 	 * @param size the number of bytes to write
 	 * @return size or error code
@@ -42,7 +42,20 @@ public:
 	 * @return error code or OK
 	 */
 	virtual int close() = 0;
+	/**
+	 * @brief checks whether DataSource is in error state
+	 * @return true is error occured
+	 */
 	virtual bool isError() = 0;
+	/**
+	 * @brief getLastErrorStr get textual description of the last error
+	 *
+	 * Implementation can decide whether to store the actual error string or
+	 * return the generic text based on error code. It is undfined what will
+	 * be returned if the last error code is not the one used as the argument.
+	 * @param code the last returned error code
+	 * @return error text
+	 */
 	virtual std::string getLastErrorStr(int code) const;
 
 	int64_t write(const std::vector<uint8_t>& src) {
@@ -72,6 +85,9 @@ public:
 
 	/**
 	 * @brief seek set stream input pointer
+	 *
+	 * Positions the read pointer at the specific distance from the stream start.
+	 * If the stream does not support seeking NOT_IMPLEMENTED is returned.
 	 * @param pos the position from the beggining of data
 	 * @return error code or OK
 	 */
@@ -80,7 +96,7 @@ public:
 	 * @brief read read bytes from input object
 	 *
 	 * The following invariant holds:
-	 * If there neither error nor eof then result == size
+	 * If there is neither error nor eof then result == size
 	 * If there is no errors but is eof then 0 <= result <= size
 	 * If there is error then result < 0
 	 * @param dst the destination block
@@ -102,7 +118,13 @@ public:
 };
 
 // close finishes the whole stream, individual sub-streams are finished by next open, the last one with close
-
+/**
+ * @brief An abstract base class for multi-stream consumers
+ *
+ * A new sub-stream is created by open and fnished either by the next open or closing
+ * the whole stream.
+ *
+ */
 class CDOC_EXPORT MultiDataConsumer : public DataConsumer {
 public:
 	virtual ~MultiDataConsumer() = default;

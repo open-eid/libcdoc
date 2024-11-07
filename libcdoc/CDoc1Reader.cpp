@@ -57,10 +57,10 @@ public:
 	std::map<std::string,std::string> properties;
 };
 
-std::vector<libcdoc::Lock>
+const std::vector<const libcdoc::Lock>
 CDoc1Reader::getLocks()
 {
-	std::vector<libcdoc::Lock> locks;
+	std::vector<const libcdoc::Lock> locks;
 	for (libcdoc::Lock *l : d->locks) locks.push_back(*l);
 	return locks;
 }

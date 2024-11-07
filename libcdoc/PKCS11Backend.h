@@ -16,7 +16,9 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
 
 	std::vector<Handle> findCertificates(const std::string& label, const std::string& serial);
 	std::vector<Handle> findSecretKeys(const std::string& label, const std::string& serial);
-	int useSecretKey(int slot, const std::string& pin, uint32_t idx, const std::string& id, const std::string& label);
+	int useSecretKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
+	int usePublicKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
+	int getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
 
 	virtual int connectToKey(const std::string& label) = 0;
 

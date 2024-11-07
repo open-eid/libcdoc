@@ -65,14 +65,24 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
 	return reader;
 }
 
+libcdoc::CDocWriter::CDocWriter(int _version, DataConsumer *_dst, bool take_ownership)
+	: version(_version), dst(_dst), owned(take_ownership)
+{
+};
+
+libcdoc::CDocWriter::~CDocWriter()
+{
+	if (owned) delete(dst);
+}
+
 libcdoc::CDocWriter *
-libcdoc::CDocWriter::createWriter(int version, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
 	CDocWriter *writer;
 	if (version == 1) {
-		writer = new CDoc1Writer();
+		writer = new CDoc1Writer(dst, take_ownership);
 	} else if (version == 2) {
-		writer = new CDoc2Writer();
+		writer = new CDoc2Writer(dst, take_ownership);
 	} else {
 		return nullptr;
 	}
@@ -80,4 +90,18 @@ libcdoc::CDocWriter::createWriter(int version, Configuration *conf, CryptoBacken
 	writer->crypto = crypto;
 	writer->network = network;
 	return writer;
+}
+
+libcdoc::CDocWriter *
+libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+{
+	libcdoc::DataConsumer *dst = new libcdoc::OStreamConsumer(&ofs, false);
+	return createWriter(version, dst, true, conf, crypto, network);
+}
+
+libcdoc::CDocWriter *
+libcdoc::CDocWriter::createWriter(int version, const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+{
+	libcdoc::DataConsumer *dst = new libcdoc::OStreamConsumer(path);
+	return createWriter(version, dst, true, conf, crypto, network);
 }
