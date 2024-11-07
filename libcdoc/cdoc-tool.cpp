@@ -238,8 +238,8 @@ encrypt(int argc, char *argv[])
         return 1;
 	}
 	std::vector<libcdoc::Recipient> keys;
-	for (const std::pair<std::string, RcptInfo> pair : crypto.rcpts) {
-		const std::string label = pair.first;
+    for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
+        const std::string& label = pair.first;
 		const RcptInfo& rcpt = pair.second;
 		libcdoc::Recipient key;
 		if (rcpt.type == RcptInfo::Type::CERT) {
@@ -255,7 +255,7 @@ encrypt(int argc, char *argv[])
         crypto.connectLibrary(library);
 
 	ToolConf conf;
-    auto writer { std::unique_ptr<libcdoc::CDocWriter>(libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr)) };
+    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr));
 
 	libcdoc::OStreamConsumer ofs(out);
 	if (PUSH) {
@@ -342,7 +342,7 @@ int decrypt(int argc, char *argv[])
 		secret
 	};
 	ToolConf conf;
-    auto rdr {std::unique_ptr<libcdoc::CDocReader>(libcdoc::CDocReader::createReader(file, &conf, &crypto, nullptr))};
+    unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, nullptr));
     std::cout << "Reader created" << std::endl;
 	std::vector<libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
@@ -374,7 +374,7 @@ int locks(int argc, char *argv[])
         print_usage(cerr);
         return 1;
     }
-    auto rdr { unique_ptr<libcdoc::CDocReader>(libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr)) };
+    unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(argv[0], nullptr, nullptr, nullptr));
     vector<libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
         cout << lock.label << endl;
