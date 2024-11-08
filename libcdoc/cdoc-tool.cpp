@@ -295,7 +295,6 @@ encrypt(int argc, char *argv[])
 	}
     ToolConf conf;
     unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, nullptr));
-    if (!library.empty()) crypto.connectLibrary(library);
 
 	if (PUSH) {
 		writer->beginEncryption();

@@ -5,6 +5,10 @@
 
 #include "pkcs11.h"
 
+#include <openssl/ec.h>
+#include <openssl/evp.h>
+#include <openssl/objects.h>
+
 #include <iostream>
 
 #ifdef _WIN32
@@ -291,12 +295,38 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
 		return CRYPTO_ERROR;
 	}
 	rsa = (*((CK_KEY_TYPE *) v.data()) == CKK_RSA);
-	v = d->attribute(d->session, handle, CKA_VALUE);
+    if (rsa) return libcdoc::NOT_IMPLEMENTED;
+    v = d->attribute(d->session, handle, CKA_EC_PARAMS);
 	if (v.empty()) {
-		if (P11_DEBUG) std::cerr << "PKCS11: getValue CKA_VALUE error" << std::endl;
+        if (P11_DEBUG) std::cerr << "PKCS11: getValue CKA_EC_PARAMS error" << std::endl;
 		return CRYPTO_ERROR;
 	}
-	val = v;
+    std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
+    if (w.empty()) {
+        if (P11_DEBUG) std::cerr << "PKCS11: getValue CKA_EC_POINT error" << std::endl;
+        return CRYPTO_ERROR;
+    }
+    const uint8_t *p = v.data();
+    EC_GROUP *group = d2i_ECPKParameters(nullptr, &p, v.size());
+    if (!group) {
+        if (P11_DEBUG) std::cerr << "PKCS11: getValue d2i_ECPKParameters error" << std::endl;
+        return CRYPTO_ERROR;
+    }
+    EC_POINT *pub_key_point = EC_POINT_new(group);
+    result =  EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL);
+    // Associate the Point with an EC_KEY: Finally, set up an EC_KEY structure and assign the point as the public key.
+    EC_KEY *key = EC_KEY_new();
+    EC_KEY_set_group(key, group);
+    EC_KEY_set_public_key(key, pub_key_point);
+    EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    EVP_PKEY_assign_EC_KEY(evp_pkey, key);
+    int plen = i2d_PublicKey(evp_pkey, nullptr);
+    val.resize(plen);
+    uint8_t *pptr = val.data();
+    i2d_PublicKey(evp_pkey, &pptr);
+    EVP_PKEY_free(evp_pkey);
+    EC_POINT_free(pub_key_point);
+    EC_GROUP_free(group);
 	return OK;
 }
 
