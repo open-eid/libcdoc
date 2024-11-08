@@ -16,13 +16,16 @@ using namespace std;
 
 struct RcptInfo {
 	enum Type {
+        /* Detect type from container */
+        ANY,
 		CERT, PASSWORD, KEY, P11_SYMMETRIC, P11_PKI
 	};
 	Type type;
 	std::vector<uint8_t> cert;
+    /* Pin or password */
 	std::vector<uint8_t> secret;
 	long slot = 0;
-	std::string pin;
+    //std::string pin;
 	std::vector<uint8_t> key_id;
 	std::string key_label;
 };
@@ -79,13 +82,14 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 
 	ToolPKCS11(const std::string& library, const std::map<std::string, RcptInfo>& map) : libcdoc::PKCS11Backend(library), rcpts(map) {}
 
-	int connectToKey(const std::string& label) override final {
+    int connectToKey(const std::string& label, bool priv) override final {
+        if (!rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
 		const RcptInfo& rcpt = rcpts.at(label);
 		int result = libcdoc::CRYPTO_ERROR;
-		if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
-			result = useSecretKey(rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
-		} else if (rcpt.type == RcptInfo::Type::P11_PKI) {
-			result = usePublicKey(rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
+        if (!priv) {
+            result = useSecretKey(rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
+        } else {
+            result = usePrivateKey(rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
 		}
 		if (result != libcdoc::OK) return result;
 		return libcdoc::OK;
@@ -208,8 +212,8 @@ encrypt(int argc, char *argv[])
 				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
 					RcptInfo::P11_SYMMETRIC,
-					{}, {},
-					slot, pin, key_id, key_label
+                    {}, std::vector<uint8_t>(pin.cbegin(), pin.cend()),
+                    slot, key_id, key_label
 				};
 			} else if (parts[1] == "p11pk") {
                 if (parts.size() < 5) {
@@ -227,8 +231,8 @@ encrypt(int argc, char *argv[])
 				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
 					RcptInfo::P11_PKI,
-					{}, {},
-					slot, pin, key_id, key_label
+                    {}, std::vector<uint8_t>(pin.cbegin(), pin.cend()),
+                    slot, key_id, key_label
 				};
 			} else {
 				std::cerr << "Unkown method: " << parts[1] << std::endl;
@@ -280,7 +284,7 @@ encrypt(int argc, char *argv[])
 		} else if (rcpt.type == RcptInfo::Type::P11_PKI) {
 			std::vector<uint8_t> val;
 			bool rsa;
-			int result = crypto.p11->getPublicKey(val, rsa, rcpt.slot, rcpt.pin, rcpt.key_id, rcpt.key_label);
+            int result = crypto.p11->getPublicKey(val, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
 			if (result != libcdoc::OK) {
 				std::cerr << "No such public key: " << rcpt.key_label << std::endl;
 				continue;
@@ -336,24 +340,60 @@ encrypt(int argc, char *argv[])
 int decrypt(int argc, char *argv[])
 {
 	ToolCrypto crypto;
+    std::string library;
 
 	std::string label;
 	std::vector<uint8_t> secret;
-	std::string file;
+    long slot;
+    std::vector<uint8_t> key_id;
+    std::string key_label;
+    std::string file;
     std::string basePath;
     for (int i = 0; i < argc; i++)
     {
-		if (!strcmp(argv[i], "--label") && ((i + 1) <= argc)) {
+        if (!strcmp(argv[i], "--label") && ((i + 1) < argc)) {
 			label = argv[i + 1];
 			i += 1;
-        }
-        else if (!strcmp(argv[i], "--password") && ((i + 1) <= argc)) {
+        } else if (!strcmp(argv[i], "--password") || !strcmp(argv[i], "--secret") || !strcmp(argv[i], "--pin")) {
+            if ((i + 1) >= argc) {
+                print_usage(cerr);
+                return 1;
+            }
             string_view s(argv[i + 1]);
             secret.assign(s.cbegin(), s.cend());
 			i += 1;
-        }
-        else
-        {
+        } else if (!strcmp(argv[i], "--slot")) {
+            if ((i + 1) >= argc) {
+                print_usage(cerr);
+                return 1;
+            }
+            std::string str(argv[i + 1]);
+            if (str.starts_with("0x")) {
+                slot = std::stol(str.substr(2), nullptr, 16);
+            } else {
+                slot = std::stol(str);
+            }
+            i += 1;
+        } else if (!strcmp(argv[i], "--key-id")) {
+            if ((i + 1) >= argc) {
+                print_usage(cerr);
+                return 1;
+            }
+            string_view s(argv[i + 1]);
+            key_id.assign(s.cbegin(), s.cend());
+            i += 1;
+        } else if (!strcmp(argv[i], "--key-label")) {
+            if ((i + 1) >= argc) {
+                print_usage(cerr);
+                return 1;
+            }
+            string_view s(argv[i + 1]);
+            key_label.assign(s.cbegin(), s.cend());
+            i += 1;
+        } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
+            library = argv[i + 1];
+            i += 1;
+        } else {
             if (file.empty())
                 file = argv[i];
             else
@@ -373,11 +413,13 @@ int decrypt(int argc, char *argv[])
         basePath = ".";
         basePath += filesystem::path::preferred_separator;
     }
+    if (!library.empty()) crypto.connectLibrary(library);
 
 	crypto.rcpts[label] = {
-		RcptInfo::PASSWORD,
+        RcptInfo::ANY,
 		{},
-		secret
+        secret,
+        slot, key_id, key_label
 	};
 	ToolConf conf;
     unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, nullptr));

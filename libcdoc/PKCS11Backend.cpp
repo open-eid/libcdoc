@@ -24,7 +24,7 @@
 struct libcdoc::PKCS11Backend::Private
 {
 public:
-	int login(int slot, const std::string& pin);
+    int login(int slot, const std::vector<uint8_t>& pin);
 	int logout();
 	std::vector<CK_BYTE> attribute(CK_SESSION_HANDLE session, CK_OBJECT_HANDLE obj, CK_ATTRIBUTE_TYPE type) const;
 	std::vector<CK_OBJECT_HANDLE> findObject(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id = {}, const std::string& label = {}) const;
@@ -70,7 +70,7 @@ public:
 };
 
 int
-libcdoc::PKCS11Backend::Private::login(int slot, const std::string& pin)
+libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin)
 {
 	if (!f || session) return PKCS11_ERROR;
 	unsigned long result = f->C_OpenSession(slot, CKF_SERIAL_SESSION, nullptr, nullptr, &session);
@@ -79,7 +79,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::string& pin)
 		return PKCS11_ERROR;
 	}
 	if (!pin.empty()) {
-		result = f->C_Login(session, CKU_USER, CK_BYTE_PTR(pin.c_str()), CK_ULONG(pin.size()));
+        result = f->C_Login(session, CKU_USER, CK_BYTE_PTR(pin.data()), CK_ULONG(pin.size()));
 		switch(result) {
 		case CKR_OK:
 			if (P11_DEBUG) std::cerr << "PKCS11:C_Login OK" << std::endl;
@@ -244,43 +244,35 @@ libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::stri
 }
 
 int
-libcdoc::PKCS11Backend::useSecretKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
 	int result = d->login(slot, pin);
 	if (result != OK) return result;
-	std::vector<Handle> handles = d->findAllObjects(CKO_SECRET_KEY, id, label);
-	if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey id=" << Crypto::toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
-	if (handles.empty()) return CRYPTO_ERROR;
-	for (auto& handle : handles) {
-		if (handle.slot != slot) continue;
-		std::vector<CK_OBJECT_HANDLE> objs = d->findObject(d->session, CKO_SECRET_KEY, handle.id);
-		if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey id=" << Crypto::toHex(id) << " found " << objs.size() << " keys" << std::endl;
-		if (objs.empty()) return CRYPTO_ERROR;
-		d->key = objs[0];
-		if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey Using key " << d->key << std::endl;
-		return OK;
-	}
-
-	return NOT_IMPLEMENTED;
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_SECRET_KEY, id, label);
+    if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey id=" << Crypto::toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
+    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    d->key = handles[0];
+    if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey Using key " << d->key << std::endl;
+    return OK;
 }
 
 int
-libcdoc::PKCS11Backend::usePublicKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
-	if(!d) return CRYPTO_ERROR;
-	int result = d->login(slot, pin);
-	if (result != OK) return result;
-	std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PUBLIC_KEY, id, label);
-	if (P11_DEBUG) std::cerr << "PKCS11: usePublicKey id=" << Crypto::toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
-	if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
-	d->key = handles[0];
-	if (P11_DEBUG) std::cerr << "PKCS11: usePublicKey Using key " << d->key << std::endl;
-	return OK;
+    if(!d) return CRYPTO_ERROR;
+    int result = d->login(slot, pin);
+    if (result != OK) return result;
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PRIVATE_KEY, id, label);
+    if (P11_DEBUG) std::cerr << "PKCS11: usePrivateKey id=" << Crypto::toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
+    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    d->key = handles[0];
+    if (P11_DEBUG) std::cerr << "PKCS11: usePrivateKey Using key " << d->key << std::endl;
+    return OK;
 }
 
 int
-libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
 	int result = d->login(slot, pin);
@@ -335,7 +327,7 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
 {
 	if(!d) return CRYPTO_ERROR;
 
-	int result = connectToKey(label);
+    int result = connectToKey(label, true);
 	if (result != OK) return result;
 
 	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
@@ -360,7 +352,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 {
 	if(!d) return CRYPTO_ERROR;
 
-	int result = connectToKey(label);
+    int result = connectToKey(label, true);
 	if (result != OK) return result;
 
 	std::vector<uint8_t> sharedSecret;
@@ -400,7 +392,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 
 	if(!d) return CRYPTO_ERROR;
 
-	int result = connectToKey(label);
+    int result = connectToKey(label, false);
 	if (result != OK) return result;
 
 	CK_HKDF_PARAMS hkdf_params = {

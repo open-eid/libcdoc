@@ -16,11 +16,12 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
 
 	std::vector<Handle> findCertificates(const std::string& label, const std::string& serial);
 	std::vector<Handle> findSecretKeys(const std::string& label, const std::string& serial);
-	int useSecretKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
-	int usePublicKey(int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
-	int getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::string& pin, const std::vector<uint8_t>& id, const std::string& label);
 
-	virtual int connectToKey(const std::string& label) = 0;
+    int useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    int usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    int getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+
+    virtual int connectToKey(const std::string& label, bool priv) = 0;
 
 	virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label) override;
 	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override;
