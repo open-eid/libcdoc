@@ -30,18 +30,45 @@ struct RcptInfo {
 	std::string key_label;
 };
 
-static void print_usage(ostream& ofs)
+//
+//
+//
+//
+
+
+static void
+print_usage(ostream& ofs)
 {
-	ofs
-		//<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
-		<< "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt RECIPIENT] [--file INFILE] [...] --out OUTFILE" << std::endl
-		<< "  where RECIPIENT is in form label:TYPE:value" << std::endl
-		<< "    where TYPE is 'cert', 'key' or 'pw'" << std::endl
+    ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]" << std::endl;
+    ofs << "  Encrypt files for one or more recipients" << std::endl;
+    ofs << "  RECIPIENT has to be one of the following:" << std::endl;
+    ofs << "    label:cert:CERTIFICATE_HEX - public key from certificate" << std::endl;
+    ofs << "    label:key:SECRET_KEY_HEX - AES key" << std::endl;
+    ofs << "    label:pw:PASSWORD - Derive key using PWBKDF" << std::endl;
+    ofs << "    label:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << std::endl;
+    ofs << "    label:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << std::endl;
+    ofs << std::endl;
+    ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << std::endl;
+    ofs << "  Decrypt container using lock specified by label" << std::endl;
+    ofs << "  Supported arguments" << std::endl;
+    ofs << "    --label LABEL   CDoc container lock label" << std::endl;
+    ofs << "    --slot SLOT     PKCS11 slot number" << std::endl;
+    ofs << "    --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)" << std::endl;
+    ofs << "    --key-id        PKCS11 key id" << std::endl;
+    ofs << "    --key-label     PKCS11 key label" << std::endl;
+    ofs << std::endl;
+    ofs << "cdoc-tool locks FILE" << std::endl;
+    ofs << "  Show locks in a container file" << std::endl;
+
+    //<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
+    //	<< "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt RECIPIENT] [--file INFILE] [...] --out OUTFILE" << std::endl
+    //	<< "  where RECIPIENT is in form label:TYPE:value" << std::endl
+    //	<< "    where TYPE is 'cert', 'key' or 'pw'" << std::endl
 #ifdef _WIN32
-		<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
+    //	<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
 #endif
-		<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
-		<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
+    //	<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
+    //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
 }
 
 static std::vector<uint8_t>
@@ -334,7 +361,12 @@ encrypt(int argc, char *argv[])
 }
 
 //
-// cdoc-tool decrypt --label LABEL [--secret SECRET] FILE [OUTPUT DIR]
+// cdoc-tool decrypt ARGUMENTS FILE [OUTPU_DIR]
+//   --label LABEL   CDoc container lock label
+//   --slot SLOT     PKCS11 slot number
+//   --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)
+//   --key-id        PKCS11 key id
+//   --key-label     PKCS11 key label
 //
 
 int decrypt(int argc, char *argv[])

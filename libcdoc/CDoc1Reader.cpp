@@ -107,7 +107,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		}
 	} else {
 		std::vector<uint8_t> eph_key = lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-		int result = crypto->deriveConcatKDF(decrypted_key, eph_key, lock.getString(libcdoc::Lock::Params::METHOD),
+        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, lock.getString(libcdoc::Lock::Params::CONCAT_DIGEST),
 											 lock.getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
 											 lock.getBytes(libcdoc::Lock::Params::PARTY_UINFO),
 											 lock.getBytes(libcdoc::Lock::Params::PARTY_VINFO),

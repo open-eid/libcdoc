@@ -264,7 +264,7 @@ public:
 	int close() override final { return OK; }
 	virtual bool isError() override final { return false; }
 protected:
-	std::vector<uint8_t> _data;
+    std::vector<uint8_t>& _data;
 };
 
 class CDOC_EXPORT FileListConsumer : public MultiDataConsumer {
