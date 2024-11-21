@@ -73,6 +73,7 @@ static void writeFile(const std::string &path, const std::vector<unsigned char> 
 	f.write((const char*)data.data(), std::streamsize(data.size()));
 }
 
+#if 0
 class vectorwrapbuf : public std::streambuf {
 public:
 	using traits_type = typename std::streambuf::traits_type;
@@ -128,6 +129,7 @@ private:
 		}
 	}
 };
+#endif
 
 } // vectorwrapbuf
 

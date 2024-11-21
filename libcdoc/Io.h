@@ -234,21 +234,21 @@ class CDOC_EXPORT VectorSource : public DataSource {
 public:
 	VectorSource(const std::vector<uint8_t>& data) : _data(data), _ptr(0) {}
 
-	int seek(size_t pos) {
+    int seek(size_t pos) override {
 		if (pos > _data.size()) return INPUT_STREAM_ERROR;
 		_ptr = pos;
 		return OK;
 	}
 
-	int64_t read(uint8_t *dst, size_t size) {
+    int64_t read(uint8_t *dst, size_t size) override {
 		size = std::min<size_t>(size, _data.size() - _ptr);
 		std::copy(_data.cbegin() + _ptr, _data.cbegin() + _ptr + size, dst);
 		_ptr += size;
 		return size;
 	}
 
-	bool isError() { return false; }
-	bool isEof() { return _ptr >= _data.size(); }
+    bool isError() override { return false; }
+    bool isEof() override { return _ptr >= _data.size(); }
 protected:
 	const std::vector<uint8_t>& _data;
 	size_t _ptr;

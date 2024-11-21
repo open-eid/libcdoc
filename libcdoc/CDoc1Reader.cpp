@@ -38,23 +38,13 @@ const std::set<std::string_view> SUPPORTED_KWAES = {
 class CDoc1Reader::Private
 {
 public:
-	struct Key
-	{
-		std::string id, recipient, name;
-		std::string method, agreement, derive, concatDigest;
-		std::vector<uint8_t> cert, publicKey, cipher;
-		std::vector<uint8_t> AlgorithmID, PartyUInfo, PartyVInfo;
-	};
-	struct File
-	{
-		std::string name, size, mime, id;
-	};
-
-	std::string file, mime, method;
-	std::vector<Key> _keys;
+    std::string file, mime, method;
 	std::vector<libcdoc::Lock *> locks;
-	std::vector<File> files;
-	std::map<std::string,std::string> properties;
+    std::map<std::string,std::string> properties;
+
+    std::vector<DDOCReader::File> files;
+    int64_t f_pos = -1;
+    std::unique_ptr<libcdoc::VectorSource> src;
 };
 
 const std::vector<const libcdoc::Lock>
@@ -137,7 +127,27 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 int
 CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
-	std::vector<uint8_t> data = this->decryptData(fmk);
+#ifdef USE_PULL
+    int64_t result = beginDecryption(fmk);
+    if (result != libcdoc::OK) return result;
+    std::string name;
+    int64_t size;
+    result = nextFile(name, size);
+    while (result == libcdoc::OK) {
+        result = dst->open(name, size);
+        if (result != libcdoc::OK) return result;
+        std::vector<uint8_t> t(size);
+        result = readData(t.data(), size);
+        if (result < 0) return result;
+        result = dst->write(t);
+        if (result < 0) return result;
+        result = nextFile(name, size);
+    }
+    if (result != libcdoc::END_OF_STREAM) return result;
+    result = finishDecryption();
+    return result;
+#else
+    std::vector<uint8_t> data = this->decryptData(fmk);
 	std::string mime = d->mime;
 	if (d->mime == MIME_ZLIB) {
 		libcdoc::VectorSource vsrc(data);
@@ -163,30 +173,78 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 	dst->close();
 	setLastError({});
 	return libcdoc::OK;
+#endif
 }
 
 int
 CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+    if (!d->files.empty() || (d->f_pos != -1)) {
+        setLastError("Container is already parsed");
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    std::vector<uint8_t> data = this->decryptData(fmk);
+    std::string mime = d->mime;
+    if (d->mime == MIME_ZLIB) {
+        libcdoc::VectorSource vsrc(data);
+        libcdoc::ZSource zsrc(&vsrc);
+        std::vector<uint8_t> tmp;
+        libcdoc::VectorConsumer vcons(tmp);
+        vcons.writeAll(zsrc);
+        data = std::move(tmp);
+        mime = d->properties["OriginalMimeType"];
+    }
+    if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
+        std::cerr << "Contains DDoc content" << mime;
+        d->files = DDOCReader::files(data);
+    } else {
+        d->files.push_back({
+            d->properties["Filename"],
+            "application/octet-stream",
+            std::move(data)
+        });
+    }
+    if (d->files.empty()) {
+        setLastError("Cannot parse container");
+        return libcdoc::IO_ERROR;
+    }
+    setLastError({});
+    return libcdoc::OK;
 }
 
 int
 CDoc1Reader::finishDecryption()
 {
-	return libcdoc::NOT_IMPLEMENTED;
+    d->src.release();
+    d->files.clear();
+    return libcdoc::OK;
 }
 
 int
 CDoc1Reader::nextFile(std::string& name, int64_t& size)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+    if (d->files.empty()) {
+        setLastError("Cannot parse container");
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    d->f_pos += 1;
+    if ((d->f_pos < 0) || (d->f_pos >= (int64_t) d->files.size())) {
+        return libcdoc::END_OF_STREAM;
+    }
+    name = d->files[d->f_pos].name;
+    size = d->files[d->f_pos].data.size();
+    d->src = std::make_unique<libcdoc::VectorSource>(d->files[d->f_pos].data);
+    return libcdoc::OK;
 }
 
 int64_t
 CDoc1Reader::readData(uint8_t *dst, size_t size)
 {
-	return libcdoc::NOT_IMPLEMENTED;
+    if (!d->src) {
+        setLastError("Cannot parse container");
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    return d->src->read(dst, size);
 }
 
 /**
@@ -226,21 +284,7 @@ CDoc1Reader::CDoc1Reader(const std::string &file)
 		{
 			std::string attr = reader.attribute("Name");
 			std::string value = reader.readText();
-			if(attr == "orig_file")
-			{
-				Private::File file;
-				size_t pos = 0, oldpos = 0;
-				file.name = value.substr(oldpos, (pos = value.find("|", oldpos)) - oldpos);
-				oldpos = pos + 1;
-				file.size = value.substr(oldpos, (pos = value.find("|", oldpos)) - oldpos);
-				oldpos = pos + 1;
-				file.mime = value.substr(oldpos, (pos = value.find("|", oldpos)) - oldpos);
-				oldpos = pos + 1;
-				file.id = value.substr(oldpos, (pos = value.find("|", oldpos)) - oldpos);
-				d->files.push_back(file);
-			}
-			else
-				d->properties[attr] = value;
+            d->properties[attr] = value;
 		}
 		// EncryptedData/KeyInfo/EncryptedKey
 		else if(reader.isElement("EncryptedKey"))
