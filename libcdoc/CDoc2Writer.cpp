@@ -79,7 +79,7 @@ CDoc2Writer::encryptInternal(libcdoc::MultiDataSource& src, const std::vector<li
 
 	std::string name;
 	int64_t size;
-	while (src.next(name, size)) {
+    while (src.next(name, size) == libcdoc::OK) {
 		if (priv->tar->open(name, size) < 0) return libcdoc::IO_ERROR;
 		if (priv->tar->writeAll(src) < 0) return libcdoc::IO_ERROR;
 	}
