@@ -414,6 +414,14 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 }
 
 std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>
+Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
+{
+    const uint8_t *p = der.data();
+    EVP_PKEY *key = d2i_PUBKEY(nullptr, &p, (long) der.size());
+    return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(key, EVP_PKEY_free);
+}
+
+std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>
 Crypto::genECKey(EVP_PKEY *params)
 {
 	EVP_PKEY *key = nullptr;

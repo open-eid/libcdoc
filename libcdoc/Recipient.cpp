@@ -1,8 +1,9 @@
 #define __RECIPIENT_CPP__
 
-#include "Certificate.h"
-
 #include "Recipient.h"
+
+#include "Certificate.h"
+#include "Crypto.h"
 
 namespace libcdoc {
 
@@ -18,10 +19,16 @@ Recipient::makeSymmetric(const std::string& label, int32_t kdf_iter)
 Recipient
 Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type)
 {
-	Recipient rcpt(Type::PUBLIC_KEY);
-	rcpt.label = label;
-	rcpt.rcpt_key = public_key;
-	rcpt.pk_type = pk_type;
+    if (public_key.empty()) return Recipient(Type::NONE);
+    Recipient rcpt(Type::PUBLIC_KEY);
+    rcpt.label = label;
+    rcpt.pk_type = pk_type;
+    if ((pk_type == PKType::ECC) && (public_key[0] == 0x30)) {
+        auto evp = Crypto::fromECPublicKeyDer(public_key);
+        rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
+    } else {
+        rcpt.rcpt_key = public_key;
+    }
 	return rcpt;
 }
 

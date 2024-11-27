@@ -62,8 +62,13 @@ public:
 	static std::vector<uint8_t> pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>& salt, uint32_t iter);
 
 	static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromRSAPublicKeyDer(const std::vector<uint8_t> &der);
+
+    /* Create public key from short encoding (0x04...) */
 	static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
-	static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> genECKey(EVP_PKEY *params);
+    /* Create public key from long encoding (0x30...) */
+    static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromECPublicKeyDer(const std::vector<uint8_t> &der);
+
+    static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> genECKey(EVP_PKEY *params);
 	static std::vector<uint8_t> toPublicKeyDer(EVP_PKEY *key);
 
 	static std::vector<uint8_t> random(uint32_t len = 32);
