@@ -6,6 +6,7 @@
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/aes.h>
+#include <openssl/err.h>
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
@@ -13,6 +14,8 @@
 
 #include <cmath>
 #include <cstring>
+
+#include <iostream>
 
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
@@ -410,6 +413,13 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 		return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(nullptr, EVP_PKEY_free);
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(der.size()));
+    if (!key)
+    {
+        unsigned long errorCode = ERR_get_error();
+        char errorMsg[256]{};
+        ERR_error_string_n(errorCode, errorMsg, 256);
+        std::cerr << errorMsg << std::endl;
+    }
 	return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(key, EVP_PKEY_free);
 }
 

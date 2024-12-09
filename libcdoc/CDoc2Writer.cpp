@@ -106,8 +106,8 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 {
 	std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
 #ifndef NDEBUG
-	std::cerr << "hmac" << libcdoc::Crypto::toHex(headerHMAC) << std::endl;
-	std::cerr << "nonce" << libcdoc::Crypto::toHex(priv->nonce) << std::endl;
+    std::cerr << "hmac: " << libcdoc::Crypto::toHex(headerHMAC) << std::endl;
+    std::cerr << "nonce: " << libcdoc::Crypto::toHex(priv->nonce) << std::endl;
 #endif
 
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
@@ -149,10 +149,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				}
 				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 	#ifndef NDEBUG
-				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
-				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
-				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
-				std::cerr << "encrytpedKek" << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
+                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
+                std::cerr << "xor: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
+                std::cerr << "encrytpedKek: " << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
 	#endif
 				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
 					auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
@@ -208,13 +208,13 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					return libcdoc::CRYPTO_ERROR;
 				}
 	#ifndef NDEBUG
-				std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
-				std::cerr << "ephPublicKeyDer" << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
-				std::cerr << "sharedSecret" << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
-				std::cerr << "kekPm" << libcdoc::Crypto::toHex(kekPm) << std::endl;
-				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
-				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
+                std::cerr << "info: " << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
+                std::cerr << "ephPublicKeyDer: " << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
+                std::cerr << "sharedSecret: " << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
+                std::cerr << "kekPm: " << libcdoc::Crypto::toHex(kekPm) << std::endl;
+                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
+                std::cerr << "xor: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
 	#endif
 				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
 					auto eccPublicKey = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
@@ -401,7 +401,7 @@ CDoc2Writer::finishEncryption()
 	}
 	std::vector<uint8_t> tag = priv->cipher->tag();
 #ifndef NDEBUG
-	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
+    std::cerr << "tag: " << libcdoc::Crypto::toHex(tag) << std::endl;
 #endif
 	dst->write(tag.data(), tag.size());
 	if (owned) dst->close();
