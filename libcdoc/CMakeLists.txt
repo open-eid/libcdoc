@@ -106,6 +106,7 @@ target_link_libraries(cdoc_priv
 add_library(cdoc SHARED
     ${PUBLIC_HEADERS}
     ${CDOC_SOURCES}
+    000.txt
 #    $<TARGET_OBJECTS:cdoc_obj>
 )
 
@@ -202,7 +203,8 @@ if(SWIG_FOUND)
         endif()
     endif()
     if(Python3_FOUND)
-        set(CMAKE_SWIG_FLAGS -py3)
+        # -py3 option is removed starting from SWIG-4.1.0
+        #set(CMAKE_SWIG_FLAGS -py3)
         set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
         swig_add_library(cdoc_python LANGUAGE python SOURCES ../libcdoc.i)
         target_compile_definitions(cdoc_python PRIVATE TARGET_NAME="$<TARGET_NAME:cdoc_python>")

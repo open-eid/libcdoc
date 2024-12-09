@@ -75,7 +75,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
 	if (!f || session) return PKCS11_ERROR;
 	unsigned long result = f->C_OpenSession(slot, CKF_SERIAL_SESSION, nullptr, nullptr, &session);
 	if(result != CKR_OK) {
-		if (P11_DEBUG) std::cerr << "PKCS11:C_OpenSession " << result << std::endl;
+        if (P11_DEBUG) std::cerr << "PKCS11:C_OpenSession failed, error code: 0x" << std::uppercase << std::hex << result << " ("<< std::dec << result << ")" << std::endl;
 		return PKCS11_ERROR;
 	}
 	if (!pin.empty()) {
@@ -145,7 +145,7 @@ libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT
 		if (P11_DEBUG) std::cerr << "PKCS11: C_FindObjectsInit " << err << std::endl;
 		return {};
 	}
-	CK_ULONG count = 32;
+    CK_ULONG count = 32;
 	std::vector<CK_OBJECT_HANDLE> result(count);
 	err = f->C_FindObjects(session, result.data(), CK_ULONG(result.size()), &count);
 	if(err != CKR_OK) {
@@ -154,7 +154,7 @@ libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT
 	} else {
 		result.resize(count);
 	}
-	err = f->C_FindObjectsFinal(session);
+    f->C_FindObjectsFinal(session);
 	return result;
 }
 
@@ -225,7 +225,10 @@ libcdoc::PKCS11Backend::~PKCS11Backend()
 #ifdef _WIN32
 	if(d->h) FreeLibrary(d->h);
 #else
-	if(d->h) dlclose(d->h);
+    if(d->h)
+    {
+        dlclose(d->h);
+    }
 #endif
 }
 
@@ -370,7 +373,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 	CK_OBJECT_HANDLE newkey = CK_INVALID_HANDLE;
 	unsigned long p11result = d->f->C_DeriveKey(d->session, &mech, d->key, newkey_template.data(), CK_ULONG(newkey_template.size()), &newkey);
 	if(p11result != CKR_OK) {
-		if (P11_DEBUG) std::cerr << "PKCS11:deriveECDH1() C_DeriveKey " << result << std::endl;
+        if (P11_DEBUG) std::cerr << "PKCS11:deriveECDH1() C_DeriveKey " << p11result << std::endl;
 		d->logout();
 		return CRYPTO_ERROR;
 	}
