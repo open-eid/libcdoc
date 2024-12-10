@@ -32,13 +32,18 @@ namespace libcdoc {
  */
 struct CDOC_EXPORT Configuration {
 	static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
+    static constexpr std::string_view KEYSERVER_ID = "KEYSERVER_ID";
+    static constexpr std::string_view KEYSERVER_HOST = "KEYSERVER_HOST";
+    static constexpr std::string_view KEYSERVER_SEND_PORT = "KEYSERVER_SEND_PORT";
+    static constexpr std::string_view KEYSERVER_FETCH_PORT = "KEYSERVER_FETCH_PORT";
 
 	Configuration() = default;
 	virtual ~Configuration() = default;
 
-	virtual std::string getValue(const std::string& param) = 0;
+    virtual std::string getValue(const std::string_view& param) = 0;
 
-	bool getBoolean(const std::string& param);
+    bool getBoolean(const std::string_view& param, bool def_val = false);
+    int getInt(const std::string_view& param, int def_val = 0);
 
 	Configuration (const Configuration&) = delete;
 	Configuration& operator= (const Configuration&) = delete;

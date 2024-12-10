@@ -8,10 +8,19 @@
 #include "CDoc2.h"
 
 bool
-libcdoc::Configuration::getBoolean(const std::string& param)
+libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)
 {
 	std::string val = getValue(param);
+    if (val.empty()) return def_val;
 	return val == "true";
+}
+
+int
+libcdoc::Configuration::getInt(const std::string_view& param, int def_val)
+{
+    std::string val = getValue(param);
+    if (val.empty()) return def_val;
+    return std::stoi(val);
 }
 
 std::string
@@ -61,7 +70,7 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
 	}
 	reader->conf = conf;
 	reader->crypto = crypto;
-	reader->network = network;
+    reader->network = network;
 	return reader;
 }
 
@@ -86,7 +95,7 @@ libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_owne
 	} else {
 		return nullptr;
 	}
-	writer->conf = conf;
+    writer->conf = conf;
 	writer->crypto = crypto;
 	writer->network = network;
 	return writer;

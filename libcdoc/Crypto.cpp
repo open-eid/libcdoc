@@ -462,14 +462,6 @@ Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, con
 	return OK;
 }
 
-std::string Crypto::toBase64(const uint8_t *data, size_t len)
-{
-	std::string result(((len + 2) / 3) * 4, 0);
-	int size = EVP_EncodeBlock((uint8_t*)&result[0], data, int(len));
-	result.resize(size_t(size));
-	return result;
-}
-
 X509* Crypto::toX509(const std::vector<uint8_t> &data)
 {
 	const uint8_t *p = data.data();

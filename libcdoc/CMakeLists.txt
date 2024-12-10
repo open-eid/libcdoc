@@ -26,6 +26,7 @@ set(CDOC_SOURCES
     Recipient.cpp
     Lock.cpp
     CryptoBackend.cpp
+    NetworkBackend.cpp
     PKCS11Backend.cpp
 )
 
@@ -44,12 +45,13 @@ target_include_directories(cdoc_obj PUBLIC
 )
 
 set(CDOC_PRIV_SOURCES
-    Certificate.cpp
-    Crypto.cpp
-    Tar.cpp
-    XMLReader.cpp
-    XMLWriter.cpp
-    ZStream.cpp
+    Certificate.cpp Certificate.h
+    Connect.cpp Connect.h
+    Crypto.cpp Crypto.h
+    Tar.cpp Tar.h
+    XMLReader.cpp XmlReader.h
+    XMLWriter.cpp XmlWriter.h
+    ZStream.cpp ZStream.h
     Utils.cpp
     CDoc1Reader.cpp
     CDoc1Writer.cpp
@@ -57,6 +59,8 @@ set(CDOC_PRIV_SOURCES
     CDoc2Writer.cpp
     DDocReader.cpp
     DDocWriter.cpp
+    Utils.cpp Utils.h
+    X509Cert.cpp X509Cert.h
     XmlReader.cpp XmlReader.h
     XMLWriter.cpp XmlWriter.h
 )
@@ -99,13 +103,15 @@ target_link_libraries(cdoc_priv
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
     ${ZLIB_LIBRARY}
     ${LIBXML2_LIBRARIES}
-    ${OPENSSL_CRYPTO_LIBRARY}
+    ${OPENSSL_LIBRARIES}
     ${LIBS}
 )
 
 add_library(cdoc SHARED
     ${PUBLIC_HEADERS}
     ${CDOC_SOURCES}
+    NetworkBackend.cpp
+    Utils.cpp
 #    $<TARGET_OBJECTS:cdoc_obj>
 )
 

@@ -71,17 +71,6 @@ print_usage(ostream& ofs)
     //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
 }
 
-static std::vector<uint8_t>
-fromHex(const std::string& hex) {
-	std::vector<uint8_t> val(hex.size() / 2);
-	char c[3] = {0};
-	for (size_t i = 0; i < (hex.size() & 0xfffffffe); i += 2) {
-		std::copy(hex.cbegin() + i, hex.cbegin() + i + 2, c);
-		val[i / 2] = (uint8_t) strtol(c, NULL, 16);
-	}
-	return std::move(val);
-}
-
 static std::vector<std::string>
 split (const std::string &s, char delim = ':') {
 	std::vector<std::string> result;
@@ -98,9 +87,18 @@ fromStr(const std::string& str) {
 	return std::vector<uint8_t>(str.cbegin(), str.cend());
 }
 
+//
+// libcdoc::Configuration implementation
+//
+
 struct ToolConf : public libcdoc::Configuration {
-	std::string getValue(const std::string& param) override final {
-		return "false";
+    bool use_keyserver = false;
+
+    std::string getValue(const std::string_view& param) override final {
+        if (param == libcdoc::Configuration::USE_KEYSERVER) {
+            return use_keyserver ? "true" : "false";
+        }
+        return "true";
 	}
 };
 
@@ -156,6 +154,32 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 		secret =rcpt.secret;
 		return (secret.empty()) ? INVALID_PARAMS : libcdoc::OK;
 	}
+
+    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) override final {
+        if (p11) return p11->sign(dst, algorithm, digest, label);
+        return libcdoc::NOT_IMPLEMENTED;
+    }
+};
+
+struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
+    ToolCrypto *crypto;
+
+    std::string label;
+
+    explicit ToolNetwork(ToolCrypto *_crypto) : crypto(_crypto) {
+    }
+
+    int getTLSCertificate(std::vector<uint8_t>& dst) override final {
+        if (!crypto->p11->rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = crypto->p11->rcpts.at(label);
+        bool rsa = false;
+        return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
+    }
+
+    int signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
+        return crypto->p11->sign(dst, algorithm, digest, label);
+    }
+
 };
 
 #define PUSH true
@@ -176,6 +200,7 @@ encrypt(int argc, char *argv[])
     std::cout << "Encrypting" << std::endl;
 
 	ToolCrypto crypto;
+    ToolNetwork network(&crypto);
 
 	std::string library;
 	std::vector<std::string> files;
@@ -210,7 +235,7 @@ encrypt(int argc, char *argv[])
 				crypto.rcpts[label] = {
 					RcptInfo::KEY,
 					{},
-					fromHex(parts[2])
+                    libcdoc::fromHex(parts[2])
 				};
 			} else if (parts[1] == "pw") {
                 if (parts.size() != 3)
@@ -235,7 +260,7 @@ encrypt(int argc, char *argv[])
 					slot = std::stol(parts[2]);
 				}
 				std::string& pin = parts[3];
-				std::vector<uint8_t> key_id = fromHex(parts[4]);
+                std::vector<uint8_t> key_id = libcdoc::fromHex(parts[4]);
 				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
 					RcptInfo::P11_SYMMETRIC,
@@ -254,7 +279,7 @@ encrypt(int argc, char *argv[])
 					slot = std::stol(parts[2]);
 				}
 				std::string& pin = parts[3];
-				std::vector<uint8_t> key_id = fromHex(parts[4]);
+                std::vector<uint8_t> key_id = libcdoc::fromHex(parts[4]);
 				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
 					RcptInfo::P11_PKI,
@@ -296,7 +321,8 @@ encrypt(int argc, char *argv[])
         return 1;
 	}
 	if (!library.empty()) crypto.connectLibrary(library);
-	std::vector<libcdoc::Recipient> keys;
+
+    std::vector<libcdoc::Recipient> keys;
     for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
         const std::string& label = pair.first;
 		const RcptInfo& rcpt = pair.second;
@@ -325,7 +351,7 @@ encrypt(int argc, char *argv[])
 		keys.push_back(key);
 	}
     ToolConf conf;
-    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, nullptr));
+    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, &network));
 
 	if (PUSH) {
 		writer->beginEncryption();
@@ -372,6 +398,8 @@ encrypt(int argc, char *argv[])
 int decrypt(int argc, char *argv[])
 {
 	ToolCrypto crypto;
+    ToolNetwork network(&crypto);
+
     std::string library;
 
 	std::string label;
@@ -381,6 +409,12 @@ int decrypt(int argc, char *argv[])
     std::string key_label;
     std::string file;
     std::string basePath;
+
+    // Keyserver info
+    std::string tls_cert_label;
+    std::vector<uint8_t> tls_cert_id;
+    std::vector<uint8_t> tls_cert_pin;
+
     for (int i = 0; i < argc; i++)
     {
         if (!strcmp(argv[i], "--label") && ((i + 1) < argc)) {
@@ -419,8 +453,7 @@ int decrypt(int argc, char *argv[])
                 print_usage(cerr);
                 return 1;
             }
-            string_view s(argv[i + 1]);
-            key_label.assign(s.cbegin(), s.cend());
+            key_label = argv[i + 1];
             i += 1;
         } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
             library = argv[i + 1];
@@ -447,14 +480,16 @@ int decrypt(int argc, char *argv[])
     }
     if (!library.empty()) crypto.connectLibrary(library);
 
-	crypto.rcpts[label] = {
+    network.label = label;
+
+    crypto.rcpts[label] = {
         RcptInfo::ANY,
 		{},
         secret,
         slot, key_id, key_label
 	};
 	ToolConf conf;
-    unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, nullptr));
+    unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, &network));
     std::cout << "Reader created" << std::endl;
     std::vector<const libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {

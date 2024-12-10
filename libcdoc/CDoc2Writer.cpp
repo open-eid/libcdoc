@@ -126,54 +126,57 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 }
 
 int
-CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc::Recipient>& keys, const std::vector<uint8_t>& fmk)
+CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc::Recipient>& recipients, const std::vector<uint8_t>& fmk)
 {
 	flatbuffers::FlatBufferBuilder builder;
-	std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> recipients;
+    std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> fb_rcpts;
 
 	std::vector<uint8_t> xor_key(libcdoc::CDoc2::KEY_LEN);
-	for(const libcdoc::Recipient& key: keys) {
-		if (key.isPKI()) {
-			const libcdoc::Recipient& pki = key;
-			if(pki.pk_type == libcdoc::Recipient::PKType::RSA) {
+    for(const libcdoc::Recipient& rcpt: recipients) {
+        if (rcpt.isPKI()) {
+            if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
 				std::vector<uint8_t> kek;
 				crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
 				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 					setLastError("Internal error");
 					return libcdoc::CRYPTO_ERROR;
 				}
-				auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(pki.rcpt_key);
+                auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt.rcpt_key);
 				if(!publicKey) {
 					setLastError("Invalid RSA key");
 					return libcdoc::CRYPTO_ERROR;
 				}
 				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 	#ifndef NDEBUG
-				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
-				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
-				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
-				std::cerr << "encrytpedKek" << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(rcpt.rcpt_key) << std::endl;
+                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
+                std::cerr << "xor: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
+                std::cerr << "encrytpedKek: " << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
 	#endif
-				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
+                if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
 					auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
-																					  builder.CreateVector(pki.rcpt_key),
+                                                                                      builder.CreateVector(rcpt.rcpt_key),
 																					  builder.CreateVector(encrytpedKek));
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::RSAPublicKeyCapsule,
 																	  rsaPublicKey.Union(),
-																	  builder.CreateString(pki.label),
+                                                                      builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-					recipients.push_back(offs);
+                    fb_rcpts.push_back(offs);
 				} else {
 					std::pair<std::string,std::string> serverinfo;
-					int result = network->sendKey(serverinfo, pki.rcpt_key, std::vector<uint8_t>(encrytpedKek.cbegin(), encrytpedKek.cend()), "rsa");
+                    int result = network->sendKey(serverinfo, rcpt, encrytpedKek, "rsa");
 					if (result < 0) {
 						setLastError(network->getLastErrorStr(result));
 						return libcdoc::IO_ERROR;
 					}
-					auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
-																				builder.CreateVector(pki.rcpt_key));
+#ifndef NDEBUG
+                    std::cerr << "Keyserver Id:" << serverinfo.first << std::endl;
+                    std::cerr << "Transaction Id: " << serverinfo.second << std::endl;
+#endif
+                    auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
+                                                                                builder.CreateVector(rcpt.rcpt_key));
 					auto keyServer = cdoc20::recipients::CreateKeyServerCapsule(builder,
 																				cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
 																				rsaKeyServer.Union(),
@@ -182,13 +185,13 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::KeyServerCapsule,
 																	  keyServer.Union(),
-																	  builder.CreateString(pki.label),
+                                                                      builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-					recipients.push_back(offs);
+                    fb_rcpts.push_back(offs);
 				}
 			} else {
-				auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(pki.rcpt_key, NID_secp384r1);
+                auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
 				if(!publicKey) {
 					setLastError("Invalid ECC key");
 					return libcdoc::CRYPTO_ERROR;
@@ -199,7 +202,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
 				std::string info_str = std::string() + libcdoc::CDoc2::KEK.data() +
 						cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
-						std::string(pki.rcpt_key.cbegin(), pki.rcpt_key.cend()) +
+                        std::string(rcpt.rcpt_key.cbegin(), rcpt.rcpt_key.cend()) +
 						std::string(ephPublicKeyDer.cbegin(), ephPublicKeyDer.cend());
 
 				std::vector<uint8_t> kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
@@ -208,36 +211,40 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					return libcdoc::CRYPTO_ERROR;
 				}
 	#ifndef NDEBUG
-				std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
-				std::cerr << "ephPublicKeyDer" << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
-				std::cerr << "sharedSecret" << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
-				std::cerr << "kekPm" << libcdoc::Crypto::toHex(kekPm) << std::endl;
-				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
-				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
+                std::cerr << "info: " << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(rcpt.rcpt_key) << std::endl;
+                std::cerr << "ephPublicKeyDer: " << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
+                std::cerr << "sharedSecret: " << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
+                std::cerr << "kekPm: " << libcdoc::Crypto::toHex(kekPm) << std::endl;
+                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
+                std::cerr << "xor: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
 	#endif
-				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER.data())) {
+                if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
 					auto eccPublicKey = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
 																					  cdoc20::recipients::EllipticCurve::secp384r1,
-																					  builder.CreateVector(pki.rcpt_key),
+                                                                                      builder.CreateVector(rcpt.rcpt_key),
 																					  builder.CreateVector(ephPublicKeyDer));
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::ECCPublicKeyCapsule,
 																	  eccPublicKey.Union(),
-																	  builder.CreateString(pki.label),
+                                                                      builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-					recipients.push_back(offs);
+                    fb_rcpts.push_back(offs);
 				} else {
 					std::pair<std::string,std::string> serverinfo;
-					int result = network->sendKey(serverinfo, pki.rcpt_key, ephPublicKeyDer, "ecc_secp384r1");
+                    int result = network->sendKey(serverinfo, rcpt, ephPublicKeyDer, "ecc_secp384r1");
 					if (result < 0) {
 						setLastError(network->getLastErrorStr(result));
 						return libcdoc::IO_ERROR;
 					}
-					auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
+#ifndef NDEBUG
+                    std::cerr << "Keyserver Id:" << serverinfo.first << std::endl;
+                    std::cerr << "Transaction Id: " << serverinfo.second << std::endl;
+#endif
+                    auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
 																				cdoc20::recipients::EllipticCurve::secp384r1,
-																				builder.CreateVector(pki.rcpt_key));
+                                                                                builder.CreateVector(rcpt.rcpt_key));
 					auto keyServer = cdoc20::recipients::CreateKeyServerCapsule(builder,
 																				cdoc20::recipients::KeyDetailsUnion::EccKeyDetails,
 																				eccKeyServer.Union(),
@@ -246,14 +253,14 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::KeyServerCapsule,
 																	  keyServer.Union(),
-																	  builder.CreateString(pki.label),
+                                                                      builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-					recipients.push_back(offs);
+                    fb_rcpts.push_back(offs);
 				}
 			}
-		} else if (key.isSymmetric()) {
-			const libcdoc::Recipient& sk = key;
+        } else if (rcpt.isSymmetric()) {
+            const libcdoc::Recipient& sk = rcpt;
 			std::string info_str = libcdoc::CDoc2::getSaltForExpand(sk.label);
 			std::vector<uint8_t> kek_pm(32);
 			std::vector<uint8_t> salt;
@@ -279,7 +286,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 																  builder.CreateString(sk.label),
 																  builder.CreateVector(xor_key),
 																  cdoc20::header::FMKEncryptionMethod::XOR);
-				recipients.push_back(offs);
+                fb_rcpts.push_back(offs);
 			} else {
 				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
 																			 builder.CreateVector(salt));
@@ -289,7 +296,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 																  builder.CreateString(sk.label),
 																  builder.CreateVector(xor_key),
 																  cdoc20::header::FMKEncryptionMethod::XOR);
-				recipients.push_back(offs);
+                fb_rcpts.push_back(offs);
 			}
 		} else {
 			setLastError("Invalid recipient type");
@@ -297,7 +304,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 		}
 	}
 
-	auto offset = cdoc20::header::CreateHeader(builder, builder.CreateVector(recipients),
+    auto offset = cdoc20::header::CreateHeader(builder, builder.CreateVector(fb_rcpts),
 											   cdoc20::header::PayloadEncryptionMethod::CHACHA20POLY1305);
 	builder.Finish(offset);
 

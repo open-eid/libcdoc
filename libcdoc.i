@@ -6,7 +6,6 @@
 #include "libcdoc/Lock.h"
 #include "libcdoc/CDocWriter.h"
 #include "libcdoc/CDocReader.h"
-#include "libcdoc/Recipient.h"
 %}
 
 // Handle standard C++ types
@@ -173,11 +172,11 @@
 
 %include "CDoc.h"
 %include "Io.h"
+%include "Recipient.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "Lock.h"
-%include "Recipient.h"
 %include "CDocReader.h"
 %include "CDocWriter.h"
 

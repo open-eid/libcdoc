@@ -20,7 +20,9 @@
  *
  */
 
+#include <libcdoc/CryptoBackend.h>
 #include <libcdoc/Exports.h>
+#include <libcdoc/Recipient.h>
 
 #include <vector>
 
@@ -40,23 +42,55 @@ struct CDOC_EXPORT NetworkBackend {
 	/**
 	 * @brief send key material to keyserver
 	 * @param result a destination container of (keyserver_id, transaction_id)
-	 * @param recipient_id
+     * @param recipient
 	 * @param key_material
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
-	virtual int sendKey (std::pair<std::string,std::string>& result, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type) = 0;
+    virtual int sendKey (std::pair<std::string,std::string>& result, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) = 0;
 	/**
 	 * @brief fetch key material from keyserver
 	 * @param result a destination container for key material
-	 * @param keyserver_id
+     * @param recipient_key
 	 * @param transaction_id
 	 * @return error code or OK
 	 */
-	virtual int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) = 0;
+    virtual int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) = 0;
 
-	NetworkBackend (const NetworkBackend&) = delete;
+    /**
+     * @brief get client TLS certificate in der format
+     * @param dst a destination container for certificate
+     * @return error code or OK
+     */
+    virtual int getTLSCertificate(std::vector<uint8_t>& dst) {
+        return NOT_IMPLEMENTED;
+    }
+
+    /**
+     * @brief sign TLS digest with client's private key
+     * @param dst a destination container for signature
+     * @param algorithm signing algorithm
+     * @param digest data to be signed
+     * @return error code or OK
+     */
+    virtual int signTLS(std::vector<uint8_t>& dst, CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) {
+        return NOT_IMPLEMENTED;
+    }
+
+    NetworkBackend (const NetworkBackend&) = delete;
 	NetworkBackend& operator= (const NetworkBackend&) = delete;
+};
+
+struct CDOC_EXPORT DefaultNetworkBackend : public NetworkBackend {
+    explicit DefaultNetworkBackend();
+    ~DefaultNetworkBackend();
+
+    int sendKey (std::pair<std::string,std::string>& result, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) override final;
+    int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
+
+private:
+    struct Private;
+    Private *d;
 };
 
 } // namespace libcdoc

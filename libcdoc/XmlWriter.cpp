@@ -158,7 +158,7 @@ void XMLWriter::writeBase64Element(const NS &ns, const std::string &name, const 
 	static const size_t bufLen = 48 * 10240;
 	for (size_t i = 0; i < data.size(); i += bufLen)
 	{
-		std::string b64 = libcdoc::Crypto::toBase64(&data[i], std::min<size_t>(data.size() - i, bufLen));
+        std::string b64 = libcdoc::toBase64(&data[i], std::min<size_t>(data.size() - i, bufLen));
 		xmlTextWriterWriteRaw(d->w, (const xmlChar*)b64.c_str());
 	}
 	writeEndElement(ns);

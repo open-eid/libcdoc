@@ -10,6 +10,22 @@
 
 namespace libcdoc {
 
+std::string toBase64(const uint8_t *data, size_t len);
+static std::string toBase64(const std::vector<uint8_t> data) {
+    return toBase64(data.data(), data.size());
+}
+static std::vector<uint8_t>
+fromHex(const std::string_view& hex) {
+    std::vector<uint8_t> val(hex.size() / 2);
+    char c[3] = {0};
+    for (size_t i = 0; i < (hex.size() & 0xfffffffe); i += 2) {
+        std::copy(hex.cbegin() + i, hex.cbegin() + i + 2, c);
+        val[i / 2] = (uint8_t) strtol(c, NULL, 16);
+    }
+    return std::move(val);
+}
+
+
 #ifdef _WIN32
 #include <Windows.h>
 

@@ -22,6 +22,7 @@
 
 #include <libcdoc/CDoc.h>
 #include <libcdoc/Exports.h>
+#include <libcdoc/Lock.h>
 
 #include <string>
 #include <vector>
@@ -41,6 +42,13 @@ struct CDOC_EXPORT CryptoBackend {
 	static constexpr int OPENSSL_ERROR = -202;
 
 	static constexpr int ECC_KEY_LEN = 32;
+
+    enum HashAlgorithm : uint32_t {
+        SHA_224,
+        SHA_256,
+        SHA_384,
+        SHA_512
+    };
 
 	CryptoBackend() = default;
 	virtual ~CryptoBackend() = default;
@@ -139,6 +147,9 @@ struct CDOC_EXPORT CryptoBackend {
 	 */
 	virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
 							int32_t kdf_iter, const std::string& label);
+
+    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) = 0;
+
 
 	CryptoBackend (const CryptoBackend&) = delete;
 	CryptoBackend& operator= (const CryptoBackend&) = delete;
