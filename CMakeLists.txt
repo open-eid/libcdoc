@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
 project(libcdoc VERSION 0.1.0)
 
@@ -21,7 +21,7 @@ set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)
 include(CPack)
 
 find_package(Doxygen)
-find_package(OpenSSL 1.1.1 REQUIRED)
+find_package(OpenSSL 3.0.0 REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(LibXml2 REQUIRED)
 find_package(FlatBuffers CONFIG REQUIRED NAMES FlatBuffers Flatbuffers)
