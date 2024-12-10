@@ -16,9 +16,18 @@ using namespace std;
 
 struct RcptInfo {
 	enum Type {
-        /* Detect type from container */
+        // Detect type from container
         ANY,
-		CERT, PASSWORD, KEY, P11_SYMMETRIC, P11_PKI
+        CERT,
+        PASSWORD,
+        // Symetric key from command line
+        SKEY,
+        // Public key from command line
+        PKEY,
+        // Symetric key from PKCS11 device
+        P11_SYMMETRIC,
+        // Public key from PKC11 device
+        P11_PKI
 	};
 	Type type;
 	std::vector<uint8_t> cert;
@@ -39,33 +48,37 @@ struct RcptInfo {
 static void
 print_usage(ostream& ofs)
 {
-    ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]" << std::endl;
-    ofs << "  Encrypt files for one or more recipients" << std::endl;
-    ofs << "  RECIPIENT has to be one of the following:" << std::endl;
-    ofs << "    label:cert:CERTIFICATE_HEX - public key from certificate" << std::endl;
-    ofs << "    label:key:SECRET_KEY_HEX - AES key" << std::endl;
-    ofs << "    label:pw:PASSWORD - Derive key using PWBKDF" << std::endl;
-    ofs << "    label:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << std::endl;
-    ofs << "    label:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << std::endl;
-    ofs << std::endl;
-    ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << std::endl;
-    ofs << "  Decrypt container using lock specified by label" << std::endl;
-    ofs << "  Supported arguments" << std::endl;
-    ofs << "    --label LABEL   CDoc container lock label" << std::endl;
-    ofs << "    --slot SLOT     PKCS11 slot number" << std::endl;
-    ofs << "    --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)" << std::endl;
-    ofs << "    --key-id        PKCS11 key id" << std::endl;
-    ofs << "    --key-label     PKCS11 key label" << std::endl;
-    ofs << std::endl;
-    ofs << "cdoc-tool locks FILE" << std::endl;
-    ofs << "  Show locks in a container file" << std::endl;
+    ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] -v1 --out OUTPUTFILE FILE [FILE...]" << endl;
+    ofs << "  Encrypt files for one or more recipients" << endl;
+    ofs << "  RECIPIENT has to be one of the following:" << endl;
+    ofs << "    label:cert:CERTIFICATE_HEX - public key from certificate" << endl;
+    ofs << "    label:skey:SECRET_KEY_HEX - AES key" << endl;
+    ofs << "    label:pkey:SECRET_KEY_HEX - public key" << endl;
+    ofs << "    label:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
+    ofs << "    label:pw:PASSWORD - Derive key using PWBKDF" << endl;
+    ofs << "    label:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
+    ofs << "    label:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
+    ofs << "  -v1 creates CDOC1 version container. Supported only on encryption with certificate." << endl;
+    ofs << endl;
+    ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << endl;
+    ofs << "  Decrypt container using lock specified by label" << endl;
+    ofs << "  Supported arguments" << endl;
+    ofs << "    --label LABEL   CDoc container lock label" << endl;
+    ofs << "    --slot SLOT     PKCS11 slot number" << endl;
+    ofs << "    --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)" << endl;
+    ofs << "    --key-id        PKCS11 key id" << endl;
+    ofs << "    --key-label     PKCS11 key label" << endl;
+    ofs << "    --library       path to the PKCS11 library to be used" << endl;
+    ofs << endl;
+    ofs << "cdoc-tool locks FILE" << endl;
+    ofs << "  Show locks in a container file" << endl;
 
     //<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
     //	<< "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt RECIPIENT] [--file INFILE] [...] --out OUTFILE" << std::endl
     //	<< "  where RECIPIENT is in form label:TYPE:value" << std::endl
     //	<< "    where TYPE is 'cert', 'key' or 'pw'" << std::endl
 #ifdef _WIN32
-    //	<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
+    //	<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << endl
 #endif
     //	<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
     //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
@@ -123,7 +136,7 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 
 struct ToolCrypto : public libcdoc::CryptoBackend {
 	std::map<std::string, RcptInfo> rcpts;
-	std::unique_ptr<ToolPKCS11> p11;
+    std::unique_ptr<libcdoc::PKCS11Backend> p11;
 
 	ToolCrypto() = default;
 
@@ -170,8 +183,8 @@ struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
     }
 
     int getTLSCertificate(std::vector<uint8_t>& dst) override final {
-        if (!crypto->p11->rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
-        const RcptInfo& rcpt = crypto->p11->rcpts.at(label);
+        if (!crypto->rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = crypto->rcpts.at(label);
         bool rsa = false;
         return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
     }
@@ -194,17 +207,18 @@ struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
 //	 label:p11pk:SLOT:[PIN]:[ID]:[LABEL]
 //
 
-int
-encrypt(int argc, char *argv[])
+int encrypt(int argc, char *argv[])
 {
     std::cout << "Encrypting" << std::endl;
 
 	ToolCrypto crypto;
     ToolNetwork network(&crypto);
 
+    bool libraryRequired = false;
 	std::string library;
 	std::vector<std::string> files;
 	std::string out;
+    int cdocVersion = 2;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
 			std::vector<std::string> parts = split(argv[i + 1]);
@@ -213,8 +227,9 @@ encrypt(int argc, char *argv[])
                 print_usage(std::cerr);
                 return 1;
             }
-			const std::string& label = parts[0];
-			if (parts[1] == "cert") {
+            const string& label = parts[0];
+            const string& method = parts[1];
+            if (method == "cert") {
                 if (parts.size() != 3)
                 {
                     print_usage(std::cerr);
@@ -225,19 +240,77 @@ encrypt(int argc, char *argv[])
 					libcdoc::readFile(libcdoc::toUTF8(parts[2])),
 					{}
 				};
-			} else if (parts[1] == "key") {
+            }
+            else if (method == "key" || method == "skey" || method == "pkey")
+            {
+                // For backward compatibility leave also "key" as the synonym for "skey" method.
                 if (parts.size() != 3)
                 {
-                    print_usage(std::cerr);
+                    print_usage(cerr);
                     return 1;
                 }
 
+                RcptInfo::Type type = method == "pkey" ? RcptInfo::PKEY : RcptInfo::SKEY;
+
 				crypto.rcpts[label] = {
-					RcptInfo::KEY,
+                    type,
 					{},
                     libcdoc::fromHex(parts[2])
 				};
-			} else if (parts[1] == "pw") {
+            }
+            else if (method == "pfkey")
+            {
+                if (parts.size() != 3)
+                {
+                    print_usage(cerr);
+                    return 1;
+                }
+
+                filesystem::path keyFilePath(parts[2]);
+                if (!filesystem::exists(keyFilePath))
+                {
+                    cerr << "Key file '" << keyFilePath << "' does not exist" << endl;
+                    return 1;
+                }
+                ifstream keyStream(keyFilePath, ios_base::in | ios_base::binary);
+                if (!keyStream)
+                {
+                    cerr << "File '" << keyFilePath << "' opening failed." << endl;
+                    return 1;
+                }
+
+                // ifstream::char_type firstChr;
+                // keyStream.get(firstChr);
+                // if (keyStream.bad())
+                // {
+                //     cerr << "File '" << keyFile << "' reading failed." << endl;
+                //     return 1;
+                // }
+
+                // DER files begin usually with 0x04 byte
+                // if (firstChr != 0x04)
+                // {
+                //     cerr << "File '" << keyFile << "' does not seem to be a DER file." << endl;
+                //     return 1;
+                // }
+
+                // Determine the file size
+                keyStream.seekg(0, ios_base::end);
+                size_t length = keyStream.tellg();
+
+                // Read the file
+                vector<uint8_t> key(length);
+                keyStream.seekg(0);
+                keyStream.read(reinterpret_cast<ifstream::char_type*>(key.data()), length);
+
+                crypto.rcpts[label] = {
+                    RcptInfo::PKEY,
+                    {},
+                    key
+                };
+            }
+            else if (method == "pw")
+            {
                 if (parts.size() != 3)
                 {
                     print_usage(std::cerr);
@@ -248,11 +321,16 @@ encrypt(int argc, char *argv[])
 					{},
 					std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
 				};
-			} else if (parts[1] == "p11sk") {
+            }
+            else if (method == "p11sk" || method == "p11pk")
+            {
+                RcptInfo::Type type = method == "p11sk" ? RcptInfo::P11_SYMMETRIC : RcptInfo::P11_PKI;
+
                 if (parts.size() < 5) {
                     print_usage(std::cerr);
                     return 1;
                 }
+                libraryRequired = true;
 				long slot;
 				if (parts[2].starts_with("0x")) {
 					slot = std::stol(parts[2].substr(2), nullptr, 16);
@@ -263,32 +341,24 @@ encrypt(int argc, char *argv[])
                 std::vector<uint8_t> key_id = libcdoc::fromHex(parts[4]);
 				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
 				crypto.rcpts[label] = {
-					RcptInfo::P11_SYMMETRIC,
+                    type,
                     {}, std::vector<uint8_t>(pin.cbegin(), pin.cend()),
                     slot, key_id, key_label
 				};
-			} else if (parts[1] == "p11pk") {
-                if (parts.size() < 5) {
-                    print_usage(std::cerr);
-                    return 1;
-                }
-				long slot;
-				if (parts[2].starts_with("0x")) {
-					slot = std::stol(parts[2].substr(2), nullptr, 16);
-				} else {
-					slot = std::stol(parts[2]);
-				}
-				std::string& pin = parts[3];
-                std::vector<uint8_t> key_id = libcdoc::fromHex(parts[4]);
-				std::string key_label = (parts.size() >= 6) ? parts[5] : "";
-				crypto.rcpts[label] = {
-					RcptInfo::P11_PKI,
-                    {}, std::vector<uint8_t>(pin.cbegin(), pin.cend()),
-                    slot, key_id, key_label
-				};
-			} else {
-				std::cerr << "Unkown method: " << parts[1] << std::endl;
-                print_usage(std::cerr);
+#ifndef NDEBUG
+                // For debugging
+                cout << "Method: " << method << endl;
+                cout << "Slot: " << slot << endl;
+                if (!pin.empty())
+                    cout << "Pin: " << pin << endl;
+                if (!key_id.empty())
+                    cout << "Key ID: " << parts[4] << endl;
+                if (!key_label.empty())
+                    cout << "Key label: " << key_label << endl;
+#endif
+            } else {
+                cerr << "Unkown method: " << method << endl;
+                print_usage(cerr);
                 return 1;
 			}
 			i += 1;
@@ -298,7 +368,13 @@ encrypt(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "--library") && ((i + 1) <= argc)) {
 			library = argv[i + 1];
 			i += 1;
-		} else if (argv[i][0] == '-') {
+        }
+        else if (!strcmp(argv[i], "-v1"))
+        {
+            cdocVersion = 1;
+            i++;
+        }
+        else if (argv[i][0] == '-') {
             print_usage(std::cerr);
             return 1;
 		} else {
@@ -320,48 +396,94 @@ encrypt(int argc, char *argv[])
         print_usage(std::cerr);
         return 1;
 	}
-	if (!library.empty()) crypto.connectLibrary(library);
 
-    std::vector<libcdoc::Recipient> keys;
+    // CDOC1 is supported only in case of encryption with certificate.
+    if (cdocVersion == 1)
+    {
+        for (const pair<string, RcptInfo>& rcpt : crypto.rcpts)
+        {
+            if (rcpt.second.type != RcptInfo::CERT)
+            {
+                cerr << "CDOC version 1 container can be used on encryption with certificate only." << endl;
+                print_usage(cerr);
+                return 1;
+            }
+        }
+    }
+
+    if (!library.empty())
+    {
+        crypto.connectLibrary(library);
+    }
+    else if (libraryRequired)
+    {
+        cerr << "Cryptographic library is required" << endl;
+        print_usage(cerr);
+        return 1;
+    }
+
+	std::vector<libcdoc::Recipient> keys;
     for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
         const std::string& label = pair.first;
 		const RcptInfo& rcpt = pair.second;
 		libcdoc::Recipient key;
-		if (rcpt.type == RcptInfo::Type::CERT) {
+        if (rcpt.type == RcptInfo::Type::CERT)
+        {
 			key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
-		} else if (rcpt.type == RcptInfo::Type::KEY) {
+        }
+        else if (rcpt.type == RcptInfo::Type::SKEY) {
 			key = libcdoc::Recipient::makeSymmetric(label, 0);
 			std::cerr << "Creating symmetric key:" << std::endl;
-		} else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
+        }
+        else if (rcpt.type == RcptInfo::Type::PKEY)
+        {
+            key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
+            std::cerr << "Creating public key:" << std::endl;
+        }
+        else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC)
+        {
 			key = libcdoc::Recipient::makeSymmetric(label, 0);
-		} else if (rcpt.type == RcptInfo::Type::P11_PKI) {
+        }
+        else if (rcpt.type == RcptInfo::Type::P11_PKI)
+        {
 			std::vector<uint8_t> val;
 			bool rsa;
-            int result = crypto.p11->getPublicKey(val, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
+            ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
+            int result = p11->getPublicKey(val, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
 			if (result != libcdoc::OK) {
 				std::cerr << "No such public key: " << rcpt.key_label << std::endl;
 				continue;
 			}
 			std::cerr << "Public key (" << (rsa ? "rsa" : "ecc") << "):" << libcdoc::Crypto::toHex(val) << std::endl;
 			key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
-		} else if (rcpt.type == RcptInfo::Type::PASSWORD) {
+        }
+        else if (rcpt.type == RcptInfo::Type::PASSWORD)
+        {
 			std::cerr << "Creating password key:" << std::endl;
 			key = libcdoc::Recipient::makeSymmetric(label, 65535);
 		}
+
 		keys.push_back(key);
 	}
+
+    if (keys.empty())
+    {
+        cerr << "No key for encryption was found" << endl;
+        return 1;
+    }
+
     ToolConf conf;
-    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, &network));
+    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(cdocVersion, out, &conf, &crypto, nullptr));
 
 	if (PUSH) {
-		writer->beginEncryption();
+        writer->beginEncryption();
 		for (const libcdoc::Recipient& rcpt : keys) {
 			writer->addRecipient(rcpt);
 		}
 		for (const std::string& file : files) {
 			std::filesystem::path path(file);
 			if (!std::filesystem::exists(path)) {
-				std::cerr << "File does not exist: " << file;
+                cerr << "File does not exist: " << file << endl;
 				return 1;
 			}
 			size_t size = std::filesystem::file_size(path);
@@ -393,7 +515,7 @@ encrypt(int argc, char *argv[])
 //   --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)
 //   --key-id        PKCS11 key id
 //   --key-label     PKCS11 key label
-//
+//   --library       full path to cryptographic library to be used (needed for decryption with PKCS11)
 
 int decrypt(int argc, char *argv[])
 {
@@ -415,6 +537,8 @@ int decrypt(int argc, char *argv[])
     std::vector<uint8_t> tls_cert_id;
     std::vector<uint8_t> tls_cert_pin;
 
+    bool libraryRequired = false;
+
     for (int i = 0; i < argc; i++)
     {
         if (!strcmp(argv[i], "--label") && ((i + 1) < argc)) {
@@ -433,7 +557,8 @@ int decrypt(int argc, char *argv[])
                 print_usage(cerr);
                 return 1;
             }
-            std::string str(argv[i + 1]);
+            libraryRequired = true;
+            string str(argv[i + 1]);
             if (str.starts_with("0x")) {
                 slot = std::stol(str.substr(2), nullptr, 16);
             } else {
@@ -478,7 +603,17 @@ int decrypt(int argc, char *argv[])
         basePath = ".";
         basePath += filesystem::path::preferred_separator;
     }
-    if (!library.empty()) crypto.connectLibrary(library);
+
+    if (!library.empty())
+    {
+        crypto.connectLibrary(library);
+    }
+    else if (libraryRequired)
+    {
+        cerr << "Cryptographic library is required" << endl;
+        print_usage(cerr);
+        return 1;
+    }
 
     network.label = label;
 
@@ -493,7 +628,8 @@ int decrypt(int argc, char *argv[])
     std::cout << "Reader created" << std::endl;
     std::vector<const libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
-		if (lock.label == label) {
+        if (lock.label == label)
+        {
 			std::vector<uint8_t> fmk;
 			rdr->getFMK(fmk, lock);
             libcdoc::FileListConsumer fileWriter(basePath);

@@ -45,13 +45,12 @@ target_include_directories(cdoc_obj PUBLIC
 )
 
 set(CDOC_PRIV_SOURCES
-    Certificate.cpp Certificate.h
-    Connect.cpp Connect.h
-    Crypto.cpp Crypto.h
-    Tar.cpp Tar.h
-    XMLReader.cpp XmlReader.h
-    XMLWriter.cpp XmlWriter.h
-    ZStream.cpp ZStream.h
+    Certificate.cpp
+    Crypto.cpp
+    Tar.cpp
+    XMLReader.cpp
+    XMLWriter.cpp
+    ZStream.cpp
     Utils.cpp
     CDoc1Reader.cpp
     CDoc1Writer.cpp
@@ -59,8 +58,6 @@ set(CDOC_PRIV_SOURCES
     CDoc2Writer.cpp
     DDocReader.cpp
     DDocWriter.cpp
-    Utils.cpp Utils.h
-    X509Cert.cpp X509Cert.h
     XmlReader.cpp XmlReader.h
     XMLWriter.cpp XmlWriter.h
 )
@@ -101,18 +98,15 @@ target_include_directories(cdoc_priv PUBLIC
 target_link_libraries(cdoc_priv
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-    ${ZLIB_LIBRARY}
-    ${LIBXML2_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
+    ZLIB::ZLIB
+    LibXml2::LibXml2
+    OpenSSL::SSL
     ${LIBS}
 )
 
 add_library(cdoc SHARED
     ${PUBLIC_HEADERS}
     ${CDOC_SOURCES}
-    NetworkBackend.cpp
-    Utils.cpp
-#    $<TARGET_OBJECTS:cdoc_obj>
 )
 
 set_target_properties(cdoc PROPERTIES
@@ -208,6 +202,7 @@ if(SWIG_FOUND)
         endif()
     endif()
     if(Python3_FOUND)
+        # -py3 option is removed starting from SWIG-4.1.0
         set(CMAKE_SWIG_FLAGS -py3)
         set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
         swig_add_library(cdoc_python LANGUAGE python SOURCES ../libcdoc.i)

@@ -23,10 +23,14 @@ Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& p
     Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = label;
     rcpt.pk_type = pk_type;
-    if ((pk_type == PKType::ECC) && (public_key[0] == 0x30)) {
+    if (pk_type == PKType::ECC && public_key[0] == 0x30)
+    {
+        // 0x30 identifies SEQUENCE tag in ASN.1 encoding
         auto evp = Crypto::fromECPublicKeyDer(public_key);
         rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
-    } else {
+    }
+    else
+    {
         rcpt.rcpt_key = public_key;
     }
 	return rcpt;
