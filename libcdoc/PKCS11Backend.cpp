@@ -6,6 +6,8 @@
 
 #include "pkcs11.h"
 
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>

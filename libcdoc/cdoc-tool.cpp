@@ -84,17 +84,6 @@ print_usage(ostream& ofs)
     //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
 }
 
-static std::vector<std::string>
-split (const std::string &s, char delim = ':') {
-	std::vector<std::string> result;
-	std::stringstream ss(s);
-	std::string item;
-	while (getline (ss, item, delim)) {
-		result.push_back (item);
-	}
-	return result;
-}
-
 static std::vector<uint8_t>
 fromStr(const std::string& str) {
 	return std::vector<uint8_t>(str.cbegin(), str.cend());
@@ -105,14 +94,45 @@ fromStr(const std::string& str) {
 //
 
 struct ToolConf : public libcdoc::Configuration {
+    struct ServerData {
+        std::string ID;
+        std::string SEND_URL;
+        std::string FETCH_URL;
+
+        ServerData(std::string str) {
+            std::vector<std::string> parts = libcdoc::split(str, ';');
+            if (parts.size() > 0) ID = parts[0];
+            if (parts.size() > 1) SEND_URL = parts[1];
+            if (parts.size() > 2) FETCH_URL = parts[2];
+        }
+    };
+
     bool use_keyserver = false;
+    std::vector<ServerData> servers;
 
     std::string getValue(const std::string_view& param) override final {
         if (param == libcdoc::Configuration::USE_KEYSERVER) {
             return use_keyserver ? "true" : "false";
+        } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
+            if (!servers.empty()) {
+                return servers[0].ID;
+            }
         }
-        return "true";
+        return {};
 	}
+
+    std::string getValue(const std::string_view& domain, const std::string_view& param) override final {
+        for (auto& sdata : servers) {
+            if (sdata.ID == domain) {
+                if (param == libcdoc::Configuration::KEYSERVER_SEND_URL) {
+                    return sdata.SEND_URL;
+                } else if (param == libcdoc::Configuration::KEYSERVER_FETCH_URL) {
+                    return sdata.FETCH_URL;
+                }
+            }
+        }
+        return {};
+    }
 };
 
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
@@ -211,7 +231,8 @@ int encrypt(int argc, char *argv[])
 {
     std::cout << "Encrypting" << std::endl;
 
-	ToolCrypto crypto;
+    ToolConf conf;
+    ToolCrypto crypto;
     ToolNetwork network(&crypto);
 
     bool libraryRequired = false;
@@ -221,7 +242,7 @@ int encrypt(int argc, char *argv[])
     int cdocVersion = 2;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
-			std::vector<std::string> parts = split(argv[i + 1]);
+            std::vector<std::string> parts = libcdoc::split(argv[i + 1]);
             if (parts.size() < 3)
             {
                 print_usage(std::cerr);
@@ -266,42 +287,7 @@ int encrypt(int argc, char *argv[])
                     return 1;
                 }
 
-                filesystem::path keyFilePath(parts[2]);
-                if (!filesystem::exists(keyFilePath))
-                {
-                    cerr << "Key file '" << keyFilePath << "' does not exist" << endl;
-                    return 1;
-                }
-                ifstream keyStream(keyFilePath, ios_base::in | ios_base::binary);
-                if (!keyStream)
-                {
-                    cerr << "File '" << keyFilePath << "' opening failed." << endl;
-                    return 1;
-                }
-
-                // ifstream::char_type firstChr;
-                // keyStream.get(firstChr);
-                // if (keyStream.bad())
-                // {
-                //     cerr << "File '" << keyFile << "' reading failed." << endl;
-                //     return 1;
-                // }
-
-                // DER files begin usually with 0x04 byte
-                // if (firstChr != 0x04)
-                // {
-                //     cerr << "File '" << keyFile << "' does not seem to be a DER file." << endl;
-                //     return 1;
-                // }
-
-                // Determine the file size
-                keyStream.seekg(0, ios_base::end);
-                size_t length = keyStream.tellg();
-
-                // Read the file
-                vector<uint8_t> key(length);
-                keyStream.seekg(0);
-                keyStream.read(reinterpret_cast<ifstream::char_type*>(key.data()), length);
+                vector<uint8_t> key = libcdoc::readAllBytes(parts[2]);
 
                 crypto.rcpts[label] = {
                     RcptInfo::PKEY,
@@ -368,13 +354,15 @@ int encrypt(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "--library") && ((i + 1) <= argc)) {
 			library = argv[i + 1];
 			i += 1;
-        }
-        else if (!strcmp(argv[i], "-v1"))
-        {
+        } else if (!strcmp(argv[i], "-v1")) {
             cdocVersion = 1;
             i++;
-        }
-        else if (argv[i][0] == '-') {
+        } else if (!strcmp(argv[i], "--server") && ((i + 1) <= argc)) {
+            ToolConf::ServerData sdata(argv[i + 1]);
+            conf.use_keyserver = true;
+            conf.servers.push_back(sdata);
+            i += 1;
+        } else if (argv[i][0] == '-') {
             print_usage(std::cerr);
             return 1;
 		} else {
@@ -472,7 +460,6 @@ int encrypt(int argc, char *argv[])
         return 1;
     }
 
-    ToolConf conf;
     unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(cdocVersion, out, &conf, &crypto, nullptr));
 
 	if (PUSH) {
@@ -519,7 +506,8 @@ int encrypt(int argc, char *argv[])
 
 int decrypt(int argc, char *argv[])
 {
-	ToolCrypto crypto;
+    ToolConf conf;
+    ToolCrypto crypto;
     ToolNetwork network(&crypto);
 
     std::string library;
@@ -583,6 +571,11 @@ int decrypt(int argc, char *argv[])
         } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
             library = argv[i + 1];
             i += 1;
+        } else if (!strcmp(argv[i], "--server") && ((i + 1) <= argc)) {
+            ToolConf::ServerData sdata(argv[i + 1]);
+            conf.use_keyserver = true;
+            conf.servers.push_back(sdata);
+            i += 1;
         } else {
             if (file.empty())
                 file = argv[i];
@@ -623,7 +616,6 @@ int decrypt(int argc, char *argv[])
         secret,
         slot, key_id, key_label
 	};
-	ToolConf conf;
     unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, &network));
     std::cout << "Reader created" << std::endl;
     std::vector<const libcdoc::Lock> locks = rdr->getLocks();

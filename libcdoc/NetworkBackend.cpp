@@ -17,6 +17,7 @@
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
 
+#define keyserver_id "00000000-0000-0000-0000-000000000000";
 #define GET_HOST "cdoc2-keyserver.test.riaint.ee"
 #define GET_PORT 8444
 #define POST_HOST "cdoc2-keyserver.test.riaint.ee"
@@ -24,7 +25,7 @@
 
 struct libcdoc::DefaultNetworkBackend::Private {
     static ECDSA_SIG* ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const BIGNUM *inv, const BIGNUM *rp, EC_KEY *eckey);
-    static int rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const RSA *rsa);
+    static int rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const ::RSA *rsa);
 
     std::vector<X509 *> certs;
 
@@ -69,7 +70,7 @@ libcdoc::DefaultNetworkBackend::Private::ecdsa_do_sign(const unsigned char *dgst
 }
 
 int
-libcdoc::DefaultNetworkBackend::Private::rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const RSA *rsa)
+libcdoc::DefaultNetworkBackend::Private::rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const ::RSA *rsa)
 {
     auto *backend = (DefaultNetworkBackend *) RSA_get_ex_data(rsa, 0);
     auto algo = CryptoBackend::SHA_512;
@@ -112,41 +113,43 @@ libcdoc::DefaultNetworkBackend::~DefaultNetworkBackend()
 }
 
 int
-libcdoc::DefaultNetworkBackend::sendKey (std::pair<std::string,std::string>& result, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type)
+libcdoc::DefaultNetworkBackend::sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type)
 {
-    std::string keyserver_id = "00000000-0000-0000-0000-000000000000";
-    /* Create request JSON */
     nlohmann::json req_json = {
         {"recipient_id", libcdoc::toBase64(recipient.rcpt_key)},
         {"ephemeral_key_material", libcdoc::toBase64(key_material)},
-        {"capsule_type", type}
+        {"capsule_type", type }
     };
-
     std::string req_str = req_json.dump();
 
-    httplib::SSLClient cli(POST_HOST, POST_PORT);
+    std::string host, path;
+    int port;
+    int result = libcdoc::parseURL(url, host, port, path);
+    if (path == "/") path.clear();
+    if (result != libcdoc::OK) return result;
+
+    httplib::SSLClient cli(url, port);
     // Disable cert verification
     cli.enable_server_certificate_verification(false);
     // Disable host verification
     cli.enable_server_hostname_verification(false);
 
-    httplib::Result res = cli.Post("/key-capsules", req_str, "application/json");
+    httplib::Result res = cli.Post(path + "/key-capsules", req_str, "application/json");
     auto status = res->status;
     if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
 
     httplib::Response rsp = res.value();
-    std::string transaction_id = rsp.get_header_value("Location");
-    if (!transaction_id.empty()) {
-        result.first = keyserver_id;
+    std::string location = rsp.get_header_value("Location");
+    if (!location.empty()) {
         /* Remove /key-capsules/ */
-        result.second = transaction_id.substr(14);
+        dst = location.substr(14);
         return OK;
     }
     return libcdoc::IO_ERROR;
 }
 
 int
-libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& keyserver_id, const std::string& transaction_id)
+libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
 {
     std::vector<uint8_t> cert;
     int result = getTLSCertificate(cert);
@@ -160,12 +163,19 @@ libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::
         EC_KEY_set_ex_data(ec, 0, this);
         EVP_PKEY_set1_EC_KEY(pkey, ec);
     } else if (id == EVP_PKEY_RSA) {
-        RSA *rsa = (RSA *) EVP_PKEY_get1_RSA(pkey);
+        ::RSA *rsa = (::RSA *) EVP_PKEY_get1_RSA(pkey);
         RSA_set_method(rsa, d->rsamethod);
         RSA_set_ex_data(rsa, 0, this);
         EVP_PKEY_set1_RSA(pkey, rsa);
     }
-    httplib::SSLClient cli(GET_HOST, GET_PORT, x509, pkey);
+
+    std::string host, path;
+    int port;
+    result = libcdoc::parseURL(url, host, port, path);
+    if (path == "/") path.clear();
+    if (result != libcdoc::OK) return result;
+
+    httplib::SSLClient cli(host, port, x509, pkey);
 
     X509_STORE *store = SSL_CTX_get_cert_store(cli.ssl_context());
     X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
@@ -179,7 +189,8 @@ libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::
     // Disable host verification
     cli.enable_server_hostname_verification(false);
 
-    httplib::Result res = cli.Get("/key-capsules/" + transaction_id);
+    std::string full = path + "/key-capsules/" + transaction_id;
+    httplib::Result res = cli.Get(full);
     if (!res) return NETWORK_ERROR;
     httplib::Response rsp = res.value();
     auto status = rsp.status;

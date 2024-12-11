@@ -1,12 +1,12 @@
-#ifndef UTILS_H
-#define UTILS_H
-
-#include <algorithm>
-#include <codecvt>
-#include <iostream>
-#include <vector>
+#ifndef __LIBCDOC_UTILS_H__
+#define __LIBCDOC_UTILS_H__
 
 #include "Io.h"
+
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+#include <vector>
 
 namespace libcdoc {
 
@@ -14,6 +14,7 @@ std::string toBase64(const uint8_t *data, size_t len);
 static std::string toBase64(const std::vector<uint8_t> data) {
     return toBase64(data.data(), data.size());
 }
+
 static std::vector<uint8_t>
 fromHex(const std::string_view& hex) {
     std::vector<uint8_t> val(hex.size() / 2);
@@ -25,6 +26,43 @@ fromHex(const std::string_view& hex) {
     return std::move(val);
 }
 
+static std::vector<std::string>
+split (const std::string &s, char delim = ':') {
+    std::vector<std::string> result;
+    std::stringstream ss(s);
+    std::string item;
+    while (getline (ss, item, delim)) {
+        result.push_back (item);
+    }
+    return result;
+}
+
+static std::vector<uint8_t>
+readAllBytes(const std::string_view filename)
+{
+    std::filesystem::path keyFilePath(filename);
+    if (!std::filesystem::exists(keyFilePath)) {
+        std::cerr << "readAllBytes(): File '" << filename << "' does not exist" << std::endl;
+        return {};
+    }
+    std::ifstream keyStream(keyFilePath, std::ios_base::in | std::ios_base::binary);
+    if (!keyStream) {
+        std::cerr << "readAllBytes(): Opening '" << filename << "' failed." << std::endl;
+        return {};
+    }
+
+    // Determine the file size
+    keyStream.seekg(0, std::ios_base::end);
+    size_t length = keyStream.tellg();
+
+    // Read the file
+    std::vector<uint8_t> dst(length);
+    keyStream.seekg(0);
+    keyStream.read(reinterpret_cast<std::ifstream::char_type *>(dst.data()), length);
+    return dst;
+}
+
+int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
 
 #ifdef _WIN32
 #include <Windows.h>

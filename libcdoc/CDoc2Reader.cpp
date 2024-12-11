@@ -112,7 +112,14 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		// Public/private key
 		std::vector<uint8_t> key_material;
 		if(lock.type == libcdoc::Lock::Type::SERVER) {
-			int result = network->fetchKey(key_material, lock.getString(libcdoc::Lock::Params::KEYSERVER_ID), lock.getString(libcdoc::Lock::Params::TRANSACTION_ID));
+            std::string server_id = lock.getString(libcdoc::Lock::Params::KEYSERVER_ID);
+            std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
+            if (fetch_url.empty()) {
+                setLastError("Missing keyserver URL");
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            std::string transaction_id = lock.getString(libcdoc::Lock::Params::TRANSACTION_ID);
+            int result = network->fetchKey(key_material, fetch_url, transaction_id);
 			if (result < 0) {
 				setLastError(network->getLastErrorStr(result));
 				return result;

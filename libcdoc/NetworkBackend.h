@@ -41,21 +41,21 @@ struct CDOC_EXPORT NetworkBackend {
 
 	/**
 	 * @brief send key material to keyserver
-	 * @param result a destination container of (keyserver_id, transaction_id)
+     * @param dst the transaction id (capsule id) on server
      * @param recipient
 	 * @param key_material
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
-    virtual int sendKey (std::pair<std::string,std::string>& result, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) = 0;
+    virtual int sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type) = 0;
 	/**
 	 * @brief fetch key material from keyserver
-	 * @param result a destination container for key material
+     * @param dst a destination container for key material
      * @param recipient_key
 	 * @param transaction_id
 	 * @return error code or OK
 	 */
-    virtual int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) = 0;
+    virtual int fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id) = 0;
 
     /**
      * @brief get client TLS certificate in der format
@@ -85,8 +85,8 @@ struct CDOC_EXPORT DefaultNetworkBackend : public NetworkBackend {
     explicit DefaultNetworkBackend();
     ~DefaultNetworkBackend();
 
-    int sendKey (std::pair<std::string,std::string>& result, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) override final;
-    int fetchKey (std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
+    int sendKey (std::string& transaction_id, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type) override final;
+    int fetchKey (std::vector<uint8_t>& result, const std::string& url, const std::string& transaction_id) override final;
 
 private:
     struct Private;
