@@ -413,6 +413,7 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 		return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(nullptr, EVP_PKEY_free);
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(der.size()));
+#ifndef NDEBUG
     if (!key)
     {
         unsigned long errorCode = ERR_get_error();
@@ -420,6 +421,7 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
         ERR_error_string_n(errorCode, errorMsg, 256);
         std::cerr << errorMsg << std::endl;
     }
+#endif
 	return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(key, EVP_PKEY_free);
 }
 
