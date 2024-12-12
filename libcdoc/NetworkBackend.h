@@ -41,13 +41,15 @@ struct CDOC_EXPORT NetworkBackend {
 
 	/**
 	 * @brief send key material to keyserver
+     *
+     * The default implementation uses internal http client and peer TLS certificate list.
      * @param dst the transaction id (capsule id) on server
      * @param recipient
 	 * @param key_material
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
-    virtual int sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type) = 0;
+    virtual int sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type);
 	/**
 	 * @brief fetch key material from keyserver
      * @param dst a destination container for key material
@@ -62,9 +64,14 @@ struct CDOC_EXPORT NetworkBackend {
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getTLSCertificate(std::vector<uint8_t>& dst) {
-        return NOT_IMPLEMENTED;
-    }
+    virtual int getClientTLSCertificate(std::vector<uint8_t>& dst) = 0;
+
+    /**
+     * @brief get a list of peer TLS certificates in der format
+     * @param dst a destination container for certificate
+     * @return error code or OK
+     */
+    virtual int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) = 0;
 
     /**
      * @brief sign TLS digest with client's private key
@@ -85,12 +92,7 @@ struct CDOC_EXPORT DefaultNetworkBackend : public NetworkBackend {
     explicit DefaultNetworkBackend();
     ~DefaultNetworkBackend();
 
-    int sendKey (std::string& transaction_id, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type) override final;
     int fetchKey (std::vector<uint8_t>& result, const std::string& url, const std::string& transaction_id) override final;
-
-private:
-    struct Private;
-    Private *d;
 };
 
 } // namespace libcdoc

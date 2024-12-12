@@ -194,14 +194,21 @@ struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
 
     std::string label;
 
+    std::vector<std::vector<uint8_t>> certs;
+
     explicit ToolNetwork(ToolCrypto *_crypto) : crypto(_crypto) {
     }
 
-    int getTLSCertificate(std::vector<uint8_t>& dst) override final {
+    int getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
         if (!crypto->rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
         const RcptInfo& rcpt = crypto->rcpts.at(label);
         bool rsa = false;
         return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
+    }
+
+    int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) override final {
+        dst = certs;
+        return libcdoc::OK;
     }
 
     int signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
@@ -392,6 +399,10 @@ int encrypt(int argc, char *argv[])
             conf.servers.push_back(sdata);
             conf.use_keyserver = true;
             i += 2;
+        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
+            std::vector<uint8_t> der = libcdoc::readAllBytes(argv[i + 1]);
+            network.certs.push_back(der);
+            i += 1;
         } else if (argv[i][0] == '-') {
             print_usage(std::cerr);
             return 1;
@@ -591,12 +602,19 @@ int decrypt(int argc, char *argv[])
             conf.servers.push_back(sdata);
             conf.use_keyserver = true;
             i += 2;
-        } else {
+        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
+            std::vector<uint8_t> der = libcdoc::readAllBytes(argv[i + 1]);
+            network.certs.push_back(der);
+            i += 1;
+        } else if (argv[i][0] != '-') {
             if (file.empty())
                 file = argv[i];
             else
                 basePath = argv[i];
-		}
+        } else {
+            print_usage(cerr);
+            return 1;
+        }
 	}
 
     if (file.empty())
@@ -651,17 +669,12 @@ int decrypt(int argc, char *argv[])
                 cerr << rdr->getLastErrorStr() << endl;
                 return 1;
             }
-            // rdr->beginDecryption(fmk);
-            // std::string name;
-            // int64_t size;
-            // while (rdr->nextFile(name, size) == libcdoc::OK) {
-   //              std::cout << name << ":" << size << std::endl;
-            // }
-            break;
+            cout << "File decrypted successfully" << endl;
+            return 0;
 		}
 	}
-    cout << "File decrypted successfully" << endl;
-	return 0;
+    cout << "Lock not found: " << label << endl;
+    return 1;
 }
 
 //
