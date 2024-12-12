@@ -36,6 +36,8 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
     host = phost;
     port = pport;
     path = ppath;
+    OPENSSL_free(phost);
+    OPENSSL_free(ppath);
     return OK;
 }
 

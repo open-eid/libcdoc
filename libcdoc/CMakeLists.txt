@@ -99,6 +99,7 @@ target_link_libraries(cdoc_priv
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
     ZLIB::ZLIB
+#    {$ZLIB_LIBRARIES}
     LibXml2::LibXml2
     OpenSSL::SSL
     ${LIBS}

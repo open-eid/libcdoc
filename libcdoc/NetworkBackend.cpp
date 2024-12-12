@@ -128,13 +128,15 @@ libcdoc::DefaultNetworkBackend::sendKey (std::string& dst, const std::string& ur
     if (path == "/") path.clear();
     if (result != libcdoc::OK) return result;
 
-    httplib::SSLClient cli(url, port);
+    httplib::SSLClient cli(host, port);
     // Disable cert verification
     cli.enable_server_certificate_verification(false);
     // Disable host verification
     cli.enable_server_hostname_verification(false);
 
-    httplib::Result res = cli.Post(path + "/key-capsules", req_str, "application/json");
+    std::string full = path + "/key-capsules";
+    httplib::Result res = cli.Post(full, req_str, "application/json");
+    if (!res) return NETWORK_ERROR;
     auto status = res->status;
     if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
 

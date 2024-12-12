@@ -59,6 +59,7 @@ print_usage(ostream& ofs)
     ofs << "    label:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
     ofs << "    label:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
     ofs << "  -v1 creates CDOC1 version container. Supported only on encryption with certificate." << endl;
+    ofs << "  --server ID SEND_URL Specify a keyserver. The recipient key will be stored in server instead of in the document." << endl;
     ofs << endl;
     ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << endl;
     ofs << "  Decrypt container using lock specified by label" << endl;
@@ -69,6 +70,7 @@ print_usage(ostream& ofs)
     ofs << "    --key-id        PKCS11 key id" << endl;
     ofs << "    --key-label     PKCS11 key label" << endl;
     ofs << "    --library       path to the PKCS11 library to be used" << endl;
+    ofs << "    --server ID FETCH_URL Specify a keyserver. The recipient key will be loaded from server." << endl;
     ofs << endl;
     ofs << "cdoc-tool locks FILE" << endl;
     ofs << "  Show locks in a container file" << endl;
@@ -98,13 +100,6 @@ struct ToolConf : public libcdoc::Configuration {
         std::string ID;
         std::string SEND_URL;
         std::string FETCH_URL;
-
-        ServerData(std::string str) {
-            std::vector<std::string> parts = libcdoc::split(str, ';');
-            if (parts.size() > 0) ID = parts[0];
-            if (parts.size() > 1) SEND_URL = parts[1];
-            if (parts.size() > 2) FETCH_URL = parts[2];
-        }
     };
 
     bool use_keyserver = false;
@@ -214,6 +209,39 @@ struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
     }
 
 };
+
+static int
+writer_push(libcdoc::CDocWriter& writer, const std::vector<libcdoc::Recipient>& keys, const std::vector<std::string>& files)
+{
+    int result = writer.beginEncryption();
+    if (result != libcdoc::OK) return result;
+    for (const libcdoc::Recipient& rcpt : keys) {
+        result = writer.addRecipient(rcpt);
+        if (result != libcdoc::OK) return result;
+    }
+    for (const std::string& file : files) {
+        std::filesystem::path path(file);
+        if (!std::filesystem::exists(path)) {
+            cerr << "File does not exist: " << file << endl;
+            return 1;
+        }
+        size_t size = std::filesystem::file_size(path);
+        int result = writer.addFile(file, size);
+        if (result != libcdoc::OK) return result;
+        libcdoc::IStreamSource src(file);
+        while (!src.isEof()) {
+            uint8_t b[256];
+            int64_t len = src.read(b, 256);
+            if (len < 0) {
+                std::cerr << "IO error: " << file;
+                return 1;
+            }
+            int64_t nbytes = writer.writeData(b, len);
+            if (nbytes < 0) return (int) nbytes;
+        }
+    }
+    return writer.finishEncryption();
+}
 
 #define PUSH true
 
@@ -357,11 +385,13 @@ int encrypt(int argc, char *argv[])
         } else if (!strcmp(argv[i], "-v1")) {
             cdocVersion = 1;
             i++;
-        } else if (!strcmp(argv[i], "--server") && ((i + 1) <= argc)) {
-            ToolConf::ServerData sdata(argv[i + 1]);
-            conf.use_keyserver = true;
+        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+            ToolConf::ServerData sdata;
+            sdata.ID = argv[i + 1];
+            sdata.SEND_URL = argv[i + 2];
             conf.servers.push_back(sdata);
-            i += 1;
+            conf.use_keyserver = true;
+            i += 2;
         } else if (argv[i][0] == '-') {
             print_usage(std::cerr);
             return 1;
@@ -460,39 +490,22 @@ int encrypt(int argc, char *argv[])
         return 1;
     }
 
-    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(cdocVersion, out, &conf, &crypto, nullptr));
+    unique_ptr<libcdoc::CDocWriter> writer(libcdoc::CDocWriter::createWriter(cdocVersion, out, &conf, &crypto, &network));
 
+    int result;
 	if (PUSH) {
-        writer->beginEncryption();
-		for (const libcdoc::Recipient& rcpt : keys) {
-			writer->addRecipient(rcpt);
-		}
-		for (const std::string& file : files) {
-			std::filesystem::path path(file);
-			if (!std::filesystem::exists(path)) {
-                cerr << "File does not exist: " << file << endl;
-				return 1;
-			}
-			size_t size = std::filesystem::file_size(path);
-			writer->addFile(file, size);
-			libcdoc::IStreamSource src(file);
-			while (!src.isEof()) {
-				uint8_t b[256];
-				int64_t len = src.read(b, 256);
-				if (len < 0) {
-					std::cerr << "IO error: " << file;
-					return 1;
-				}
-				writer->writeData(b, len);
-			}
-		}
-		writer->finishEncryption();
+        result = writer_push(*writer, keys, files);
 	} else {
 		libcdoc::FileListSource src({}, files);
-		writer->encrypt(src, keys);
+        result = writer->encrypt(src, keys);
 	}
-
-	return 0;
+    if (result < 0) {
+        cerr << "Encryption failed: error " << result << endl;
+        cerr << writer->getLastErrorStr() << endl;
+    } else {
+        cout << "File encrypted successfully: " << out << endl;
+    }
+    return result;
 }
 
 //
@@ -571,11 +584,13 @@ int decrypt(int argc, char *argv[])
         } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
             library = argv[i + 1];
             i += 1;
-        } else if (!strcmp(argv[i], "--server") && ((i + 1) <= argc)) {
-            ToolConf::ServerData sdata(argv[i + 1]);
-            conf.use_keyserver = true;
+        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+            ToolConf::ServerData sdata;
+            sdata.ID = argv[i + 1];
+            sdata.FETCH_URL = argv[i + 2];
             conf.servers.push_back(sdata);
-            i += 1;
+            conf.use_keyserver = true;
+            i += 2;
         } else {
             if (file.empty())
                 file = argv[i];
@@ -620,12 +635,22 @@ int decrypt(int argc, char *argv[])
     std::cout << "Reader created" << std::endl;
     std::vector<const libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
-        if (lock.label == label)
-        {
+        if (lock.label == label) {
+            cerr << "Found matching label: " << label << endl;
 			std::vector<uint8_t> fmk;
-			rdr->getFMK(fmk, lock);
+            int result = rdr->getFMK(fmk, lock);
+            if (result != libcdoc::OK) {
+                cerr << "Error extracting FMK: " << result << endl;
+                cerr << rdr->getLastErrorStr() << endl;
+                return 1;
+            }
             libcdoc::FileListConsumer fileWriter(basePath);
-            rdr->decrypt(fmk, &fileWriter);
+            result = rdr->decrypt(fmk, &fileWriter);
+            if (result != libcdoc::OK) {
+                cerr << "Error decrypting files: " << result << endl;
+                cerr << rdr->getLastErrorStr() << endl;
+                return 1;
+            }
             // rdr->beginDecryption(fmk);
             // std::string name;
             // int64_t size;
@@ -635,6 +660,7 @@ int decrypt(int argc, char *argv[])
             break;
 		}
 	}
+    cout << "File decrypted successfully" << endl;
 	return 0;
 }
 
