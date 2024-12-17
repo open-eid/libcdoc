@@ -15,6 +15,16 @@ static std::string toBase64(const std::vector<uint8_t> data) {
     return toBase64(data.data(), data.size());
 }
 
+template <typename F>
+static std::string toHex(const F &data)
+{
+    std::stringstream os;
+    os << std::hex << std::uppercase << std::setfill('0');
+    for(const auto &i: data)
+        os << std::setw(2) << (static_cast<int>(i) & 0xFF);
+    return os.str();
+}
+
 static std::vector<uint8_t>
 fromHex(const std::string_view& hex) {
     std::vector<uint8_t> val(hex.size() / 2);
@@ -63,6 +73,9 @@ readAllBytes(const std::string_view filename)
 }
 
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
+
+std::string urlEncode(const std::string_view &src);
+std::string urlDecode(std::string &src);
 
 #ifdef _WIN32
 #include <Windows.h>

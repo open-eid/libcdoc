@@ -1,3 +1,4 @@
+#include <chrono>
 #define __NETWORK_BACKEND_CPP__
 
 #include "NetworkBackend.h"
@@ -22,6 +23,8 @@
 #define GET_PORT 8444
 #define POST_HOST "cdoc2-keyserver.test.riaint.ee"
 #define POST_PORT 8443
+
+using namespace std::literals::chrono_literals;
 
 using EC_KEY_sign = int (*)(int type, const unsigned char *dgst, int dlen, unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey);
 using EC_KEY_sign_setup = int (*)(EC_KEY *eckey, BN_CTX *ctx_in, BIGNUM **kinvp, BIGNUM **rp);
@@ -74,19 +77,11 @@ struct Private {
     }
 };
 
-libcdoc::DefaultNetworkBackend::DefaultNetworkBackend()
-{
-}
-
-libcdoc::DefaultNetworkBackend::~DefaultNetworkBackend()
-{
-}
-
 int
-libcdoc::NetworkBackend::sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type)
+libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
 {
     nlohmann::json req_json = {
-        {"recipient_id", libcdoc::toBase64(recipient.rcpt_key)},
+        {"recipient_id", libcdoc::toBase64(rcpt_key)},
         {"ephemeral_key_material", libcdoc::toBase64(key_material)},
         {"capsule_type", type }
     };
@@ -130,12 +125,31 @@ libcdoc::NetworkBackend::sendKey (std::string& dst, const std::string& url, cons
     std::string location = rsp.get_header_value("Location");
     if (location.empty()) return libcdoc::IO_ERROR;
     /* Remove /key-capsules/ */
-    dst = location.substr(14);
+    dst.transaction_id = location.substr(14);
+
+    auto now = std::chrono::system_clock::now();
+    // Get a days-precision chrono::time_point
+    auto sd = floor<std::chrono::days>(now);
+    // Record the time of day
+    auto time_of_day = now - sd;
+    // Convert to a y/m/d calendar data structure
+    std::chrono::year_month_day ymd = sd;
+    // Add the months
+    ymd += std::chrono::months{6};
+    // Add some policy for overflowing the day-of-month if desired
+    if (!ymd.ok())
+        ymd = ymd.year()/ymd.month()/std::chrono::last;
+    // Convert back to system_clock::time_point
+    std::chrono::system_clock::time_point later = std::chrono::sys_days{ymd} + time_of_day;
+    auto ttt = std::chrono::system_clock::to_time_t(later);
+
+    dst.expiry_time = ttt;
+
     return OK;
 }
 
 int
-libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
+libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
 {
     std::string host, path;
     int port;
@@ -188,7 +202,7 @@ libcdoc::DefaultNetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::
 ECDSA_SIG *
 ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const BIGNUM * /*inv*/, const BIGNUM * /*rp*/, EC_KEY *eckey)
 {
-    auto *backend = (libcdoc::DefaultNetworkBackend *) EC_KEY_get_ex_data(eckey, 0);
+    auto *backend = (libcdoc::NetworkBackend *) EC_KEY_get_ex_data(eckey, 0);
     std::vector<uint8_t> dst;
     std::vector<uint8_t> digest(dgst, dgst + dgst_len);
     int result = backend->signTLS(dst, libcdoc::CryptoBackend::SHA_512, digest);
@@ -204,9 +218,9 @@ ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const BIGNUM * /*inv*/, c
 }
 
 int
-rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const ::RSA *rsa)
+rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const RSA *rsa)
 {
-    auto *backend = (libcdoc::DefaultNetworkBackend *) RSA_get_ex_data(rsa, 0);
+    auto *backend = (libcdoc::NetworkBackend *) RSA_get_ex_data(rsa, 0);
     auto algo = libcdoc::CryptoBackend::SHA_512;
     switch (type) {
     case NID_sha224:

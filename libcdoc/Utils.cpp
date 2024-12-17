@@ -41,5 +41,46 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
     return OK;
 }
 
+std::string
+urlEncode(const std::string_view &src)
+{
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+
+    for (auto i = src.begin(), n = src.end(); i != n; ++i) {
+        std::string::value_type c = (*i);
+        // Keep alphanumeric and other accepted characters intact
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+            continue;
+        }
+        // Any other characters are percent-encoded
+        escaped << std::uppercase;
+        escaped << '%' << std::setw(2) << int((unsigned char) c);
+        escaped << std::nouppercase;
+    }
+    return escaped.str();
+}
+
+std::string
+urlDecode(std::string &src)
+{
+    std::string ret;
+    ret.reserve(64);
+    for (int i = 0; i < src.length(); i++) {
+        if (src[i] == '%') {
+            int val;
+            sscanf(src.substr(i + 1, 2).c_str(), "%x", &val);
+            char ch = static_cast<char>(val);
+            ret += ch;
+            i += 2;
+        } else {
+            ret += src[i];
+        }
+    }
+    return ret;
+}
+
 } // Namespace libcdoc
 

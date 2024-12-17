@@ -42,6 +42,12 @@ struct CDOC_EXPORT Recipient {
 		RSA
 	};
 
+    enum EIDType {
+        IDCard,
+        DigiID,
+        DigiID_EResident
+    };
+
 	Recipient() = default;
 
 	Type type = Type::NONE;
@@ -67,7 +73,14 @@ struct CDOC_EXPORT Recipient {
 	static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
 	static Recipient makeCertificate(const std::string& label, const std::vector<uint8_t>& cert);
 
-	bool operator== (const Recipient& other) const = default;
+    static std::string buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components);
+    static std::string BuildLabelEID(int version, EIDType type, const std::string& cn, const std::string& serial_number, const std::string& last_name, const std::string& first_name);
+    static std::string BuildLabelCertificate(int version, const std::string file, const std::string& cn, const std::vector<uint8_t>& cert_sha1);
+    static std::string BuildLabelPublicKey(int version, const std::string file);
+    static std::string BuildLabelSymmetricKey(int version, const std::string& label, const std::string file);
+    static std::string BuildLabelPassword(int version, const std::string& label);
+
+    bool operator== (const Recipient& other) const = default;
 protected:
 	Recipient(Type _type) : type(_type) {};
 private:

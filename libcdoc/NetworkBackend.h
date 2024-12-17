@@ -34,7 +34,12 @@ struct CDOC_EXPORT NetworkBackend {
 	static constexpr int INVALID_PARAMS = -301;
 	static constexpr int NETWORK_ERROR = -302;
 
-	NetworkBackend() = default;
+    struct CapsuleInfo {
+        std::string transaction_id;
+        uint64_t expiry_time;
+    };
+
+    NetworkBackend() = default;
 	virtual ~NetworkBackend() = default;
 
 	virtual std::string getLastErrorStr(int code) const;
@@ -43,13 +48,13 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @brief send key material to keyserver
      *
      * The default implementation uses internal http client and peer TLS certificate list.
-     * @param dst the transaction id (capsule id) on server
+     * @param dst the transaction id and expiry date of the casule on server
      * @param recipient
 	 * @param key_material
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
-    virtual int sendKey (std::string& dst, const std::string& url, const Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string& type);
+    virtual int sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type);
 	/**
 	 * @brief fetch key material from keyserver
      * @param dst a destination container for key material
@@ -57,21 +62,25 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @param transaction_id
 	 * @return error code or OK
 	 */
-    virtual int fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id) = 0;
+    virtual int fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);
 
     /**
      * @brief get client TLS certificate in der format
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getClientTLSCertificate(std::vector<uint8_t>& dst) = 0;
+    virtual int getClientTLSCertificate(std::vector<uint8_t>& dst) {
+        return NOT_IMPLEMENTED;
+    }
 
     /**
      * @brief get a list of peer TLS certificates in der format
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) = 0;
+    virtual int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) {
+        return NOT_IMPLEMENTED;
+    }
 
     /**
      * @brief sign TLS digest with client's private key
@@ -86,13 +95,6 @@ struct CDOC_EXPORT NetworkBackend {
 
     NetworkBackend (const NetworkBackend&) = delete;
 	NetworkBackend& operator= (const NetworkBackend&) = delete;
-};
-
-struct CDOC_EXPORT DefaultNetworkBackend : public NetworkBackend {
-    explicit DefaultNetworkBackend();
-    ~DefaultNetworkBackend();
-
-    int fetchKey (std::vector<uint8_t>& result, const std::string& url, const std::string& transaction_id) override final;
 };
 
 } // namespace libcdoc

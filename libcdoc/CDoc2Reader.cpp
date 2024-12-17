@@ -128,8 +128,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 			key_material = lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
 		}
 #ifndef NDEBUG
-		std::cerr << "Public key: " << libcdoc::Crypto::toHex(lock.getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
-		std::cerr << "Key material: " << libcdoc::Crypto::toHex(key_material) << std::endl;
+        std::cerr << "Public key: " << libcdoc::toHex(lock.getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
+        std::cerr << "Key material: " << libcdoc::toHex(key_material) << std::endl;
 #endif
 		if (lock.isRSA()) {
 			int result = crypto->decryptRSA(kek, key_material, true, lock.label);
@@ -145,17 +145,17 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 				return result;
 			}
 #ifndef NDEBUG
-			std::cerr << "Key kekPm: " << libcdoc::Crypto::toHex(kek_pm) << std::endl;
+            std::cerr << "Key kekPm: " << libcdoc::toHex(kek_pm) << std::endl;
 #endif
 			std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(libcdoc::Lock::Params::RCPT_KEY));
 #ifndef NDEBUG
-			std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+            std::cerr << "info" << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
 #endif
 			kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
 		}
 	}
 #ifndef NDEBUG
-	std::cerr << "KEK: " << libcdoc::Crypto::toHex(kek) << std::endl;
+    std::cerr << "KEK: " << libcdoc::toHex(kek) << std::endl;
 #endif
 
 	if(kek.empty()) {
@@ -168,10 +168,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 	}
 	std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
 #ifndef NDEBUG
-	std::cerr << "xor: " << libcdoc::Crypto::toHex(lock.encrypted_fmk) << std::endl;
-	std::cerr << "fmk: " << libcdoc::Crypto::toHex(fmk) << std::endl;
-	std::cerr << "hhk: " << libcdoc::Crypto::toHex(hhk) << std::endl;
-	std::cerr << "hmac: " << libcdoc::Crypto::toHex(priv->headerHMAC) << std::endl;
+    std::cerr << "xor: " << libcdoc::toHex(lock.encrypted_fmk) << std::endl;
+    std::cerr << "fmk: " << libcdoc::toHex(fmk) << std::endl;
+    std::cerr << "hhk: " << libcdoc::toHex(hhk) << std::endl;
+    std::cerr << "hmac: " << libcdoc::toHex(priv->headerHMAC) << std::endl;
 #endif
 	if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
 		setLastError(t_("CDoc 2.0 hash mismatch"));
@@ -220,8 +220,8 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 		return libcdoc::IO_ERROR;
 	}
 #ifndef NDEBUG
-	std::cerr << "cek: " << libcdoc::Crypto::toHex(cek) << std::endl;
-	std::cerr << "nonce: " << libcdoc::Crypto::toHex(nonce) << std::endl;
+    std::cerr << "cek: " << libcdoc::toHex(cek) << std::endl;
+    std::cerr << "nonce: " << libcdoc::toHex(nonce) << std::endl;
 #endif
 	priv->cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, false);
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
@@ -262,7 +262,7 @@ CDoc2Reader::finishDecryption()
 	}
 
 #ifndef NDEBUG
-	std::cerr << "tag: " << libcdoc::Crypto::toHex(priv->tgs->tag) << std::endl;
+    std::cerr << "tag: " << libcdoc::toHex(priv->tgs->tag) << std::endl;
 #endif
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
@@ -335,7 +335,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 				}
 				libcdoc::Lock *k = fillRecipientPK(libcdoc::Lock::PKType::ECC, key);
 				k->setBytes(libcdoc::Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
-				std::cerr << "Load PK: " << libcdoc::Crypto::toHex(k->getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
+                std::cerr << "Load PK: " << libcdoc::toHex(k->getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
 				priv->locks.push_back(k);
 			}
 			break;

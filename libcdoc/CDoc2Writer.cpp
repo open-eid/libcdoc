@@ -8,6 +8,7 @@
 #include "CDoc2.h"
 #include "ZStream.h"
 #include "Tar.h"
+#include "Utils.h"
 
 #include "openssl/evp.h"
 #include <openssl/x509.h>
@@ -57,9 +58,9 @@ CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 	last_error.clear();
 	priv = std::make_unique<Private>(dst);
 #ifndef NDEBUG
-	std::cerr << "fmk: " << libcdoc::Crypto::toHex(priv->fmk) << std::endl;
-	std::cerr << "cek: " << libcdoc::Crypto::toHex(priv->cek) << std::endl;
-	std::cerr << "hhk: " << libcdoc::Crypto::toHex(priv->hhk) << std::endl;
+    std::cerr << "fmk: " << libcdoc::toHex(priv->fmk) << std::endl;
+    std::cerr << "cek: " << libcdoc::toHex(priv->cek) << std::endl;
+    std::cerr << "hhk: " << libcdoc::toHex(priv->hhk) << std::endl;
 #endif
 	int result = encryptInternal(src, keys);
 	priv.reset();
@@ -95,7 +96,7 @@ CDoc2Writer::encryptInternal(libcdoc::MultiDataSource& src, const std::vector<li
 	}
 	std::vector<uint8_t> tag = priv->cipher->tag();
 #ifndef NDEBUG
-	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
+    std::cerr << "tag" << libcdoc::toHex(tag) << std::endl;
 #endif
 	dst->write(tag.data(), tag.size());
 	return libcdoc::OK;
@@ -106,8 +107,8 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 {
 	std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
 #ifndef NDEBUG
-	std::cerr << "hmac" << libcdoc::Crypto::toHex(headerHMAC) << std::endl;
-	std::cerr << "nonce" << libcdoc::Crypto::toHex(priv->nonce) << std::endl;
+    std::cerr << "hmac" << libcdoc::toHex(headerHMAC) << std::endl;
+    std::cerr << "nonce" << libcdoc::toHex(priv->nonce) << std::endl;
 #endif
 
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
@@ -148,10 +149,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				}
 				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 #ifndef NDEBUG
-                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(rcpt.rcpt_key) << std::endl;
-                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
-                std::cerr << "fmk_xor_kek: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
-                std::cerr << "enc_kek: " << libcdoc::Crypto::toHex(encrytpedKek) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::toHex(rcpt.rcpt_key) << std::endl;
+                std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
+                std::cerr << "fmk_xor_kek: " << libcdoc::toHex(xor_key) << std::endl;
+                std::cerr << "enc_kek: " << libcdoc::toHex(encrytpedKek) << std::endl;
 #endif
                 if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
 					auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
@@ -175,15 +176,15 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                         setLastError("Missing keyserver URL");
                         return libcdoc::CONFIGURATION_ERROR;
                     }
-                    std::string transaction_id;
-                    int result = network->sendKey(transaction_id, send_url, rcpt, encrytpedKek, "RSA");
+                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, encrytpedKek, "RSA");
 					if (result < 0) {
 						setLastError(network->getLastErrorStr(result));
 						return libcdoc::IO_ERROR;
 					}
 #ifndef NDEBUG
                     std::cerr << "Keyserver Id:" << server_id << std::endl;
-                    std::cerr << "Transaction Id: " << transaction_id << std::endl;
+                    std::cerr << "Transaction Id: " << cinfo.transaction_id << std::endl;
 #endif
                     auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
                                                                                 builder.CreateVector(rcpt.rcpt_key));
@@ -191,7 +192,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 																				cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
 																				rsaKeyServer.Union(),
                                                                                 builder.CreateString(server_id),
-                                                                                builder.CreateString(transaction_id));
+                                                                                builder.CreateString(cinfo.transaction_id));
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::KeyServerCapsule,
 																	  keyServer.Union(),
@@ -221,13 +222,13 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					return libcdoc::CRYPTO_ERROR;
 				}
 	#ifndef NDEBUG
-                std::cerr << "info: " << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-                std::cerr << "publicKeyDer: " << libcdoc::Crypto::toHex(rcpt.rcpt_key) << std::endl;
-                std::cerr << "ephPublicKeyDer: " << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
-                std::cerr << "sharedSecret: " << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
-                std::cerr << "kekPm: " << libcdoc::Crypto::toHex(kekPm) << std::endl;
-                std::cerr << "kek: " << libcdoc::Crypto::toHex(kek) << std::endl;
-                std::cerr << "xor: " << libcdoc::Crypto::toHex(xor_key) << std::endl;
+                std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+                std::cerr << "publicKeyDer: " << libcdoc::toHex(rcpt.rcpt_key) << std::endl;
+                std::cerr << "ephPublicKeyDer: " << libcdoc::toHex(ephPublicKeyDer) << std::endl;
+                std::cerr << "sharedSecret: " << libcdoc::toHex(sharedSecret) << std::endl;
+                std::cerr << "kekPm: " << libcdoc::toHex(kekPm) << std::endl;
+                std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
+                std::cerr << "xor: " << libcdoc::toHex(xor_key) << std::endl;
 	#endif
                 if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
 					auto eccPublicKey = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
@@ -252,15 +253,15 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                         setLastError("Missing keyserver URL");
                         return libcdoc::CONFIGURATION_ERROR;
                     }
-                    std::string transaction_id;
-                    int result = network->sendKey(transaction_id, send_url, rcpt, ephPublicKeyDer, "ecc_secp384r1");
+                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, ephPublicKeyDer, "ecc_secp384r1");
 					if (result < 0) {
 						setLastError(network->getLastErrorStr(result));
 						return libcdoc::IO_ERROR;
 					}
 #ifndef NDEBUG
                     std::cerr << "Keyserver Id:" << server_id << std::endl;
-                    std::cerr << "Transaction Id: " << transaction_id << std::endl;
+                    std::cerr << "Transaction Id: " << cinfo.transaction_id << std::endl;
 #endif
                     auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
 																				cdoc20::recipients::EllipticCurve::secp384r1,
@@ -269,7 +270,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 																				cdoc20::recipients::KeyDetailsUnion::EccKeyDetails,
 																				eccKeyServer.Union(),
                                                                                 builder.CreateString(server_id),
-                                                                                builder.CreateString(transaction_id));
+                                                                                builder.CreateString(cinfo.transaction_id));
 					auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																	  cdoc20::recipients::Capsule::KeyServerCapsule,
 																	  keyServer.Union(),
@@ -427,7 +428,7 @@ CDoc2Writer::finishEncryption()
 	}
 	std::vector<uint8_t> tag = priv->cipher->tag();
 #ifndef NDEBUG
-	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
+    std::cerr << "tag" << libcdoc::toHex(tag) << std::endl;
 #endif
 	dst->write(tag.data(), tag.size());
 	if (owned) dst->close();

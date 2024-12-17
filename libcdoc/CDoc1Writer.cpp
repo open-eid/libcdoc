@@ -126,11 +126,11 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 			encryptedData = libcdoc::Crypto::AESWrap(encryptionKey, transportKey.key, true);
 
 #ifndef NDEBUG
-			printf("Ss %s\n", libcdoc::Crypto::toHex(SsDer).c_str());
-			printf("Ksr %s\n", libcdoc::Crypto::toHex(sharedSecret).c_str());
-			printf("ConcatKDF %s\n", libcdoc::Crypto::toHex(encryptionKey).c_str());
-			printf("iv %s\n", libcdoc::Crypto::toHex(transportKey.iv).c_str());
-			printf("transport %s\n", libcdoc::Crypto::toHex(transportKey.key).c_str());
+            printf("Ss %s\n", libcdoc::toHex(SsDer).c_str());
+            printf("Ksr %s\n", libcdoc::toHex(sharedSecret).c_str());
+            printf("ConcatKDF %s\n", libcdoc::toHex(encryptionKey).c_str());
+            printf("iv %s\n", libcdoc::toHex(transportKey.iv).c_str());
+            printf("transport %s\n", libcdoc::toHex(transportKey.key).c_str());
 #endif
 
 			xmlw->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", encryptionMethod}});
@@ -138,9 +138,9 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 				xmlw->writeElement(Private::DENC, "AgreementMethod", {{"Algorithm", libcdoc::Crypto::AGREEMENT_MTH}}, [&]{
 					xmlw->writeElement(Private::XENC11, "KeyDerivationMethod", {{"Algorithm", libcdoc::Crypto::CONCATKDF_MTH}}, [&]{
 						xmlw->writeElement(Private::XENC11, "ConcatKDFParams", {
-							{"AlgorithmID", "00" + libcdoc::Crypto::toHex(AlgorithmID)},
-							{"PartyUInfo", "00" + libcdoc::Crypto::toHex(SsDer)},
-							{"PartyVInfo", "00" + libcdoc::Crypto::toHex(recipient)}}, [&]{
+                            {"AlgorithmID", "00" + libcdoc::toHex(AlgorithmID)},
+                            {"PartyUInfo", "00" + libcdoc::toHex(SsDer)},
+                            {"PartyVInfo", "00" + libcdoc::toHex(recipient)}}, [&]{
 							xmlw->writeElement(Private::DS, "DigestMethod", {{"Algorithm", concatDigest}});
 						});
 					});

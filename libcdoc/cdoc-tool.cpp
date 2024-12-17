@@ -1,5 +1,6 @@
 #define __CDOC_TOOL_CPP__
 
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -189,7 +190,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     }
 };
 
-struct ToolNetwork : public libcdoc::DefaultNetworkBackend {
+struct ToolNetwork : public libcdoc::NetworkBackend {
     ToolCrypto *crypto;
 
     std::string label;
@@ -483,7 +484,7 @@ int encrypt(int argc, char *argv[])
 				std::cerr << "No such public key: " << rcpt.key_label << std::endl;
 				continue;
 			}
-			std::cerr << "Public key (" << (rsa ? "rsa" : "ecc") << "):" << libcdoc::Crypto::toHex(val) << std::endl;
+            std::cerr << "Public key (" << (rsa ? "rsa" : "ecc") << "):" << libcdoc::toHex(val) << std::endl;
 			key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
         }
         else if (rcpt.type == RcptInfo::Type::PASSWORD)
@@ -698,6 +699,16 @@ int locks(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    std::chrono::time_point<std::chrono::system_clock> epoch;
+    auto now = std::chrono::system_clock::now();
+
+    std::cout << std::format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now)
+              << '\n';
+
+    const auto c_now = std::chrono::system_clock::to_time_t(now);
+
+    cout << put_time(gmtime(&c_now), "%FT%TZ") << endl;
+
     if (argc < 2)
     {
         print_usage(cerr);

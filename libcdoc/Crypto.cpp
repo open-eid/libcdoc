@@ -2,6 +2,7 @@
 
 #include "CDoc.h"
 #include "Crypto.h"
+#include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -175,10 +176,10 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 	const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo)
 {
 #ifndef NDEBUG
-	printf("Ksr %s\n", Crypto::toHex(z).c_str());
-	printf("AlgorithmID %s\n", Crypto::toHex(AlgorithmID).c_str());
-	printf("PartyUInfo %s\n", Crypto::toHex(PartyUInfo).c_str());
-	printf("PartyVInfo %s\n", Crypto::toHex(PartyVInfo).c_str());
+    printf("Ksr %s\n", toHex(z).c_str());
+    printf("AlgorithmID %s\n", toHex(AlgorithmID).c_str());
+    printf("PartyUInfo %s\n", toHex(PartyUInfo).c_str());
+    printf("PartyVInfo %s\n", toHex(PartyVInfo).c_str());
 #endif
 	std::vector<uint8_t> otherInfo;
 	otherInfo.insert(otherInfo.cend(), AlgorithmID.cbegin(), AlgorithmID.cend());
@@ -209,7 +210,7 @@ std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, 
 		EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data());
 		result.insert(result.cend(), tag.cbegin(), tag.cend());
 #ifndef NDEBUG
-		printf("GCM TAG %s\n", Crypto::toHex(tag).c_str());
+        printf("GCM TAG %s\n", toHex(tag).c_str());
 #endif
 	}
 	return result;
@@ -244,8 +245,8 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	dataSize -= iv.size();
 
 #ifndef NDEBUG
-	printf("iv %s\n", Crypto::toHex(iv).c_str());
-	printf("transport %s\n", Crypto::toHex(key).c_str());
+    printf("iv %s\n", toHex(iv).c_str());
+    printf("transport %s\n", toHex(key).c_str());
 #endif
 
 	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
@@ -257,7 +258,7 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 		EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, int(tag.size()), tag.data());
 		dataSize -= tag.size();
 #ifndef NDEBUG
-		printf("GCM TAG %s\n", Crypto::toHex(tag).c_str());
+        printf("GCM TAG %s\n", toHex(tag).c_str());
 #endif
 	}
 

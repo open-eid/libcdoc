@@ -74,15 +74,6 @@ public:
 	static std::vector<uint8_t> random(uint32_t len = 32);
 	static int xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs);
 
-	template <typename F>
-	static std::string toHex(const F &data)
-	{
-		std::stringstream os;
-		os << std::hex << std::uppercase << std::setfill('0');
-		for(const auto &i: data)
-			os << std::setw(2) << (static_cast<int>(i) & 0xFF);
-		return os.str();
-	}
 	static X509* toX509(const std::vector<uint8_t> &data);
 };
 
