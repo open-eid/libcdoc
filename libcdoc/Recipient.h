@@ -32,9 +32,12 @@ struct CDOC_EXPORT Recipient {
 		NONE,
 		// Symmetric key (plain or PBKDF)
 		SYMMETRIC_KEY,
+        // Plain public key
 		PUBLIC_KEY,
-		// Public key with additonal information
+        // Public key + certificate chain
 		CERTIFICATE,
+        // Public key, key material stored on server
+        SERVER
 	};
 
 	enum PKType : unsigned char {
@@ -55,16 +58,19 @@ struct CDOC_EXPORT Recipient {
 	// 0 symmetric key, >0 password
 	int32_t kdf_iter = 0;
 	std::string label;
-	// Recipient's public key
-	std::vector<uint8_t> rcpt_key;
-	std::vector<uint8_t> cert;
+    // Recipient's public key (for all PKI types)
+    std::vector<uint8_t> rcpt_key;
+
+    std::vector<uint8_t> cert;
+    std::string server_id;
 
 	bool isEmpty() const { return type == Type::NONE; }
 	bool isSymmetric() const { return type == Type::SYMMETRIC_KEY; }
-	bool isPKI() const { return (type == Type::CERTIFICATE) || (type == Type::PUBLIC_KEY); }
+    bool isPKI() const { return (type == Type::CERTIFICATE) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
 	bool isCertificate() const { return (type == Type::CERTIFICATE); }
+    bool isKeyServer() const { return (type == Type::SERVER); }
 
-	void clear() { type = Type::NONE; pk_type = PKType::ECC; label.clear(); kdf_iter = 0; rcpt_key.clear(); cert.clear(); }
+    void clear() { type = Type::NONE; pk_type = PKType::ECC; label.clear(); kdf_iter = 0; rcpt_key.clear(); cert.clear(); }
 
 	bool isTheSameRecipient(const Recipient &other) const;
 	bool isTheSameRecipient(const std::vector<uint8_t>& public_key) const;
@@ -72,6 +78,7 @@ struct CDOC_EXPORT Recipient {
 	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
 	static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
 	static Recipient makeCertificate(const std::string& label, const std::vector<uint8_t>& cert);
+    static Recipient makeServer(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type, const std::string& server_id);
 
     static std::string buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components);
     static std::string BuildLabelEID(int version, EIDType type, const std::string& cn, const std::string& serial_number, const std::string& last_name, const std::string& first_name);

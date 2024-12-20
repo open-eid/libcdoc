@@ -24,14 +24,11 @@ Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& p
     Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = label;
     rcpt.pk_type = pk_type;
-    if (pk_type == PKType::ECC && public_key[0] == 0x30)
-    {
+    if (pk_type == PKType::ECC && public_key[0] == 0x30) {
         // 0x30 identifies SEQUENCE tag in ASN.1 encoding
         auto evp = Crypto::fromECPublicKeyDer(public_key);
         rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
-    }
-    else
-    {
+    } else {
         rcpt.rcpt_key = public_key;
     }
 	return rcpt;
@@ -42,13 +39,30 @@ Recipient::makeCertificate(const std::string& label, const std::vector<uint8_t>&
 {
 	Recipient rcpt(Type::CERTIFICATE);
 	rcpt.label = label;
-	rcpt.cert = cert;
+    rcpt.cert = cert;
 	Certificate ssl(cert);
 	std::vector<uint8_t> pkey = ssl.getPublicKey();
 	Certificate::Algorithm algo = ssl.getAlgorithm();
-	rcpt.rcpt_key = pkey;
+    rcpt.rcpt_key = pkey;
 	rcpt.pk_type = (algo == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
 	return rcpt;
+}
+
+Recipient
+Recipient::makeServer(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type, const std::string& server_id)
+{
+    Recipient rcpt(Type::SERVER);
+    rcpt.label = label;
+    rcpt.pk_type = pk_type;
+    if (pk_type == PKType::ECC && public_key[0] == 0x30) {
+        // 0x30 identifies SEQUENCE tag in ASN.1 encoding
+        auto evp = Crypto::fromECPublicKeyDer(public_key);
+        rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
+    } else {
+        rcpt.rcpt_key = public_key;
+    }
+    rcpt.server_id = server_id;
+    return rcpt;
 }
 
 bool
@@ -56,15 +70,15 @@ Recipient::isTheSameRecipient(const Recipient& other) const
 {
 	if (!isPKI()) return false;
 	if (!other.isPKI()) return false;
-	return rcpt_key == other.rcpt_key;
+    return rcpt_key == other.rcpt_key;
 }
 
 bool
 Recipient::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
 {
 	if (!isPKI()) return false;
-	if (rcpt_key.empty() || public_key.empty()) return false;
-	return rcpt_key == public_key;
+    if (rcpt_key.empty() || public_key.empty()) return false;
+    return rcpt_key == public_key;
 }
 
 static constexpr std::string_view type_strs[] = {

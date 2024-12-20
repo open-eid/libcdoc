@@ -31,8 +31,8 @@ namespace libcdoc {
  * Subclasses can implement different configuration systems (registry, .ini files etc.) by overriding getValue.
  */
 struct CDOC_EXPORT Configuration {
-	static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
-    static constexpr std::string_view KEYSERVER_ID = "KEYSERVER_ID";
+    //static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
+    //static constexpr std::string_view KEYSERVER_ID = "KEYSERVER_ID";
     /* Keyserver domain */
     static constexpr std::string_view KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
     static constexpr std::string_view KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";

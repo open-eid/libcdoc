@@ -48,7 +48,7 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @brief send key material to keyserver
      *
      * The default implementation uses internal http client and peer TLS certificate list.
-     * @param dst the transaction id and expiry date of the casule on server
+     * @param dst the transaction id and expiry date of the capsule on server
      * @param recipient
 	 * @param key_material
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"

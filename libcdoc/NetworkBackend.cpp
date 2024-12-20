@@ -115,6 +115,8 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         cli.enable_server_hostname_verification(false);
     }
 
+    cli.set_proxy("cache.neti.ee", 8080);
+
     std::string full = path + "/key-capsules";
     httplib::Result res = cli.Post(full, req_str, "application/json");
     if (!res) return NETWORK_ERROR;

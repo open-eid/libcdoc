@@ -107,13 +107,6 @@ struct ToolConf : public libcdoc::Configuration {
     std::vector<ServerData> servers;
 
     std::string getValue(const std::string_view& param) override final {
-        if (param == libcdoc::Configuration::USE_KEYSERVER) {
-            return use_keyserver ? "true" : "false";
-        } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
-            if (!servers.empty()) {
-                return servers[0].ID;
-            }
-        }
         return {};
 	}
 
@@ -452,7 +445,7 @@ int encrypt(int argc, char *argv[])
         return 1;
     }
 
-	std::vector<libcdoc::Recipient> keys;
+    std::vector<libcdoc::Recipient> rcpts;
     for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
         const std::string& label = pair.first;
 		const RcptInfo& rcpt = pair.second;
@@ -467,7 +460,11 @@ int encrypt(int argc, char *argv[])
         }
         else if (rcpt.type == RcptInfo::Type::PKEY)
         {
-            key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
+            if (!conf.servers.empty()) {
+                key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
+            } else {
+                key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
+            }
             std::cerr << "Creating public key:" << std::endl;
         }
         else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC)
@@ -485,7 +482,11 @@ int encrypt(int argc, char *argv[])
 				continue;
 			}
             std::cerr << "Public key (" << (rsa ? "rsa" : "ecc") << "):" << libcdoc::toHex(val) << std::endl;
-			key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
+            if (!conf.servers.empty()) {
+                key = libcdoc::Recipient::makeServer(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
+            } else {
+                key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
+            }
         }
         else if (rcpt.type == RcptInfo::Type::PASSWORD)
         {
@@ -493,10 +494,10 @@ int encrypt(int argc, char *argv[])
 			key = libcdoc::Recipient::makeSymmetric(label, 65535);
 		}
 
-		keys.push_back(key);
+        rcpts.push_back(key);
 	}
 
-    if (keys.empty())
+    if (rcpts.empty())
     {
         cerr << "No key for encryption was found" << endl;
         return 1;
@@ -506,10 +507,10 @@ int encrypt(int argc, char *argv[])
 
     int result;
 	if (PUSH) {
-        result = writer_push(*writer, keys, files);
+        result = writer_push(*writer, rcpts, files);
 	} else {
 		libcdoc::FileListSource src({}, files);
-        result = writer->encrypt(src, keys);
+        result = writer->encrypt(src, rcpts);
 	}
     if (result < 0) {
         cerr << "Encryption failed: error " << result << endl;
@@ -651,6 +652,10 @@ int decrypt(int argc, char *argv[])
         slot, key_id, key_label
 	};
     unique_ptr<libcdoc::CDocReader> rdr(libcdoc::CDocReader::createReader(file, &conf, &crypto, &network));
+    if (!rdr) {
+        cerr << "Cannot create reader (invalid file?)" << endl;
+        return 1;
+    }
     std::cout << "Reader created" << std::endl;
     std::vector<const libcdoc::Lock> locks = rdr->getLocks();
     for (const libcdoc::Lock& lock : locks) {
