@@ -60,6 +60,7 @@ set(CDOC_PRIV_SOURCES
     DDocWriter.cpp
     XmlReader.cpp XmlReader.h
     XMLWriter.cpp XmlWriter.h
+    CDocChipher.h CDocChipher.cpp
 )
 
 add_library(cdoc_priv_obj OBJECT
@@ -160,7 +161,7 @@ target_link_libraries(cdoc_static
 
 add_executable(cdoc-tool cdoc-tool.cpp)
 
-target_link_libraries(cdoc-tool cdoc)
+target_link_libraries(cdoc-tool cdoc cdoc_priv)
 
 foreach(SCHEMA ${SCHEMAS})
         get_filename_component(stem ${SCHEMA} NAME_WE)
