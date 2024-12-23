@@ -160,3 +160,50 @@ BOOST_AUTO_TEST_CASE(DecryptWithPassword,
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+
+BOOST_AUTO_TEST_SUITE(AESKeyUsage)
+
+BOOST_AUTO_TEST_CASE(EncryptWithAESKey, * utf::description("Encrypting a file with symmetric AES key"))
+{
+    // Check if the source, unecrypted file exists
+    fs::path sourceFilePath(FormFilePath(SourceFile));
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
+
+    // Setup target, encrypted file path
+    fs::path targetFilePath(FormFilePath(TargetFile));
+
+    // Remove target file if it exists
+    if (fs::exists(targetFilePath))
+    {
+        fs::remove(targetFilePath);
+    }
+
+    vector<const char*> args({"--rcpt", "Proov:skey:E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E", "--out", targetFilePath.c_str(), sourceFilePath.c_str()});
+    libcdoc::CDocChipher chipher;
+    BOOST_CHECK_EQUAL(chipher.Encrypt(args.size(), const_cast<char**>(args.data())), 0);
+
+    // Validate the encrypted file
+    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+}
+
+BOOST_AUTO_TEST_CASE(DecryptWithAESKey,
+                     * utf::depends_on("AESKeyUsage/EncryptWithAESKey")
+                     * utf::description("Decrypting a file with with symmetric AES key"))
+{
+    // Check if the source, encrypted file exists
+    fs::path sourceFilePath(FormFilePath(TargetFile));
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
+
+    // Setup target, unencrypted file path
+    fs::path targetFilePath(FormFilePath(SourceFile));
+
+    vector<const char*> args({"--label", "Proov", "--secret", "0xE165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E", sourceFilePath.c_str(), GetTestDataDir().c_str()});
+    libcdoc::CDocChipher chipher;
+    BOOST_CHECK_EQUAL(chipher.Decrypt(args.size(), const_cast<char**>(args.data())), 0);
+
+    // Check if the encrypted file exists
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+}
+
+BOOST_AUTO_TEST_SUITE_END()

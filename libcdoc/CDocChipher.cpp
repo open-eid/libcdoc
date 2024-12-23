@@ -510,7 +510,10 @@ int CDocChipher::Decrypt(int argc, char *argv[])
                 return 1;
             }
             string_view s(argv[i + 1]);
-            secret.assign(s.cbegin(), s.cend());
+            if (s.starts_with("0x"))
+                secret = fromHex(s.substr(2));
+            else
+                secret.assign(s.cbegin(), s.cend());
             i += 1;
         } else if (!strcmp(argv[i], "--slot")) {
             if ((i + 1) >= argc) {
