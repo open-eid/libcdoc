@@ -1,3 +1,7 @@
+# Exclude cmake generated files and directory
 build/
+CMakeFiles/
+CMakeCache.txt
 CMakeLists.txt.user
-
+Makefile
+cmake_install.cmake
