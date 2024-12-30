@@ -5,8 +5,10 @@
 #include <iomanip>
 
 #include "CDocChipher.h"
+#include "Utils.h"
 
 using namespace std;
+using namespace libcdoc;
 
 //
 //
@@ -55,21 +57,319 @@ print_usage(ostream& ofs)
     //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
 }
 
+//
+// cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]
+// Where RECIPIENT has a format:
+//   label:cert:CERTIFICATE_HEX
+//	 label:key:SECRET_KEY_HEX
+//   label:pw:PASSWORD
+//	 label:p11sk:SLOT:[PIN]:[ID]:[LABEL]
+//	 label:p11pk:SLOT:[PIN]:[ID]:[LABEL]
+//
+
+static int ParseAndEncrypt(int argc, char *argv[])
+{
+    cout << "Encrypting" << endl;
+
+    ToolConf conf;
+    Recipients rcpts;
+    vector<vector<uint8_t>> certs;
+
+    for (int i = 0; i < argc; i++) {
+        if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
+            vector<string> parts = split(argv[i + 1]);
+            if (parts.size() < 3)
+                return 1;
+
+            const string& label = parts[0];
+            const string& method = parts[1];
+            if (method == "cert") {
+                if (parts.size() != 3)
+                    return 1;
+
+                rcpts[label] = {
+                    RcptInfo::CERT,
+                    readFile(toUTF8(parts[2])),
+                    {}
+                };
+            }
+            else if (method == "key" || method == "skey" || method == "pkey") {
+                // For backward compatibility leave also "key" as the synonym for "skey" method.
+                if (parts.size() != 3)
+                    return 1;
+
+                RcptInfo::Type type = method == "pkey" ? RcptInfo::PKEY : RcptInfo::SKEY;
+
+                rcpts[label] = {
+                    type,
+                    {},
+                    fromHex(parts[2])
+                };
+            }
+            else if (method == "pfkey") {
+                if (parts.size() != 3)
+                    return 1;
+
+                vector<uint8_t> key = readAllBytes(parts[2]);
+
+                rcpts[label] = {
+                    RcptInfo::PKEY,
+                    {},
+                    key
+                };
+            }
+            else if (method == "pw") {
+                if (parts.size() != 3)
+                    return 1;
+
+                rcpts[label] = {
+                    RcptInfo::PASSWORD,
+                    {},
+                    vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
+                };
+            }
+            else if (method == "p11sk" || method == "p11pk") {
+                RcptInfo::Type type = method == "p11sk" ? RcptInfo::P11_SYMMETRIC : RcptInfo::P11_PKI;
+
+                if (parts.size() < 5)
+                    return 1;
+
+                conf.libraryRequired = true;
+                long slot;
+                if (parts[2].starts_with("0x")) {
+                    slot = std::stol(parts[2].substr(2), nullptr, 16);
+                } else {
+                    slot = std::stol(parts[2]);
+                }
+                string& pin = parts[3];
+                vector<uint8_t> key_id = fromHex(parts[4]);
+                string key_label = (parts.size() >= 6) ? parts[5] : "";
+                rcpts[label] = {
+                    type,
+                    {}, vector<uint8_t>(pin.cbegin(), pin.cend()),
+                    slot, key_id, key_label
+                };
+#ifndef NDEBUG
+                // For debugging
+                cout << "Method: " << method << endl;
+                cout << "Slot: " << slot << endl;
+                if (!pin.empty())
+                    cout << "Pin: " << pin << endl;
+                if (!key_id.empty())
+                    cout << "Key ID: " << parts[4] << endl;
+                if (!key_label.empty())
+                    cout << "Key label: " << key_label << endl;
+#endif
+            } else {
+                cerr << "Unkown method: " << method << endl;
+                // print_usage(cerr);
+                return 1;
+            }
+            i += 1;
+        } else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
+            conf.out = argv[i + 1];
+            i += 1;
+        } else if (!strcmp(argv[i], "--library") && ((i + 1) <= argc)) {
+            conf.library = argv[i + 1];
+            i += 1;
+        } else if (!strcmp(argv[i], "-v1")) {
+            conf.cdocVersion = 1;
+            i++;
+        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+            ToolConf::ServerData sdata;
+            sdata.ID = argv[i + 1];
+            sdata.SEND_URL = argv[i + 2];
+            conf.servers.push_back(sdata);
+            conf.use_keyserver = true;
+            i += 2;
+        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
+            vector<uint8_t> der = readAllBytes(argv[i + 1]);
+            certs.push_back(der);
+            i += 1;
+        } else if (argv[i][0] == '-') {
+            return 1;
+        } else {
+            conf.input_files.push_back(argv[i]);
+        }
+    }
+    if (rcpts.empty()) {
+        cerr << "No recipients" << endl;
+        return 1;
+    }
+    if (conf.input_files.empty()) {
+        cerr << "No files specified" << endl;
+        return 1;
+    }
+    if (conf.out.empty()) {
+        cerr << "No output specified" << endl;
+        return 1;
+    }
+
+    if (conf.libraryRequired && conf.library.empty()) {
+        cerr << "Cryptographic library is required" << endl;
+        return 1;
+    }
+
+    // CDOC1 is supported only in case of encryption with certificate.
+    if (conf.cdocVersion == 1) {
+        for (const pair<string, RcptInfo>& rcpt : rcpts) {
+            if (rcpt.second.type != RcptInfo::CERT) {
+                cerr << "CDOC version 1 container can be used on encryption with certificate only." << endl;
+                // print_usage(cerr);
+                return 1;
+            }
+        }
+    }
+
+    CDocChipher chipher;
+    return chipher.Encrypt(conf, rcpts, certs);
+}
+
+//
+// cdoc-tool decrypt ARGUMENTS FILE [OUTPU_DIR]
+//   --label LABEL   CDoc container lock label
+//   --slot SLOT     PKCS11 slot number
+//   --secret|password|pin SECRET    Secret phrase (either lock password or PKCS11 pin)
+//   --key-id        PKCS11 key id
+//   --key-label     PKCS11 key label
+//   --library       full path to cryptographic library to be used (needed for decryption with PKCS11)
+
+static int ParseAndDecrypt(int argc, char *argv[])
+{
+    ToolConf conf;
+
+    string label;
+    vector<uint8_t> secret;
+    long slot;
+    vector<uint8_t> key_id;
+    string key_label;
+    vector<vector<uint8_t>> certs;
+
+    // Keyserver info
+    std::string tls_cert_label;
+    std::vector<uint8_t> tls_cert_id;
+    std::vector<uint8_t> tls_cert_pin;
+
+    for (int i = 0; i < argc; i++)
+    {
+        if (!strcmp(argv[i], "--label") && ((i + 1) < argc)) {
+            // Make sure the label is provided only once.
+            if (!label.empty()) {
+                cerr << "The label was already provided" << endl;
+                return 1;
+            }
+            label = argv[i + 1];
+            i += 1;
+        } else if (!strcmp(argv[i], "--password") || !strcmp(argv[i], "--secret") || !strcmp(argv[i], "--pin")) {
+            if ((i + 1) >= argc) {
+                return 1;
+            }
+            string_view s(argv[i + 1]);
+            if (s.starts_with("0x"))
+                secret = fromHex(s.substr(2));
+            else
+                secret.assign(s.cbegin(), s.cend());
+            i += 1;
+        } else if (!strcmp(argv[i], "--slot")) {
+            if ((i + 1) >= argc) {
+                return 1;
+            }
+            conf.libraryRequired = true;
+            string str(argv[i + 1]);
+            if (str.starts_with("0x")) {
+                slot = std::stol(str.substr(2), nullptr, 16);
+            } else {
+                slot = std::stol(str);
+            }
+            i += 1;
+        } else if (!strcmp(argv[i], "--key-id")) {
+            if ((i + 1) >= argc) {
+                return 1;
+            }
+            string_view s(argv[i + 1]);
+            key_id.assign(s.cbegin(), s.cend());
+            i += 1;
+        } else if (!strcmp(argv[i], "--key-label")) {
+            if ((i + 1) >= argc) {
+                return 1;
+            }
+            key_label = argv[i + 1];
+            i += 1;
+        } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
+            conf.library = argv[i + 1];
+            i += 1;
+        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+            ToolConf::ServerData sdata;
+            sdata.ID = argv[i + 1];
+            sdata.FETCH_URL = argv[i + 2];
+            conf.servers.push_back(sdata);
+            conf.use_keyserver = true;
+            i += 2;
+        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
+            vector<uint8_t> der = readAllBytes(argv[i + 1]);
+            certs.push_back(der);
+            i += 1;
+        } else if (argv[i][0] != '-') {
+            if (conf.input_files.empty())
+                conf.input_files.push_back(argv[i]);
+            else
+                conf.out = argv[i];
+        } else {
+            return 1;
+        }
+    }
+
+    if (label.empty()) {
+        cerr << "No label provided" << endl;
+        return 1;
+    }
+
+    if (conf.libraryRequired && conf.library.empty()) {
+        cerr << "Cryptographic library is required" << endl;
+        return 1;
+    }
+
+    Recipients rcpts {{label, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
+
+    if (conf.input_files.empty()) {
+        cerr << "No file to decrypt" << endl;
+        return 1;
+    }
+
+    // If output directory was not specified, use current directory
+    if (conf.out.empty())
+        conf.out = ".";
+
+    CDocChipher chipher;
+    return chipher.Decrypt(conf, rcpts, certs);
+}
+
+//
+// cdoc-tool locks FILE
+//
+
+static int ParseAndGetLocks(int argc, char *argv[])
+{
+    if (argc < 1)
+        return 1;
+
+    CDocChipher chipher;
+    chipher.Locks(argv[0]);
+    return 0;
+}
 
 int main(int argc, char *argv[])
 {
-    std::chrono::time_point<std::chrono::system_clock> epoch;
-    auto now = std::chrono::system_clock::now();
+    chrono::time_point<chrono::system_clock> epoch;
+    auto now = chrono::system_clock::now();
 
-    std::cout << std::format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now)
-              << endl;
+    cout << format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now) << endl;
 
-    const auto c_now = std::chrono::system_clock::to_time_t(now);
+    const auto c_now = chrono::system_clock::to_time_t(now);
 
     cout << put_time(gmtime(&c_now), "%FT%TZ") << endl;
 
-    if (argc < 2)
-    {
+    if (argc < 2) {
         print_usage(cerr);
         return 1;
     }
@@ -80,11 +380,11 @@ int main(int argc, char *argv[])
     libcdoc::CDocChipher chipher;
     int retVal = 0;
     if (command == "encrypt") {
-        retVal = chipher.Encrypt(argc - 2, argv + 2);
+        retVal = ParseAndEncrypt(argc - 2, argv + 2);
     } else if (command == "decrypt") {
-        retVal = chipher.Decrypt(argc - 2, argv + 2);
+        retVal = ParseAndDecrypt(argc - 2, argv + 2);
     } else if (command == "locks") {
-        retVal = chipher.Locks(argc - 2, argv + 2);
+        retVal = ParseAndGetLocks(argc - 2, argv + 2);
     } else if(argc >= 5 && command == "encrypt") {
 #if 0
 		CDOC1Writer w(toUTF8(argv[argc-1]));

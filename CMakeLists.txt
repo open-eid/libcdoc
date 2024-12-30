@@ -4,7 +4,7 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 
-project(libcdoc VERSION 0.1.0)
+project(libcdoc VERSION 0.1.1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 

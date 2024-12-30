@@ -61,6 +61,8 @@ set(CDOC_PRIV_SOURCES
     XmlReader.cpp XmlReader.h
     XMLWriter.cpp XmlWriter.h
     CDocChipher.h CDocChipher.cpp
+    RcptInfo.h
+    ToolConf.h
 )
 
 add_library(cdoc_priv_obj OBJECT

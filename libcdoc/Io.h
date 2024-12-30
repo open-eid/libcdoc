@@ -297,8 +297,8 @@ public:
         {
             fileName = name;
         }
-        std::filesystem::path path = base;
-        path.append(fileName);
+        std::filesystem::path path(base);
+        path /= fileName;
 		ofs.open(path.string(), std::ios_base::out);
         return ofs.bad() ? OK : OUTPUT_STREAM_ERROR;
 	}
