@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <CDocChipher.h>
+#include <Utils.h>
 
 namespace btools = boost::test_tools;
 namespace utf = boost::unit_test;
@@ -115,6 +116,12 @@ const string SourceFile("test_data.txt");
  */
 const string TargetFile("test_data.txt.cdoc");
 
+const string Label("Proov");
+
+const string Password("Proov123");
+
+const string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
+
 BOOST_AUTO_TEST_SUITE(PasswordUsage)
 
 BOOST_AUTO_TEST_CASE(EncryptWithPassword, * utf::description("Encrypting a file with password"))
@@ -132,9 +139,14 @@ BOOST_AUTO_TEST_CASE(EncryptWithPassword, * utf::description("Encrypting a file 
         fs::remove(targetFilePath);
     }
 
-    vector<const char*> args({"--rcpt", "Proov:pw:Proov123", "--out", targetFilePath.c_str(), sourceFilePath.c_str()});
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::PASSWORD, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Encrypt(args.size(), const_cast<char**>(args.data())), 0);
+    BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
 
     // Validate the encrypted file
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
@@ -151,9 +163,14 @@ BOOST_AUTO_TEST_CASE(DecryptWithPassword,
     // Setup target, unencrypted file path
     fs::path targetFilePath(FormFilePath(SourceFile));
 
-    vector<const char*> args({"--label", "Proov", "--password", "Proov123", sourceFilePath.c_str(), GetTestDataDir().c_str()});
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = GetTestDataDir().string();
+
+    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Decrypt(args.size(), const_cast<char**>(args.data())), 0);
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
@@ -179,9 +196,14 @@ BOOST_AUTO_TEST_CASE(EncryptWithAESKey, * utf::description("Encrypting a file wi
         fs::remove(targetFilePath);
     }
 
-    vector<const char*> args({"--rcpt", "Proov:skey:E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E", "--out", targetFilePath.c_str(), sourceFilePath.c_str()});
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::SKEY, {}, libcdoc::fromHex(AESKey)} }};
+
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Encrypt(args.size(), const_cast<char**>(args.data())), 0);
+    BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
 
     // Validate the encrypted file
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
@@ -198,9 +220,14 @@ BOOST_AUTO_TEST_CASE(DecryptWithAESKey,
     // Setup target, unencrypted file path
     fs::path targetFilePath(FormFilePath(SourceFile));
 
-    vector<const char*> args({"--label", "Proov", "--secret", "0xE165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E", sourceFilePath.c_str(), GetTestDataDir().c_str()});
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = GetTestDataDir().string();
+
+    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)} }};
+
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Decrypt(args.size(), const_cast<char**>(args.data())), 0);
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");

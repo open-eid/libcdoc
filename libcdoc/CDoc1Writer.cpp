@@ -198,7 +198,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 	d->_xml->writeEndElement(Private::DS); // KeyInfo
 
 	std::vector<FileEntry> files;
-	d->_xml->writeElement(Private::DENC, "CipherData", [&]{
+    d->_xml->writeElement(Private::DENC, "CipherData", [&]() -> void {
         std::vector<uint8_t> data;
         if(use_ddoc) {
             data.reserve(16384);
@@ -219,7 +219,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 			std::string name;
 			int64_t size;
 			src.next(name, size);
-			if (size < 0) return libcdoc::IO_ERROR;
+            // if (size < 0) return libcdoc::IO_ERROR;
 			files.push_back({name, (size_t) size});
 
 			libcdoc::VectorConsumer vcons(data);
