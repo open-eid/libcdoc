@@ -25,7 +25,13 @@ struct CDoc2Writer::Private {
 		libcdoc::CipherConsumer *ccons = new libcdoc::CipherConsumer(dst, false, cipher.get());
 		libcdoc::ZConsumer *zcons = new libcdoc::ZConsumer(ccons, true);
 		tar = std::make_unique<libcdoc::TarConsumer>(zcons, true);
-	}
+#ifndef NDEBUG
+        std::cerr << "fmk: " << libcdoc::toHex(fmk) << std::endl;
+        std::cerr << "cek: " << libcdoc::toHex(cek) << std::endl;
+        std::cerr << "hhk: " << libcdoc::toHex(hhk) << std::endl;
+        std::cerr << "nonce: " << libcdoc::toHex(hhk) << std::endl;
+#endif
+    }
 	~Private() {
 		std::fill(fmk.begin(), fmk.end(), 0);
 		std::fill(cek.begin(), cek.end(), 0);
@@ -57,11 +63,6 @@ CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 {
 	last_error.clear();
 	priv = std::make_unique<Private>(dst);
-#ifndef NDEBUG
-    std::cerr << "fmk: " << libcdoc::toHex(priv->fmk) << std::endl;
-    std::cerr << "cek: " << libcdoc::toHex(priv->cek) << std::endl;
-    std::cerr << "hhk: " << libcdoc::toHex(priv->hhk) << std::endl;
-#endif
 	int result = encryptInternal(src, keys);
 	priv.reset();
 	if (owned) dst->close();
@@ -278,8 +279,17 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			std::vector<uint8_t> pw_salt;
 			crypto->random(pw_salt, 32);
             crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt.label);
-			std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-			if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+#ifndef NDEBUG
+            std::cerr << "Label: " << rcpt.label << std::endl;
+            std::cerr << "KDF iter: " << rcpt.kdf_iter << std::endl;
+            std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+            std::cerr << "salt: " << libcdoc::toHex(salt) << std::endl;
+            std::cerr << "pw_salt: " << libcdoc::toHex(pw_salt) << std::endl;
+            std::cerr << "kek_pm: " << libcdoc::toHex(kek_pm) << std::endl;
+            std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
+#endif
+            if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 				setLastError("Internal error");
 				return libcdoc::CRYPTO_ERROR;

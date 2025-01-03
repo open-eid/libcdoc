@@ -128,7 +128,7 @@ struct ZConsumer : public ChainedConsumer {
 struct ZSource : public ChainedSource {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
 	z_stream _s {};
-	int64_t _error = OK;
+    int64_t _error = OK;
 	std::vector<uint8_t> buf;
 	int flush = Z_NO_FLUSH;
 	ZSource(DataSource *src, bool take_ownership = false) : ChainedSource(src, take_ownership) {
@@ -174,7 +174,7 @@ struct ZSource : public ChainedSource {
 	}
 
 	virtual bool isError() override final {
-		return (_error != OK) || ChainedSource::isError();
+        return (_error != OK) || ChainedSource::isError();
 	};
 
 	virtual bool isEof() override final {

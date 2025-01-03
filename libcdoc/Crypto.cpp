@@ -472,7 +472,7 @@ Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, con
 	if(lhs.size() != rhs.size()) return CRYPTO_ERROR;
 	dst.resize(lhs.size());
 	for(size_t i = 0; i < lhs.size(); ++i) dst[i] = lhs[i] ^ rhs[i];
-	return OK;
+    return OK;
 }
 
 X509* Crypto::toX509(const std::vector<uint8_t> &data)

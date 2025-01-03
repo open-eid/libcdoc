@@ -216,9 +216,9 @@ struct TaggedSource : public libcdoc::DataSource {
 	}
 
 	int seek(size_t pos) override final {
-		if (!_src->seek(pos)) return INPUT_STREAM_ERROR;
-		if (_src->read(tag.data(), tag.size()) != tag.size()) return INPUT_STREAM_ERROR;
-		return libcdoc::OK;
+        if (!_src->seek(pos)) return libcdoc::INPUT_STREAM_ERROR;
+        if (_src->read(tag.data(), tag.size()) != tag.size()) return libcdoc::INPUT_STREAM_ERROR;
+        return libcdoc::OK;
 	}
 
 	int64_t read(uint8_t *dst, size_t size) override final {

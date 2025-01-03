@@ -18,11 +18,7 @@ class DataSource;
  *
  * An abstact base class for ouput objects
  */
-class CDOC_EXPORT DataConsumer {
-public:
-	static constexpr int OUTPUT_ERROR = -500;
-	static constexpr int OUTPUT_STREAM_ERROR = -501;
-
+struct CDOC_EXPORT DataConsumer {
 	DataConsumer() = default;
 	virtual ~DataConsumer() = default;
 
@@ -44,7 +40,7 @@ public:
 	virtual int close() = 0;
 	/**
 	 * @brief checks whether DataSource is in error state
-	 * @return true is error occured
+     * @return error code or OK
 	 */
 	virtual bool isError() = 0;
 	/**
@@ -64,6 +60,14 @@ public:
 	int64_t write(const std::string& src) {
 		return write((const uint8_t *) src.data(), src.size());
 	}
+    /**
+     * @brief writeAll reads all data from input object and writes to this
+     *
+     * Copies all bytes from input source (until EOF or error) to the object. If error occurs
+     * while reading source, the source objects' error code is returned.
+     * @param src the input DataSource
+     * @return the number of bytes copied or error
+     */
 	int64_t writeAll(DataSource& src);
 
 	DataConsumer (const DataConsumer&) = delete;
@@ -75,11 +79,7 @@ public:
  *
  * An abstact base class for input objects
  */
-class CDOC_EXPORT DataSource {
-public:
-	static constexpr int INPUT_ERROR = -600;
-	static constexpr int INPUT_STREAM_ERROR = -601;
-
+struct CDOC_EXPORT DataSource {
 	DataSource() = default;
 	virtual ~DataSource() = default;
 
@@ -109,6 +109,14 @@ public:
 	virtual std::string getLastErrorStr(int code) const;
 
 	int64_t skip(size_t size);
+    /**
+     * @brief readAll reads all data and writes to output object
+     *
+     * Copies all bytes (until EOF or error) to the output object. If error occurs
+     * while writing data, the destination objects' error code is returned.
+     * @param dst the destination DataConsumer
+     * @return error code or OK
+     */
 	int64_t readAll(DataConsumer& dst) {
 		return dst.writeAll(*this);
 	}
@@ -117,29 +125,41 @@ public:
 	DataSource& operator= (const DataSource&) = delete;
 };
 
-// close finishes the whole stream, individual sub-streams are finished by next open, the last one with close
 /**
  * @brief An abstract base class for multi-stream consumers
  *
- * A new sub-stream is created by open and fnished either by the next open or closing
+ * A new sub-stream is created by open and finished either by the next open or by closing
  * the whole stream.
  *
  */
-class CDOC_EXPORT MultiDataConsumer : public DataConsumer {
-public:
+struct CDOC_EXPORT MultiDataConsumer : public DataConsumer {
 	virtual ~MultiDataConsumer() = default;
-	// Negative value means unknown size
+    /**
+     * @brief open create a new named sub-stream
+     *
+     * Creates a new named sub-stream. It is up to implementation to handle the name and optional size.
+     * @param name the name of sub-stream
+     * @param size the size of sub-stream or -1 if unknown during creation time
+     * @return error code or OK
+     */
 	virtual int open(const std::string& name, int64_t size) = 0;
 };
 
-class CDOC_EXPORT MultiDataSource : public DataSource {
-public:
-	virtual size_t getNumComponents() { return NOT_IMPLEMENTED; }
-	virtual int next(std::string& name, int64_t& size) = 0;
+struct FileInfo {
+    std::string name;
+    int64_t size;
 };
 
-class CDOC_EXPORT ChainedConsumer : public DataConsumer {
-public:
+/**
+ * @brief An abstract base class for multi-stream sources
+ */
+struct CDOC_EXPORT MultiDataSource : public DataSource {
+	virtual size_t getNumComponents() { return NOT_IMPLEMENTED; }
+	virtual int next(std::string& name, int64_t& size) = 0;
+    int next(FileInfo& info) { return next(info.name, info.size); }
+};
+
+struct CDOC_EXPORT ChainedConsumer : public DataConsumer {
 	ChainedConsumer(DataConsumer *dst, bool take_ownership) : _dst(dst), _owned(take_ownership) {}
 	~ChainedConsumer() {
 		if (_owned) delete _dst;
@@ -149,7 +169,7 @@ public:
 	}
 	int close() override {
 		if (_owned) return _dst->close();
-		return OK;
+        return OK;
 	}
 	bool isError() override {
 		return _dst->isError();
@@ -159,8 +179,7 @@ protected:
 	bool _owned;
 };
 
-class CDOC_EXPORT ChainedSource : public DataSource {
-public:
+struct CDOC_EXPORT ChainedSource : public DataSource {
 	ChainedSource(DataSource *src, bool take_ownership) : _src(src), _owned(take_ownership) {}
 	~ChainedSource() {
 		if (_owned) delete _src;
@@ -179,8 +198,7 @@ protected:
 	bool _owned;
 };
 
-class CDOC_EXPORT IStreamSource : public DataSource {
-public:
+struct CDOC_EXPORT IStreamSource : public DataSource {
 	IStreamSource(std::istream *ifs, bool take_ownership = false) : _ifs(ifs), _owned(take_ownership) {}
 	IStreamSource(const std::string& path);
 	~IStreamSource() {
@@ -189,7 +207,7 @@ public:
 
 	int seek(size_t pos) {
 		_ifs->seekg(pos);
-		return bool(_ifs->bad()) ? INPUT_STREAM_ERROR : OK;
+        return bool(_ifs->bad()) ? INPUT_STREAM_ERROR : OK;
 	}
 
 	int64_t read(uint8_t *dst, size_t size) {
@@ -204,8 +222,7 @@ protected:
 	bool _owned;
 };
 
-class CDOC_EXPORT OStreamConsumer : public DataConsumer {
-public:
+struct CDOC_EXPORT OStreamConsumer : public DataConsumer {
 	static constexpr int STREAM_ERROR = -500;
 
 	OStreamConsumer(std::ostream *ofs, bool take_ownership = false) : _ofs(ofs), _owned(take_ownership) {}
@@ -221,7 +238,7 @@ public:
 
 	int close() {
 		_ofs->flush();
-		return (_ofs->bad()) ? OUTPUT_STREAM_ERROR : OK;
+        return (_ofs->bad()) ? OUTPUT_STREAM_ERROR : OK;
 	}
 
 	bool isError() { return _ofs->bad(); }
@@ -230,14 +247,13 @@ protected:
 	bool _owned;
 };
 
-class CDOC_EXPORT VectorSource : public DataSource {
-public:
+struct CDOC_EXPORT VectorSource : public DataSource {
 	VectorSource(const std::vector<uint8_t>& data) : _data(data), _ptr(0) {}
 
     int seek(size_t pos) override {
 		if (pos > _data.size()) return INPUT_STREAM_ERROR;
 		_ptr = pos;
-		return OK;
+        return OK;
 	}
 
     int64_t read(uint8_t *dst, size_t size) override {
@@ -254,21 +270,19 @@ protected:
 	size_t _ptr;
 };
 
-class CDOC_EXPORT VectorConsumer : public DataConsumer {
-public:
+struct CDOC_EXPORT VectorConsumer : public DataConsumer {
 	VectorConsumer(std::vector<uint8_t>& data) : _data(data) {}
 	int64_t write(const uint8_t *src, size_t size) override final {
 		_data.insert(_data.end(), src, src + size);
 		return size;
 	}
-	int close() override final { return OK; }
+    int close() override final { return OK; }
 	virtual bool isError() override final { return false; }
 protected:
     std::vector<uint8_t>& _data;
 };
 
-class CDOC_EXPORT FileListConsumer : public MultiDataConsumer {
-public:
+struct CDOC_EXPORT FileListConsumer : public MultiDataConsumer {
 	FileListConsumer(const std::string base_path) {
 		base = base_path;
 	}
@@ -278,7 +292,7 @@ public:
 	}
 	int close() override final {
 		ofs.close();
-		return (ofs.bad()) ? OUTPUT_STREAM_ERROR : OK;
+        return (ofs.bad()) ? OUTPUT_STREAM_ERROR : OK;
 	}
 	bool isError() override final {
 		return ofs.bad();
@@ -308,8 +322,7 @@ protected:
 	std::ofstream ofs;
 };
 
-class CDOC_EXPORT FileListSource : public MultiDataSource {
-public:
+struct CDOC_EXPORT FileListSource : public MultiDataSource {
 	FileListSource(const std::string& base, const std::vector<std::string>& files);
 	int64_t read(uint8_t *dst, size_t size) override final;
 	bool isError() override final;

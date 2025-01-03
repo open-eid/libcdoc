@@ -12,7 +12,7 @@ std::string
 DataConsumer::getLastErrorStr(int code) const
 {
 	switch (code) {
-	case OK:
+    case OK:
 		return "";
 	case OUTPUT_ERROR:
 		return "DataConsumer: Output error";
@@ -28,7 +28,7 @@ std::string
 DataSource::getLastErrorStr(int code) const
 {
 	switch (code) {
-	case OK:
+    case OK:
 		return "";
 	case INPUT_ERROR:
 		return "DataConsumer: Input error";
@@ -97,7 +97,7 @@ FileListSource::read(uint8_t *dst, size_t size)
 bool
 FileListSource::isError()
 {
-	if ((_current < 0) || (_current >= _files.size())) return OK;
+    if ((_current < 0) || (_current >= _files.size())) return OK;
 	return _ifs.bad();
 }
 
@@ -128,7 +128,7 @@ FileListSource::next(std::string& name, int64_t& size)
 	if (_ifs.bad()) return IO_ERROR;
 	name = _files[_current];
 	size = std::filesystem::file_size(path);
-	return OK;
+    return OK;
 }
 
 } // namespace libcdoc

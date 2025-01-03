@@ -102,7 +102,7 @@ libcdoc::TAR::files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataC
 	TarSource tar(src, false);
 	std::string name;
 	int64_t size;
-	while (tar.next(name, size) == OK) {
+    while (tar.next(name, size) == OK) {
 		dst->open(name, size);
 		dst->writeAll(tar);
 	}
@@ -204,7 +204,7 @@ libcdoc::TarConsumer::close()
 	if (_owned) {
 		_dst->close();
 	}
-	return OK;
+    return OK;
 }
 
 bool
@@ -239,11 +239,11 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 
 	h.typeflag = '0';
 	if(writeHeader(_dst, h, size) < 0) return OUTPUT_ERROR;
-	return OK;
+    return OK;
 }
 
 libcdoc::TarSource::TarSource(DataSource *src, bool take_ownership)
-	: _src(src), _owned(take_ownership), _eof(false), _error(OK), _block_size(0), _data_size(0), _pos(0)
+    : _src(src), _owned(take_ownership), _eof(false), _error(OK), _block_size(0), _data_size(0), _pos(0)
 {
 
 }
@@ -258,7 +258,7 @@ libcdoc::TarSource::~TarSource()
 int64_t
 libcdoc::TarSource::read(uint8_t *dst, size_t size)
 {
-	if (_error != OK) return _error;
+    if (_error != OK) return _error;
 	if (_pos >= _data_size) {
 		_eof = true;
 		return 0;
@@ -277,7 +277,7 @@ libcdoc::TarSource::read(uint8_t *dst, size_t size)
 bool
 libcdoc::TarSource::isError()
 {
-	return _error != OK;
+    return _error != OK;
 }
 
 bool
@@ -363,7 +363,7 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			_data_size = h_size;
 			_block_size = h_size + padding(h_size);
 			_eof = false;
-			return OK;
+            return OK;
 		} else {
 			_src->skip(h_size + padding(h_size));
 		}

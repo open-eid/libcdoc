@@ -121,7 +121,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		return libcdoc::CRYPTO_ERROR;
 	}
 	setLastError({});
-	return libcdoc::OK;
+    return libcdoc::OK;
 }
 
 int
@@ -166,13 +166,13 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
 		setLastError({});
-		return libcdoc::OK;
+        return libcdoc::OK;
 	}
 	dst->open(d->properties["Filename"], data.size());
 	dst->writeAll(vsrc);
 	dst->close();
 	setLastError({});
-	return libcdoc::OK;
+    return libcdoc::OK;
 #endif
 }
 

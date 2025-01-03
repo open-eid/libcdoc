@@ -11,7 +11,6 @@
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
-#include "openssl/x509.h"
 
 #include <iostream>
 
@@ -105,7 +104,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
 			return PKCS11_ERROR;
 		}
 	}
-	return OK;
+    return OK;
 }
 
 int
@@ -116,7 +115,7 @@ libcdoc::PKCS11Backend::Private::logout()
 	f->C_CloseSession(session);
 	session = CK_INVALID_HANDLE;
 	key = CK_INVALID_HANDLE;
-	return true;
+    return OK;
 }
 
 std::vector<CK_BYTE>
@@ -355,7 +354,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
     EVP_PKEY_free(evp_pkey);
     EC_POINT_free(pub_key_point);
     EC_GROUP_free(group);
-	return OK;
+    return OK;
 }
 
 int
@@ -364,7 +363,7 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
 	if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(label, true);
-	if (result != OK) return result;
+    if (result != OK) return result;
 
 	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
 	auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
@@ -380,7 +379,7 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
 	dst.resize(size);
 	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) return CRYPTO_ERROR;
 	d->logout();
-	return OK;
+    return OK;
 }
 
 int
@@ -389,7 +388,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 	if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(label, true);
-	if (result != OK) return result;
+    if (result != OK) return result;
 
 	std::vector<uint8_t> sharedSecret;
 
@@ -418,7 +417,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 	d->logout();
 	if (val.empty()) return CRYPTO_ERROR;
 	dst = val;
-	return OK;
+    return OK;
 }
 
 int
@@ -429,7 +428,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 	if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(label, false);
-	if (result != OK) return result;
+    if (result != OK) return result;
 
 	CK_HKDF_PARAMS hkdf_params = {
 		1, // bExtract
@@ -472,7 +471,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 	d->logout();
 	if (val.empty()) return CRYPTO_ERROR;
 	kek = val;
-	return OK;
+    return OK;
 }
 
 int

@@ -107,7 +107,14 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		std::vector<uint8_t> kek_pm;
 		crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), {}, 0, lock.label);
 		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-		if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+#ifndef NDEBUG
+        std::cerr << "Label: " << lock.label << std::endl;
+        std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+        std::cerr << "salt: " << libcdoc::toHex(lock.getBytes(libcdoc::Lock::SALT)) << std::endl;
+        std::cerr << "kek_pm: " << libcdoc::toHex(kek_pm) << std::endl;
+        std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
+#endif
+        if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 	} else {
 		// Public/private key
 		std::vector<uint8_t> key_material;
@@ -162,7 +169,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		setLastError(t_("Failed to derive key"));
 		return false;
 	}
-	if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
+    if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
 		setLastError(t_("Failed to decrypt/derive fmk"));
 		return libcdoc::CRYPTO_ERROR;
 	}
@@ -178,19 +185,19 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		return libcdoc::HASH_MISMATCH;
 	}
 	setLastError({});
-	return libcdoc::OK;
+    return libcdoc::OK;
 }
 
 int
 CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
 {
 	int result = beginDecryption(fmk);
-	if (result != libcdoc::OK) return result;
+    if (result != libcdoc::OK) return result;
 	bool warning = false;
 	std::string name;
 	int64_t size;
 	result = nextFile(name, size);
-	while (result == libcdoc::OK) {
+    while (result == libcdoc::OK) {
 		consumer->open(name, size);
 		consumer->writeAll(*priv->tar);
 		result = nextFile(name, size);
@@ -207,7 +214,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
 	if (!priv->_at_nonce) {
 		int result = priv->_src->seek(priv->_nonce_pos);
-		if (result != libcdoc::OK) {
+        if (result != libcdoc::OK) {
 			setLastError(priv->_src->getLastErrorStr(result));
 			return libcdoc::IO_ERROR;
 		}
@@ -237,7 +244,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 	priv->zsrc = std::make_unique<libcdoc::ZSource>(csrc, false);
 	priv->tar = std::make_unique<libcdoc::TarSource>(priv->zsrc.get(), false);
 
-	return libcdoc::OK;
+    return libcdoc::OK;
 }
 
 int
@@ -270,9 +277,9 @@ CDoc2Reader::finishDecryption()
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 	setLastError({});
-	return libcdoc::OK;
+    return libcdoc::OK;
 	priv->tar.reset();
-	return libcdoc::OK;
+    return libcdoc::OK;
 }
 
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)

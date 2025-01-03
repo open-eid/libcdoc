@@ -1,4 +1,4 @@
-%module(directors="1") cdoc
+%module(directors="1") CDoc
 
 %{
 #include "libcdoc/Io.h"
@@ -25,6 +25,7 @@
 // CDocWriter
 %ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 %ignore libcdoc::CDocWriter::encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients);
+
 // int64_t write(cont uint8_t *src, size_t pos, size_t len) -> long read(byte[] src, long pos, long len)
 %extend libcdoc::CDocWriter {
     int64_t writeData(const uint8_t *src, size_t pos, size_t size) {
@@ -49,10 +50,14 @@
 %typemap(jtype) (const uint8_t *src, size_t size) "byte[]"
 %typemap(jstype) (const uint8_t *src, size_t size) "byte[]"
 
+// MultiDataSource
+%ignore libcdoc::MultiDataSource::next(std::string& name, int64_t& size);
+
 // CDocReader
+%ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
 // Use LockVector object to encapsulate the vector of locks
 %template(LockVector) std::vector<libcdoc::Lock>;
-// Custom wrapper do away with cont qualifiers
+// Custom wrapper do away with const qualifiers
 %extend libcdoc::CDocReader {
     std::vector<libcdoc::Lock> getLocks() {
         static const std::vector<const libcdoc::Lock> locks = $self->getLocks();
@@ -61,7 +66,9 @@
     }
 };
 %ignore libcdoc::CDocReader::getLocks();
+
 // int64_t read(uint8_t *dst, size_t const ssize)
+
 %typemap(in) (uint8_t *dst, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
@@ -122,6 +129,10 @@
 };
 #endif
 
+//
+// std::vector<uint8_t> <- byte[]
+//
+
 %typemap(out) std::vector<uint8_t> %{
     jresult = jenv->NewByteArray((&result)->size());
     jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
@@ -132,6 +143,10 @@
 %typemap(javaout) std::vector<uint8_t> {
     return $jnicall;
 }
+
+//
+// std::vector<uint8_t>& dst -> byte[]
+//
 
 %typemap(in) (std::vector<uint8_t>& dst) %{
     jsize $input_size = jenv->GetArrayLength($input);
@@ -152,6 +167,29 @@
     return $jnicall;
 }
 
+//
+// const std::string_view& -> String
+//
+
+%typemap(in) const std::string_view& %{
+    const char *$1_utf8 = jenv->GetStringUTFChars($input, nullptr);
+    std::string_view $1_sv($1_utf8);
+    $1 = &$1_sv;
+%}
+%typemap(freearg) const std::string_view& %{
+    jenv->ReleaseStringUTFChars($input, $1_utf8);
+%}
+%typemap(jtype) const std::string_view& "String"
+%typemap(jstype) const std::string_view& "String"
+%typemap(jni) const std::string_view& "jstring"
+%typemap(javaout) const std::string_view& {
+    return $jnicall;
+}
+
+//
+// std::string_view <- String
+//
+
 %typemap(out) std::string_view %{
     std::string tmp(result.cbegin(), result.cend());
     jresult = jenv->NewStringUTF(tmp.c_str());
@@ -164,7 +202,6 @@
 }
 
 %feature("director") CryptoBackend;
-
 #endif
 
 // Swig does not like visibility/declspec attributes

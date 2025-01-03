@@ -67,6 +67,7 @@ public:
 	// Pull interface
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
 	virtual int nextFile(std::string& name, int64_t& size) = 0;
+    int nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
 	virtual int64_t readData(uint8_t *dst, size_t size) = 0;
 	virtual int finishDecryption() = 0;
 

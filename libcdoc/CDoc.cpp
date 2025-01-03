@@ -5,7 +5,45 @@
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 
-#include "CDoc2.h"
+namespace libcdoc {
+
+struct Result {
+    const int64_t code;
+    const std::string_view message;
+};
+
+static constexpr Result results[] = {
+    {OK, "OK"},
+    {END_OF_STREAM, "End of stream"},
+    {NOT_IMPLEMENTED, "Method not implemented"},
+    {NOT_SUPPORTED, "Method not supported"},
+    {WRONG_ARGUMENTS, "Wrong arguments to a method"},
+    {WORKFLOW_ERROR, "Wrong workflow sequence"},
+    {IO_ERROR, "Input/Output error"},
+    {OUTPUT_ERROR, "Output error"},
+    {OUTPUT_STREAM_ERROR, "Output stream error"},
+    {INPUT_ERROR, "Input error"},
+    {INPUT_STREAM_ERROR, "Input stream error"},
+    {DATA_FORMAT_ERROR, "Invalid data format"},
+    {CRYPTO_ERROR, "Cryptography error"},
+    {ZLIB_ERROR, "ZLib error"},
+    {PKCS11_ERROR, "PKCS11 error"},
+    {HASH_MISMATCH, "Hash mismatch"},
+    {CONFIGURATION_ERROR, "Configuration error"},
+    {UNSPECIFIED_ERROR, "Unspecified error"},
+    };
+
+static constexpr int n_results = sizeof(results) / sizeof(Result);
+
+CDOC_EXPORT std::string
+getErrorStr(int64_t code) {
+    for (auto& r : results) {
+        if (r.code == code) return std::string(r.message);
+    }
+    return std::format("Unknown result code {}", code);
+}
+
+}
 
 bool
 libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)

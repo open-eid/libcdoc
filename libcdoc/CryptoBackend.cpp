@@ -11,7 +11,7 @@ std::string
 CryptoBackend::getLastErrorStr(int code) const
 {
 	switch (code) {
-	case OK:
+    case OK:
 		return "";
 	case NOT_IMPLEMENTED:
 		return "CryptoBackend: Method not implemented";
@@ -30,7 +30,7 @@ CryptoBackend::random(std::vector<uint8_t>& dst, int size)
 {
 	dst.resize(size);
 	int result = RAND_bytes(dst.data(), size);
-	return (result < 0) ? OPENSSL_ERROR : OK;
+    return (result < 0) ? OPENSSL_ERROR : OK;
 }
 
 int
@@ -40,9 +40,9 @@ CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint
 {
 	std::vector<uint8_t> shared_secret;
 	int result = deriveECDH1(shared_secret, publicKey, label);
-	if (result != OK) return result;
+    if (result != OK) return result;
 	dst = libcdoc::Crypto::concatKDF(digest, ECC_KEY_LEN, shared_secret, algorithmID, partyUInfo, partyVInfo);
-	return (dst.empty()) ? OPENSSL_ERROR : OK;
+    return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 int
@@ -51,9 +51,9 @@ CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<ui
 {
 	std::vector<uint8_t> shared_secret;
 	int result = deriveECDH1(shared_secret, public_key, label);
-	if (result != OK) return result;
+    if (result != OK) return result;
 	dst = libcdoc::Crypto::extract(shared_secret, salt);
-	return (dst.empty()) ? OPENSSL_ERROR : OK;
+    return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 int
@@ -77,7 +77,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 #ifdef LOCAL_DEBUG
 	std::cerr << "Key material: " << Crypto::toHex(key_material) << std::endl;
 #endif
-	return OK;
+    return OK;
 }
 
 int
@@ -95,7 +95,7 @@ CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8
 #ifdef LOCAL_DEBUG
 	std::cerr << "Extract: " << Crypto::toHex(kek_pm) << std::endl;
 #endif
-	return OK;
+    return OK;
 }
 
 } // namespace libcdoc
