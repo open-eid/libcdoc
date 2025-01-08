@@ -34,14 +34,14 @@ struct CDOC_EXPORT Configuration {
     //static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
     //static constexpr std::string_view KEYSERVER_ID = "KEYSERVER_ID";
     /* Keyserver domain */
-    static constexpr std::string_view KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
-    static constexpr std::string_view KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
+    static constexpr char const *KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
+    static constexpr char const *KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
 
 	Configuration() = default;
 	virtual ~Configuration() = default;
 
-    virtual std::string getValue(const std::string_view& param) = 0;
-    virtual std::string getValue(const std::string_view& domain, const std::string_view& param) = 0;
+    virtual std::string getValue(const std::string_view& param) {return {};}
+    virtual std::string getValue(const std::string_view& domain, const std::string_view& param) {return {};}
 
     bool getBoolean(const std::string_view& param, bool def_val = false);
     int getInt(const std::string_view& param, int def_val = 0);

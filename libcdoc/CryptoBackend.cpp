@@ -57,7 +57,7 @@ CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<ui
 }
 
 int
-CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label)
+CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, const std::string& label)
 {
 	if (kdf_iter > 0) {
 		if (pw_salt.empty()) return INVALID_PARAMS;
@@ -81,7 +81,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 }
 
 int
-CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
+CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
 						   int32_t kdf_iter, const std::string& label)
 {
 	if (salt.empty()) return INVALID_PARAMS;

@@ -56,7 +56,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, label);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label) override {
+    int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, const std::string& label) override {
         if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, label);
         return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, label);
     }

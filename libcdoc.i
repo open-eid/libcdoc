@@ -33,15 +33,15 @@
 %ignore libcdoc::FileListSource;
 
 //
-// std::vector<uint8_t>& dst -> byte[]
+// std::vector<uint8_t>& -> byte[]
 //
 
-%typemap(in) (std::vector<uint8_t>& dst) %{
+%typemap(in) (std::vector<uint8_t>& ) %{
     jsize $input_size = jenv->GetArrayLength($input);
     std::vector<uint8_t> $1_data($input_size);
     $1 = &$1_data;
 %}
-%typemap(freearg) (std::vector<uint8_t>& dst) %{
+%typemap(freearg) (std::vector<uint8_t>& ) %{
     jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
 %}
 %typemap(out) std::vector<uint8_t>& %{
@@ -53,6 +53,78 @@
 %typemap(jni) std::vector<uint8_t>& "jbyteArray"
 %typemap(javain) std::vector<uint8_t>& "$javainput"
 %typemap(javaout) std::vector<uint8_t>& {
+    return $jnicall;
+}
+%typemap(javadirectorin) std::vector<uint8_t>& "$javainput"
+%typemap(javadirectorout) std::vector<uint8_t>& {
+    return $jnicall;
+}
+%typemap(directorin) std::vector<uint8_t>& "$javainput"
+%typemap(directorout) std::vector<uint8_t>& {
+    return $jnicall;
+}
+
+//
+// const std::vector<uint8_t>& -> byte[]
+//
+
+%typemap(in) const std::vector<uint8_t>& %{
+    jsize $input_size = jenv->GetArrayLength($input);
+    std::vector<uint8_t> $1_data($input_size);
+    $1 = &$1_data;
+    %}
+%typemap(freearg) const std::vector<uint8_t>& %{
+    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
+    %}
+%typemap(out) const std::vector<uint8_t>& %{
+    jresult = jenv->NewByteArray((&result)->size());
+    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%}
+%typemap(jtype) const std::vector<uint8_t>& "byte[]"
+%typemap(jstype) const std::vector<uint8_t>& "byte[]"
+%typemap(jni) const std::vector<uint8_t>& "jbyteArray"
+%typemap(javain) const std::vector<uint8_t>& "$javainput"
+%typemap(javaout) const std::vector<uint8_t>& {
+    return $jnicall;
+}
+%typemap(javadirectorin) const std::vector<uint8_t>& "$javainput"
+%typemap(javadirectorout) const std::vector<uint8_t>& {
+    return $jnicall;
+}
+%typemap(directorin) const std::vector<uint8_t>& "$javainput"
+%typemap(directorout) const std::vector<uint8_t>& {
+    return $jnicall;
+}
+
+//
+// std::string_view& -> String
+//
+
+%typemap(in) std::string_view& %{
+    const char *$1_utf8 = jenv->GetStringUTFChars($input, nullptr);
+    std::string_view $1_sv($1_utf8);
+    $1 = &$1_sv;
+%}
+%typemap(freearg) std::string_view& %{
+    jenv->ReleaseStringUTFChars($input, $1_utf8);
+%}
+%typemap(out) std::string_view& %{
+    std::string $1_str(*(&result));
+    jresult = jenv->NewStringUtf($1_str.c_str());
+%}
+%typemap(jtype) std::string_view& "String"
+%typemap(jstype) std::string_view& "String"
+%typemap(jni) std::string_view& "jstring"
+%typemap(javain) std::string_view& "$javainput"
+%typemap(javaout) std::string_view& {
+    return $jnicall;
+}
+%typemap(javadirectorin) std::string_view& "$javainput"
+%typemap(javadirectorout) std::string_view& {
+    return $jnicall;
+}
+%typemap(directorin) std::string_view& "$javainput"
+%typemap(directorout) std::string_view& {
     return $jnicall;
 }
 
@@ -253,6 +325,23 @@
 }
 
 //
+// CryptoBackend
+//
+%extend libcdoc::CryptoBackend {
+    std::vector<uint8_t> random(int size) {
+        std::vector<uint8_t> dst;
+        $self->random(dst, size);
+        return dst;
+    }
+    std::vector<uint8_t> deriveECDH1(const std::vector<uint8_t> &public_key, const std::string& label) {
+        std::vector<uint8_t> dst;
+        $self->deriveECDH1(dst, public_key, label);
+        return dst;
+    }
+}
+%ignore libcdoc::CryptoBackend::random(std::vector<uint8_t>& dst, int size);
+%ignore libcdoc::CryptoBackend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label);
+//
 // NetworkBackend
 //
 %extend libcdoc::NetworkBackend {
@@ -263,41 +352,6 @@
     }
 }
 %ignore libcdoc::NetworkBackend::getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst);
-
-
-//
-// const std::string_view& -> String
-//
-
-%typemap(in) const std::string_view& %{
-    const char *$1_utf8 = jenv->GetStringUTFChars($input, nullptr);
-    std::string_view $1_sv($1_utf8);
-    $1 = &$1_sv;
-%}
-%typemap(freearg) const std::string_view& %{
-    jenv->ReleaseStringUTFChars($input, $1_utf8);
-%}
-%typemap(jtype) const std::string_view& "String"
-%typemap(jstype) const std::string_view& "String"
-%typemap(jni) const std::string_view& "jstring"
-%typemap(javaout) const std::string_view& {
-    return $jnicall;
-}
-
-//
-// std::string_view <- String
-//
-
-%typemap(out) std::string_view %{
-    std::string tmp(result.cbegin(), result.cend());
-    jresult = jenv->NewStringUTF(tmp.c_str());
-%}
-%typemap(jtype) std::string_view "String"
-%typemap(jstype) std::string_view "String"
-%typemap(jni) std::string_view "jstring"
-%typemap(javaout) std::string_view {
-    return $jnicall;
-}
 
 %feature("director") libcdoc::CryptoBackend;
 %feature("director") libcdoc::NetworkBackend;

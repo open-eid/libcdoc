@@ -82,7 +82,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label Label of the lock
 	 * @return error code or OK
 	 */
-	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) { return NOT_IMPLEMENTED; };
+    virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, const std::string& label) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *
@@ -119,7 +119,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label label the label of the capsule (key)
 	 * @return error code or OK
 	 */
-	virtual int getSecret(std::vector<uint8_t>& secret, const std::string& label) { return NOT_IMPLEMENTED; }
+    virtual int getSecret(std::vector<uint8_t>& dst, const std::string& label) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 *
@@ -131,7 +131,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label the label of the capsule (key)
 	 * @return error code or OK
 	 */
-	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt,
+    virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t>& pw_salt,
 							   int32_t kdf_iter, const std::string& label);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from symmetric key
@@ -145,10 +145,10 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label the label of the capsule (key)
 	 * @return error code or OK
 	 */
-	virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt,
+    virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
 							int32_t kdf_iter, const std::string& label);
 
-    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) = 0;
+    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) { return NOT_IMPLEMENTED; };
 
 
 	CryptoBackend (const CryptoBackend&) = delete;
