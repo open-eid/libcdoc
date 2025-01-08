@@ -283,7 +283,7 @@ protected:
 };
 
 struct CDOC_EXPORT FileListConsumer : public MultiDataConsumer {
-	FileListConsumer(const std::string base_path) {
+    FileListConsumer(const std::string& base_path) {
 		base = base_path;
 	}
 	int64_t write(const uint8_t *src, size_t size) override final {

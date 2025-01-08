@@ -30,6 +30,7 @@ static void print_usage(ostream& ofs)
     ofs << "  Decrypt container using lock specified by label" << endl;
     ofs << "  Supported arguments" << endl;
     ofs << "    --label LABEL - CDOC container's lock label" << endl;
+    ofs << "    --label_id ID - CDOC container's lock 1-based label index" << endl;
     ofs << "    --slot SLOT - PKCS11 slot number" << endl;
     ofs << "    --password PASSWORD - lock's password" << endl;
     ofs << "    --secret SECRET - secret phrase (AES key)" << endl;
@@ -68,7 +69,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     cout << "Encrypting" << endl;
 
     ToolConf conf;
-    Recipients rcpts;
+    RecipientInfoLabelMap rcpts;
     vector<vector<uint8_t>> certs;
 
     for (int i = 0; i < argc; i++) {
@@ -233,6 +234,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
 {
     ToolConf conf;
 
+    int label_id = -1;
     string label;
     vector<uint8_t> secret;
     long slot;
@@ -247,67 +249,84 @@ static int ParseAndDecrypt(int argc, char *argv[])
 
     for (int i = 0; i < argc; i++)
     {
-        if (!strcmp(argv[i], "--label") && ((i + 1) < argc)) {
-            // Make sure the label is provided only once.
-            if (!label.empty()) {
-                cerr << "The label was already provided" << endl;
+        string_view arg(argv[i]);
+        if ((arg == "--label" || arg == "--label_id") && i + 1 < argc) {
+            // Make sure the label or label ID is provided only once.
+            if (!label.empty() || label_id != -1) {
+                cerr << "The label or label ID was already provided" << endl;
                 return 1;
             }
-            label = argv[i + 1];
+            if (arg == "--label_id") {
+                size_t last_char_idx;
+                string str(argv[i + 1]);
+                label_id = std::stol(str, &last_char_idx);
+                if (last_char_idx < str.size()) {
+                    cerr << "Label ID is not a number" << endl;
+                    return 1;
+                }
+            } else {
+                label = argv[i + 1];
+            }
             i += 1;
-        } else if (!strcmp(argv[i], "--password") || !strcmp(argv[i], "--pin")) {
+        } else if (arg == "--password" || arg == "--pin") {
             if ((i + 1) >= argc) {
                 return 1;
             }
             string_view s(argv[i + 1]);
             secret.assign(s.cbegin(), s.cend());
             i += 1;
-        } else if (!strcmp(argv[i], "--secret")) {
+        } else if (arg == "--secret") {
             if (i + 1 >= argc) {
                 return 1;
             }
             secret = fromHex(argv[i + 1]);
             i += 1;
-        } else if (!strcmp(argv[i], "--slot")) {
+        } else if (arg == "--slot") {
             if ((i + 1) >= argc) {
                 return 1;
             }
             conf.libraryRequired = true;
             string str(argv[i + 1]);
+            size_t last_char_idx;
             if (str.starts_with("0x")) {
-                slot = std::stol(str.substr(2), nullptr, 16);
+                slot = std::stol(str.substr(2), &last_char_idx, 16);
+                last_char_idx += 2;
             } else {
-                slot = std::stol(str);
+                slot = std::stol(str, &last_char_idx);
+            }
+            if (last_char_idx < str.size()) {
+                cerr << "Slot is not a number" << endl;
+                return 1;
             }
             i += 1;
-        } else if (!strcmp(argv[i], "--key-id")) {
+        } else if (arg == "--key-id") {
             if ((i + 1) >= argc) {
                 return 1;
             }
             string_view s(argv[i + 1]);
             key_id.assign(s.cbegin(), s.cend());
             i += 1;
-        } else if (!strcmp(argv[i], "--key-label")) {
+        } else if (arg == "--key-label") {
             if ((i + 1) >= argc) {
                 return 1;
             }
             key_label = argv[i + 1];
             i += 1;
-        } else if (!strcmp(argv[i], "--library") && ((i + 1) < argc)) {
+        } else if (arg == "--library" && i + 1 < argc) {
             conf.library = argv[i + 1];
             i += 1;
-        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+        } else if (arg == "--server" && i + 2 <= argc) {
             ToolConf::ServerData sdata;
             sdata.ID = argv[i + 1];
             sdata.FETCH_URL = argv[i + 2];
             conf.servers.push_back(sdata);
             conf.use_keyserver = true;
             i += 2;
-        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
+        } else if (arg == "--accept" && i + 1 <= argc) {
             vector<uint8_t> der = readAllBytes(argv[i + 1]);
             certs.push_back(der);
             i += 1;
-        } else if (argv[i][0] != '-') {
+        } else if (arg[0] != '-') {
             if (conf.input_files.empty())
                 conf.input_files.push_back(argv[i]);
             else
@@ -317,8 +336,9 @@ static int ParseAndDecrypt(int argc, char *argv[])
         }
     }
 
-    if (label.empty()) {
-        cerr << "No label provided" << endl;
+    // Validating the input parameters
+    if (label.empty() && label_id == -1) {
+        cerr << "No label nor label ID provided" << endl;
         return 1;
     }
 
@@ -326,8 +346,6 @@ static int ParseAndDecrypt(int argc, char *argv[])
         cerr << "Cryptographic library is required" << endl;
         return 1;
     }
-
-    Recipients rcpts {{label, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
 
     if (conf.input_files.empty()) {
         cerr << "No file to decrypt" << endl;
@@ -339,7 +357,13 @@ static int ParseAndDecrypt(int argc, char *argv[])
         conf.out = ".";
 
     CDocChipher chipher;
-    return chipher.Decrypt(conf, rcpts, certs);
+    if (label_id != -1) {
+        RecipientInfoIdMap rcpts {{label_id, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
+        return chipher.Decrypt(conf, rcpts, certs);
+    } else {
+        RecipientInfoLabelMap rcpts {{label, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
+        return chipher.Decrypt(conf, rcpts, certs);
+    }
 }
 
 //
