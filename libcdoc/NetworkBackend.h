@@ -78,7 +78,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) {
+    virtual int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) {
         return NOT_IMPLEMENTED;
     }
 

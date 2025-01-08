@@ -37,7 +37,7 @@ class CDOC_EXPORT CDocReader {
 public:
 	virtual ~CDocReader() = default;
 
-	int version;
+    const int version;
 
 	/**
 	 * @brief Get decryption locks in given document

@@ -96,7 +96,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     httplib::SSLClient cli(host, port);
 
     std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCerticates(certs);
+    getPeerTLSCertificates(certs);
     if (!certs.empty()) {
         SSL_CTX *ctx = cli.ssl_context();
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
@@ -168,7 +168,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     httplib::SSLClient cli(host, port, d->x509, d->pkey);
 
     std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCerticates(certs);
+    getPeerTLSCertificates(certs);
     if (!certs.empty()) {
         SSL_CTX *ctx = cli.ssl_context();
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);

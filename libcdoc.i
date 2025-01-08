@@ -20,11 +20,46 @@
 %include "enums.swg"
 %javaconst(1);
 %apply long long { int64_t }
+%apply long long { uint64_t }
 %apply int { int32_t }
+
+%ignore libcdoc::ChainedConsumer;
+%ignore libcdoc::ChainedSource;
+%ignore libcdoc::IStreamSource;
+%ignore libcdoc::OStreamConsumer;
+%ignore libcdoc::VectorConsumer;
+%ignore libcdoc::VectorSource;
+%ignore libcdoc::FileListConsumer;
+%ignore libcdoc::FileListSource;
+
+//
+// std::vector<uint8_t>& dst -> byte[]
+//
+
+%typemap(in) (std::vector<uint8_t>& dst) %{
+    jsize $input_size = jenv->GetArrayLength($input);
+    std::vector<uint8_t> $1_data($input_size);
+    $1 = &$1_data;
+%}
+%typemap(freearg) (std::vector<uint8_t>& dst) %{
+    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
+%}
+%typemap(out) std::vector<uint8_t>& %{
+    jresult = jenv->NewByteArray((&result)->size());
+    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%}
+%typemap(jtype) std::vector<uint8_t>& "byte[]"
+%typemap(jstype) std::vector<uint8_t>& "byte[]"
+%typemap(jni) std::vector<uint8_t>& "jbyteArray"
+%typemap(javain) std::vector<uint8_t>& "$javainput"
+%typemap(javaout) std::vector<uint8_t>& {
+    return $jnicall;
+}
 
 // CDocWriter
 %ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 %ignore libcdoc::CDocWriter::encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients);
+
 
 // int64_t write(cont uint8_t *src, size_t pos, size_t len) -> long read(byte[] src, long pos, long len)
 %extend libcdoc::CDocWriter {
@@ -32,6 +67,11 @@
         return $self->writeData(src + pos, size);
     }
 };
+
+//
+// const uint8_t *src -> byte[]
+//
+
 %typemap(in) (const uint8_t *src) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
 %}
@@ -39,6 +79,7 @@
 %typemap(jni) const uint8_t *src "jbyteArray"
 %typemap(jtype) const uint8_t *src "byte[]"
 %typemap(jstype) const uint8_t *src "byte[]"
+
 
 // int64_t write(const uint8_t *src, size_t len) -> long read(byte[] src)
 %typemap(in) (const uint8_t *src, size_t size) %{
@@ -53,8 +94,12 @@
 // MultiDataSource
 %ignore libcdoc::MultiDataSource::next(std::string& name, int64_t& size);
 
+//
 // CDocReader
+//
+%ignore libcdoc::CDocReader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock);
 %ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
+%ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
 // Use LockVector object to encapsulate the vector of locks
 %template(LockVector) std::vector<libcdoc::Lock>;
 // Custom wrapper do away with const qualifiers
@@ -63,6 +108,16 @@
         static const std::vector<const libcdoc::Lock> locks = $self->getLocks();
         std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
         return std::move(p);
+    }
+    libcdoc::Lock getLockForCert(const std::vector<uint8_t>& cert) {
+        libcdoc::Lock lock;
+        $self->getLockForCert(lock, cert);
+        return lock;
+    }
+    std::vector<uint8_t> getFMK(const libcdoc::Lock& lock) {
+        std::vector<uint8_t> fmk;
+        $self->getFMK(fmk, lock);
+        return fmk;
     }
 };
 %ignore libcdoc::CDocReader::getLocks();
@@ -80,6 +135,24 @@
 %typemap(jni) (uint8_t *dst, size_t size) "jbyteArray"
 %typemap(jtype) (uint8_t *dst, size_t size) "byte[]"
 %typemap(jstype) (uint8_t *dst, size_t size) "byte[]"
+
+// Recipient
+%ignore libcdoc::Recipient::rcpt_key;
+%ignore libcdoc::Recipient::cert;
+%extend libcdoc::Recipient {
+    std::vector<uint8_t> getRcptKey() {
+        return $self->rcpt_key;
+    }
+    void setRcptKey(const std::vector<uint8_t>& key) {
+        $self->rcpt_key = key;
+    }
+    std::vector<uint8_t> getCert() {
+        return $self->cert;
+    }
+    void setCert(const std::vector<uint8_t>& value) {
+        $self->cert = value;
+    }
+};
 
 // Lock
 %ignore libcdoc::Lock::Lock;
@@ -145,27 +218,52 @@
 }
 
 //
-// std::vector<uint8_t>& dst -> byte[]
+// std::vector<std::vector<uint8_t>> <- byte[][]
 //
 
-%typemap(in) (std::vector<uint8_t>& dst) %{
+// C -> JNI
+%typemap(out) std::vector<std::vector<uint8_t>> %{
+    // byte[] class
+    jclass cls = jenv->FindClass("[B");
+    jresult = jenv->NewObjectArray((&result)->size(), cls, nullptr);
+    for (size_t i = 0; i < (&result)->size(); i++) {
+        const std::vector<uint8_t>& ch = (&result)->at(i);
+        jbyteArray jch = jenv->NewByteArray(ch.size());
+        jenv->SetByteArrayRegion(jch, 0, ch.size(), (const jbyte *) ch.data());
+        jenv->SetObjectArrayElement(jresult, i, jch);
+    }
+%}
+%typemap(in) std::vector<std::vector<uint8_t>> %{
     jsize $input_size = jenv->GetArrayLength($input);
-    std::vector<uint8_t> $1_data($input_size);
+    std::vector<std::vector<uint8_t>> $1_data($input_size);
+    for (jsize i = 0; i < $input_size; $i++) {
+        std::vector<uint8_t>& ch = $1_data->at(i);
+        jbyteArray jch = (jbyteArray) jenv->GetObjectArrayElement($input, i);
+        jsize ch_len = jenv->GetArraySize(jch);
+        ch.resize(ch_len);
+        jenv->GetByteArrayRegion(jch, 0, len, (jbyte *) ch.data());
+    }
     $1 = &$1_data;
 %}
-%typemap(freearg) (std::vector<uint8_t>& dst) %{
-    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
-%}
-%typemap(out) std::vector<uint8_t>& %{
-    jresult = jenv->NewByteArray((&result)->size());
-    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
-%}
-%typemap(jtype) std::vector<uint8_t>& "byte[]"
-%typemap(jstype) std::vector<uint8_t>& "byte[]"
-%typemap(jni) std::vector<uint8_t>& "jbyteArray"
-%typemap(javaout) std::vector<uint8_t>& {
+%typemap(jtype) std::vector<std::vector<uint8_t>> "byte[][]"
+%typemap(jstype) std::vector<std::vector<uint8_t>> "byte[][]"
+%typemap(jni) std::vector<std::vector<uint8_t>> "jobjectArray"
+%typemap(javaout) std::vector<std::vector<uint8_t>> {
     return $jnicall;
 }
+
+//
+// NetworkBackend
+//
+%extend libcdoc::NetworkBackend {
+    std::vector<std::vector<uint8_t>> getPeerTLSCertificates() {
+        std::vector<std::vector<uint8_t>> certs;
+        $self->getPeerTLSCertificates(certs);
+        return certs;
+    }
+}
+%ignore libcdoc::NetworkBackend::getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst);
+
 
 //
 // const std::string_view& -> String
@@ -201,7 +299,9 @@
     return $jnicall;
 }
 
-%feature("director") CryptoBackend;
+%feature("director") libcdoc::CryptoBackend;
+%feature("director") libcdoc::NetworkBackend;
+%feature("director") libcdoc::Configuration;
 #endif
 
 // Swig does not like visibility/declspec attributes

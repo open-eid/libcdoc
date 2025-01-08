@@ -89,7 +89,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
         return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
     }
 
-    int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) override final {
+    int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
         dst = certs;
         return libcdoc::OK;
     }
