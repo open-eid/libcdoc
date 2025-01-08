@@ -13,9 +13,9 @@ using namespace libcdoc;
 
 
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
-    const Recipients& rcpts;
+    const RecipientInfoLabelMap& rcpts;
 
-    ToolPKCS11(const std::string& library, const Recipients& map) : libcdoc::PKCS11Backend(library), rcpts(map) {}
+    ToolPKCS11(const std::string& library, const RecipientInfoLabelMap& map) : libcdoc::PKCS11Backend(library), rcpts(map) {}
 
     int connectToKey(const std::string& label, bool priv) override final {
         if (!rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
@@ -32,10 +32,10 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 };
 
 struct ToolCrypto : public libcdoc::CryptoBackend {
-    const Recipients& rcpts;
+    const RecipientInfoLabelMap& rcpts;
     std::unique_ptr<libcdoc::PKCS11Backend> p11;
 
-    ToolCrypto(const Recipients& recipients) : rcpts(recipients) {
+    ToolCrypto(const RecipientInfoLabelMap& recipients) : rcpts(recipients) {
     }
 
     bool connectLibrary(const std::string& library) {
@@ -135,7 +135,7 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
 
 #define PUSH true
 
-int CDocChipher::Encrypt(ToolConf& conf, const Recipients& recipients, const vector<vector<uint8_t>>& certs)
+int CDocChipher::Encrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients, const vector<vector<uint8_t>>& certs)
 {
     ToolCrypto crypto(recipients);
     ToolNetwork network(&crypto);
@@ -210,7 +210,45 @@ int CDocChipher::Encrypt(ToolConf& conf, const Recipients& recipients, const vec
     return result;
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, const Recipients& recipients, const vector<vector<uint8_t>>& certs)
+int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, const std::vector<std::vector<uint8_t>>& certs)
+{
+    RecipientInfoLabelMap rcpts;
+    ToolCrypto crypto(rcpts);
+    ToolNetwork network(&crypto);
+    network.certs = certs;
+
+    unique_ptr<CDocReader> rdr(CDocReader::createReader(conf.input_files[0], &conf, &crypto, &network));
+    if (rdr) {
+        cout << "Reader created" << endl;
+    } else {
+        cerr << "Cannot create reader (invalid file?)" << endl;
+        return 1;
+    }
+
+    // Acquire the locks and get the labels according to the index
+    const vector<const Lock> locks(std::move(rdr->getLocks()));
+    int labelIndex = recipients.cbegin()->first - 1;
+    if (labelIndex < 0) {
+        cerr << "Indexing of labels starts from 1" << endl;
+        return 1;
+    }
+    if (labelIndex >= locks.size()) {
+        cerr << "Label index is out of range" << endl;
+        return 1;
+    }
+
+    const Lock& lock = locks[labelIndex];
+    cerr << "Found matching label: " << lock.label << endl;
+    network.label = lock.label;
+    rcpts[lock.label] = recipients.cbegin()->second;
+
+    if (!conf.library.empty())
+        crypto.connectLibrary(conf.library);
+
+    return Decrypt(rdr, lock, conf.out);
+}
+
+int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients, const vector<vector<uint8_t>>& certs)
 {
     ToolCrypto crypto(recipients);
     ToolNetwork network(&crypto);
@@ -228,26 +266,11 @@ int CDocChipher::Decrypt(ToolConf& conf, const Recipients& recipients, const vec
         return 1;
     }
     cout << "Reader created" << endl;
-    vector<const Lock> locks(rdr->getLocks());
+    vector<const Lock> locks(std::move(rdr->getLocks()));
     for (const Lock& lock : locks) {
         if (lock.label == label) {
             cerr << "Found matching label: " << label << endl;
-            std::vector<uint8_t> fmk;
-            int result = rdr->getFMK(fmk, lock);
-            if (result != libcdoc::OK) {
-                cerr << "Error extracting FMK: " << result << endl;
-                cerr << rdr->getLastErrorStr() << endl;
-                return 1;
-            }
-            libcdoc::FileListConsumer fileWriter(conf.out);
-            result = rdr->decrypt(fmk, &fileWriter);
-            if (result != libcdoc::OK) {
-                cerr << "Error decrypting files: " << result << endl;
-                cerr << rdr->getLastErrorStr() << endl;
-                return 1;
-            }
-            cout << "File decrypted successfully" << endl;
-            return 0;
+            return Decrypt(rdr, lock, conf.out);
         }
     }
 
@@ -255,11 +278,33 @@ int CDocChipher::Decrypt(ToolConf& conf, const Recipients& recipients, const vec
     return 1;
 }
 
+int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, const Lock& lock, const string& base_path)
+{
+    vector<uint8_t> fmk;
+    int result = rdr->getFMK(fmk, lock);
+    if (result != libcdoc::OK) {
+        cerr << "Error extracting FMK: " << result << endl;
+        cerr << rdr->getLastErrorStr() << endl;
+        return 1;
+    }
+    FileListConsumer fileWriter(base_path);
+    result = rdr->decrypt(fmk, &fileWriter);
+    if (result != libcdoc::OK) {
+        cerr << "Error decrypting files: " << result << endl;
+        cerr << rdr->getLastErrorStr() << endl;
+        return 1;
+    }
+    cout << "File decrypted successfully" << endl;
+    return 0;
+}
+
 void CDocChipher::Locks(const char* file) const
 {
     unique_ptr<CDocReader> rdr(CDocReader::createReader(file, nullptr, nullptr, nullptr));
-    const vector<const Lock> locks(rdr->getLocks());
+    const vector<const Lock> locks(std::move(rdr->getLocks()));
+
+    int lock_id = 0;
     for (const Lock& lock : locks) {
-        cout << lock.label << endl;
+        cout << ++lock_id << ": " << lock.label << endl;
     }
 }

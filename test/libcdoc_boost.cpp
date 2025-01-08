@@ -143,7 +143,7 @@ BOOST_AUTO_TEST_CASE(EncryptWithPassword, * utf::description("Encrypting a file 
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = targetFilePath.string();
 
-    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::PASSWORD, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::PASSWORD, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
@@ -167,7 +167,7 @@ BOOST_AUTO_TEST_CASE(DecryptWithPassword,
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = GetTestDataDir().string();
 
-    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
@@ -200,7 +200,7 @@ BOOST_AUTO_TEST_CASE(EncryptWithAESKey, * utf::description("Encrypting a file wi
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = targetFilePath.string();
 
-    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::SKEY, {}, libcdoc::fromHex(AESKey)} }};
+    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::SKEY, {}, libcdoc::fromHex(AESKey)} }};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
@@ -224,7 +224,7 @@ BOOST_AUTO_TEST_CASE(DecryptWithAESKey,
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = GetTestDataDir().string();
 
-    libcdoc::Recipients rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)} }};
+    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)} }};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
