@@ -43,6 +43,12 @@ struct CDoc2Reader::Private {
 
 	~Private() {
 		if (_owned) delete _src;
+
+        // Free memory allocated for locks
+        for (libcdoc::Lock *lock : locks) {
+            delete lock;
+        }
+        locks.clear();
 	}
 
 	libcdoc::DataSource *_src;
@@ -64,9 +70,6 @@ struct CDoc2Reader::Private {
 
 CDoc2Reader::~CDoc2Reader()
 {
-	for (libcdoc::Lock *lock : priv->locks) {
-		delete lock;
-	}
 }
 
 const std::vector<const libcdoc::Lock>
@@ -283,7 +286,7 @@ CDoc2Reader::finishDecryption()
 }
 
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
-	: CDocReader(2), priv(new Private(src, take_ownership))
+    : CDocReader(2), priv(std::make_unique<Private>(src, take_ownership))
 {
 
 	using namespace cdoc20::recipients;

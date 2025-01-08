@@ -45,6 +45,15 @@ public:
     std::vector<DDOCReader::File> files;
     int64_t f_pos = -1;
     std::unique_ptr<libcdoc::VectorSource> src;
+
+    ~Private()
+    {
+        // Free memory allocated for locks
+        for (libcdoc::Lock* lock : locks) {
+            delete lock;
+        }
+        locks.clear();
+    }
 };
 
 const std::vector<const libcdoc::Lock>
