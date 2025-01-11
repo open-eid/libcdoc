@@ -145,11 +145,6 @@ struct CDOC_EXPORT MultiDataConsumer : public DataConsumer {
 	virtual int open(const std::string& name, int64_t size) = 0;
 };
 
-struct FileInfo {
-    std::string name;
-    int64_t size;
-};
-
 /**
  * @brief An abstract base class for multi-stream sources
  */

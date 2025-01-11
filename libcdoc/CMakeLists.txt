@@ -86,6 +86,7 @@ target_link_libraries(cdoc_priv_obj
 
 add_library(cdoc_priv STATIC
     $<TARGET_OBJECTS:cdoc_priv_obj>
+    wrapper.h
 )
 
 set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -111,6 +112,7 @@ target_link_libraries(cdoc_priv
 add_library(cdoc SHARED
     ${PUBLIC_HEADERS}
     ${CDOC_SOURCES}
+
 )
 
 set_target_properties(cdoc PROPERTIES

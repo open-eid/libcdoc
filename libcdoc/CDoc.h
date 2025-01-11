@@ -22,6 +22,12 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+
+#ifndef LIBCDOC_TESTING
+// Remove this in production code
+#define LIBCDOC_TESTING 1
+#endif
 
 namespace libcdoc {
 
@@ -103,6 +109,11 @@ enum {
 };
 
 std::string getErrorStr(int64_t code);
+
+struct FileInfo {
+    std::string name;
+    int64_t size;
+};
 
 }; // namespace libcdoc
 

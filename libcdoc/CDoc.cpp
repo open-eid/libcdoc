@@ -1,4 +1,5 @@
 #include <fstream>
+#include <iostream>
 
 #include "CDoc1Writer.h"
 #include "CDoc1Reader.h"
@@ -61,6 +62,15 @@ libcdoc::Configuration::getInt(const std::string_view& param, int def_val)
     return std::stoi(val);
 }
 
+#if LIBCDOC_TESTING
+int64_t
+libcdoc::Configuration::test(std::vector<uint8_t>& dst)
+{
+    std::cerr << "Configuration::test::Native superclass" << std::endl;
+    return OK;
+}
+#endif
+
 std::string
 libcdoc::NetworkBackend::getLastErrorStr(int code) const
 {
@@ -111,6 +121,20 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
     reader->network = network;
 	return reader;
 }
+
+#if LIBCDOC_TESTING
+int64_t
+libcdoc::CDocReader::testConfig(std::vector<uint8_t>& dst)
+{
+    std::cerr << "CDocReader::testConfig::Native superclass" << std::endl;
+    if (conf) {
+        std::cerr << "CDocReader::testConfig this=" << this << " conf=" << conf << std::endl;
+        return conf->test(dst);
+    }
+    std::cerr << "CDocReader::testConfig::conf is null" << std::endl;
+    return WORKFLOW_ERROR;
+}
+#endif
 
 libcdoc::CDocWriter::CDocWriter(int _version, DataConsumer *_dst, bool take_ownership)
 	: version(_version), dst(_dst), owned(take_ownership)

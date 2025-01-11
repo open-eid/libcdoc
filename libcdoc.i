@@ -6,6 +6,9 @@
 #include "libcdoc/Lock.h"
 #include "libcdoc/CDocWriter.h"
 #include "libcdoc/CDocReader.h"
+#include "libcdoc/Utils.h"
+#include "libcdoc/Wrapper.h"
+#include <iostream>
 %}
 
 // Handle standard C++ types
@@ -14,14 +17,6 @@
 //%include "std_map.i"
 
 %include "typemaps.i"
-
-#ifdef SWIGJAVA
-%include "arrays_java.i"
-%include "enums.swg"
-%javaconst(1);
-%apply long long { int64_t }
-%apply long long { uint64_t }
-%apply int { int32_t }
 
 %ignore libcdoc::ChainedConsumer;
 %ignore libcdoc::ChainedSource;
@@ -32,21 +27,66 @@
 %ignore libcdoc::FileListConsumer;
 %ignore libcdoc::FileListSource;
 
+%ignore libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+%ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+%ignore libcdoc::CDocWriter::encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients);
+
+%ignore libcdoc::CDocReader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock);
+%ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
+%ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
+%ignore libcdoc::CDocReader::decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer);
+
+#ifdef SWIGJAVA
+%include "arrays_java.i"
+%include "enums.swg"
+%javaconst(1);
+%apply long long { int64_t }
+%apply long long { uint64_t }
+%apply int { int32_t }
+
+//%template(DataStorage) std::vector<uint8_t>;
+
+//
+// std::vector<uint8_t> <- byte[]
+//
+
+%typemap(out) std::vector<uint8_t> %{
+    jresult = jenv->NewByteArray((&result)->size());
+    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%}
+%typemap(jtype) std::vector<uint8_t> "byte[]"
+%typemap(jstype) std::vector<uint8_t> "byte[]"
+%typemap(jni) std::vector<uint8_t> "jbyteArray"
+%typemap(javaout) std::vector<uint8_t> {
+    return $jnicall;
+}
+
+%ignore libcdoc::DataBuffer::data;
+%ignore libcdoc::DataBuffer::DataBuffer(std::vector<uint8_t> *_data);
+
 //
 // std::vector<uint8_t>& -> byte[]
 //
 
-%typemap(in) (std::vector<uint8_t>& ) %{
+%typemap(in) (std::vector<uint8_t>&) %{
+    std::cerr << "std::vector<uint8_t>& in " << std::endl;
     jsize $input_size = jenv->GetArrayLength($input);
-    std::vector<uint8_t> $1_data($input_size);
-    $1 = &$1_data;
+    uint8_t *$input_data = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
+    std::vector<uint8_t> $1_vec($input_data, $input_data + $input_size);
+    $1 = &$1_vec;
+
 %}
-%typemap(freearg) (std::vector<uint8_t>& ) %{
-    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
+%typemap(freearg) (std::vector<uint8_t>&) %{
+    //std::cerr << "std::vector<uint8_t>& freearg " << std::endl;
+    //jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
 %}
 %typemap(out) std::vector<uint8_t>& %{
-    jresult = jenv->NewByteArray((&result)->size());
-    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+    std::cerr << "std::vector<uint8_t>& out " << std::endl;
+    std::cerr << "  result " << result << std::endl;
+    std::cerr << "  size " << result->size() << std::endl;
+    std::cerr << "  value " << libcdoc::toHex(*result) << std::endl;
+    jresult = jenv->NewByteArray(result->size());
+    jenv->SetByteArrayRegion(jresult, 0, result->size(), (const jbyte*)result->data());
 %}
 %typemap(jtype) std::vector<uint8_t>& "byte[]"
 %typemap(jstype) std::vector<uint8_t>& "byte[]"
@@ -55,46 +95,71 @@
 %typemap(javaout) std::vector<uint8_t>& {
     return $jnicall;
 }
-%typemap(javadirectorin) std::vector<uint8_t>& "$javainput"
-%typemap(javadirectorout) std::vector<uint8_t>& {
-    return $jnicall;
-}
-%typemap(directorin) std::vector<uint8_t>& "$javainput"
-%typemap(directorout) std::vector<uint8_t>& {
-    return $jnicall;
-}
-
-//
-// const std::vector<uint8_t>& -> byte[]
-//
-
-%typemap(in) const std::vector<uint8_t>& %{
-    jsize $input_size = jenv->GetArrayLength($input);
-    std::vector<uint8_t> $1_data($input_size);
-    $1 = &$1_data;
-    %}
-%typemap(freearg) const std::vector<uint8_t>& %{
-    jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
-    %}
-%typemap(out) const std::vector<uint8_t>& %{
-    jresult = jenv->NewByteArray((&result)->size());
-    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%typemap(directorin,descriptor="[B") std::vector<uint8_t>& %{
+    std::cerr << "std::vector<uint8_t>& directorin " << std::endl;
+    $input = jenv->NewByteArray($1.size());
+    jenv->SetByteArrayRegion($input, 0, $1.size(), (const jbyte*)$1.data());
 %}
-%typemap(jtype) const std::vector<uint8_t>& "byte[]"
-%typemap(jstype) const std::vector<uint8_t>& "byte[]"
-%typemap(jni) const std::vector<uint8_t>& "jbyteArray"
-%typemap(javain) const std::vector<uint8_t>& "$javainput"
-%typemap(javaout) const std::vector<uint8_t>& {
+%typemap(javadirectorin) std::vector<uint8_t>& "$jniinput"
+%typemap(directorout) std::vector<uint8_t>& %{
+    std::cerr << "std::vector<uint8_t>& directorout " << std::endl;
+%}
+%typemap(javadirectorout) std::vector<uint8_t>& "$javacall"
+
+//
+// std::vector<uint8_t>& dst <-> DataBuffer
+//
+
+%typemap(out) std::vector<uint8_t>& dst %{
+    std::cerr << "DataBuffer out " << std::endl;
+    int kalakala_out = 1;
+    *(libcdoc::Lock **)&jlock = (libcdoc::Lock *) &lock;
+%}
+%typemap(freearg) std::vector<uint8_t>& dst %{
+    // DataBuffer freearg
+%}
+%typemap(in) std::vector<uint8_t>& dst %{
+    std::cerr << "DataBuffer in (dst " << &$input << ")" << std::endl;
+    jclass conf_class = jenv->FindClass("ee/ria/libcdoc/Configuration");
+    std::cerr << "Class " << conf_class << std::endl;
+    jmethodID mid = jenv->GetStaticMethodID(conf_class, "getCPtr", "(Lee/ria/libcdoc/Configuration;)J");
+    std::cerr << "Method ID " << mid << std::endl;
+    jlong cptr = jenv->CallStaticLongMethod(conf_class, mid, $input);
+    std::cerr << "CPtr " << cptr << std::endl;
+    libcdoc::DataBuffer *db = (libcdoc::DataBuffer *) cptr;
+    std::cerr << "vec size " << db->data->size() << std::endl;
+    $1 = db->data;
+%}
+%typemap(jtype) std::vector<uint8_t>& dst "DataBuffer"
+%typemap(jstype) std::vector<uint8_t>& dst "DataBuffer"
+%typemap(jni) std::vector<uint8_t>& dst "jobject"
+%typemap(javaout) std::vector<uint8_t>& dst {
     return $jnicall;
 }
-%typemap(javadirectorin) const std::vector<uint8_t>& "$javainput"
-%typemap(javadirectorout) const std::vector<uint8_t>& {
-    return $jnicall;
-}
-%typemap(directorin) const std::vector<uint8_t>& "$javainput"
-%typemap(directorout) const std::vector<uint8_t>& {
-    return $jnicall;
-}
+%typemap(javain) std::vector<uint8_t>& dst %{
+    $javainput
+%}
+%typemap(directorin,descriptor="Lee/ria/libcdoc/DataBuffer;") std::vector<uint8_t>& dst %{
+    std::cerr << "DataBuffer directorin (dst " << &dst << ")" << std::endl;
+    std::cerr << "  size " << dst.size() << std::endl;
+    std::cerr << "  value " << libcdoc::toHex(dst) << std::endl;
+    libcdoc::DataBuffer $1_db(&$1);
+    jclass buf_class = jenv->FindClass("ee/ria/libcdoc/DataBuffer");
+    std::cerr << "Class " << buf_class << std::endl;
+    jmethodID mid = jenv->GetMethodID(buf_class, "<init>", "(JZ)V");
+    std::cerr << "Method ID " << mid << std::endl;
+    jobject obj = jenv->NewObject(buf_class, mid, (jlong) &$1_db, (jboolean) 0);
+    std::cerr << "Object " << obj << std::endl;
+
+    //*(libcdoc::DataBuffer **)& $input = (libcdoc::DataBuffer *) &$1;
+    $input = obj;
+%}
+%typemap(javadirectorin) std::vector<uint8_t>& dst "$jniinput"
+%typemap(directorout) std::vector<uint8_t>& dst %{
+    std::cerr << "DataBuffer directorout "  << std::endl;
+    int a = 123;
+%}
+%typemap(javadirectorout) std::vector<uint8_t>& dst "$javacall"
 
 //
 // std::string_view& -> String
@@ -108,29 +173,28 @@
 %typemap(freearg) std::string_view& %{
     jenv->ReleaseStringUTFChars($input, $1_utf8);
 %}
-%typemap(out) std::string_view& %{
-    std::string $1_str(*(&result));
-    jresult = jenv->NewStringUtf($1_str.c_str());
-%}
+//%typemap(out) std::string_view& %{
+//    std::string $1_str(*(&result));
+//    jresult = jenv->NewStringUtf($1_str.c_str());
+//%}
 %typemap(jtype) std::string_view& "String"
 %typemap(jstype) std::string_view& "String"
 %typemap(jni) std::string_view& "jstring"
 %typemap(javain) std::string_view& "$javainput"
-%typemap(javaout) std::string_view& {
-    return $jnicall;
-}
-%typemap(javadirectorin) std::string_view& "$javainput"
-%typemap(javadirectorout) std::string_view& {
-    return $jnicall;
-}
-%typemap(directorin) std::string_view& "$javainput"
-%typemap(directorout) std::string_view& {
-    return $jnicall;
-}
+//%typemap(javaout) std::string_view& %{
+//    return $jnicall;
+//%}
+%typemap(directorin,descriptor="Ljava/lang/String;") std::string_view& %{
+    std::string $1_str($1);
+    $input = jenv->NewStringUTF($1_str.c_str());
+%}
+// No return of std::string_view& so no directorout
+%typemap(javadirectorin) std::string_view& "$jniinput"
+// No return of std::string_view& so no javadirectorout
 
+//
 // CDocWriter
-%ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
-%ignore libcdoc::CDocWriter::encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients);
+//
 
 
 // int64_t write(cont uint8_t *src, size_t pos, size_t len) -> long read(byte[] src, long pos, long len)
@@ -169,9 +233,7 @@
 //
 // CDocReader
 //
-%ignore libcdoc::CDocReader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock);
-%ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
-%ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
+
 // Use LockVector object to encapsulate the vector of locks
 %template(LockVector) std::vector<libcdoc::Lock>;
 // Custom wrapper do away with const qualifiers
@@ -255,40 +317,6 @@
 %ignore libcdoc::DataConsumer::write(const std::vector<uint8_t>& src);
 %ignore libcdoc::DataConsumer::write(const std::string& str);
 
-#if 0
-%typemap(in) (std::vector<uint8_t>& dst) %{
-    $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
-    $2 = jenv->GetArrayLength($input);
-%}
-%typemap(javain) (std::vector<uint8_t>& dst) "$javainput"
-%typemap(jni) (std::vector<uint8_t>& dst) "jbyteArray"
-%typemap(jtype) (std::vector<uint8_t>& dst) "byte[]"
-%typemap(jstype) (std::vector<uint8_t>& dst) "byte[]"
-
-%extend libcdoc::CDocReader {
-    std::vector<uint8_t> readData(size_t size) {
-        std::vector<uint8_t> tmp(size);
-        $self->readData(tmp.data(), size);
-        return std::move(tmp);
-    }
-};
-#endif
-
-//
-// std::vector<uint8_t> <- byte[]
-//
-
-%typemap(out) std::vector<uint8_t> %{
-    jresult = jenv->NewByteArray((&result)->size());
-    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
-%}
-%typemap(jtype) std::vector<uint8_t> "byte[]"
-%typemap(jstype) std::vector<uint8_t> "byte[]"
-%typemap(jni) std::vector<uint8_t> "jbyteArray"
-%typemap(javaout) std::vector<uint8_t> {
-    return $jnicall;
-}
-
 //
 // std::vector<std::vector<uint8_t>> <- byte[][]
 //
@@ -327,20 +355,7 @@
 //
 // CryptoBackend
 //
-%extend libcdoc::CryptoBackend {
-    std::vector<uint8_t> random(int size) {
-        std::vector<uint8_t> dst;
-        $self->random(dst, size);
-        return dst;
-    }
-    std::vector<uint8_t> deriveECDH1(const std::vector<uint8_t> &public_key, const std::string& label) {
-        std::vector<uint8_t> dst;
-        $self->deriveECDH1(dst, public_key, label);
-        return dst;
-    }
-}
-%ignore libcdoc::CryptoBackend::random(std::vector<uint8_t>& dst, int size);
-%ignore libcdoc::CryptoBackend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label);
+
 //
 // NetworkBackend
 //
@@ -360,9 +375,11 @@
 
 // Swig does not like visibility/declspec attributes
 #define CDOC_EXPORT
+// fixme: Remove this in production
+#define LIBCDOC_TESTING 1
 
 %include "CDoc.h"
-%include "Io.h"
+%include "Wrapper.h"
 %include "Recipient.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"

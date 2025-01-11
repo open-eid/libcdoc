@@ -84,7 +84,7 @@ public:
 	 * @param recipients a list of recipients for whom locks will be encoded into file
 	 * @return error code or OK
 	 */
-	virtual int encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) = 0;
+    virtual int encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief get the textual error of the last failed operation
 	 * @return error description, empty string of no errors

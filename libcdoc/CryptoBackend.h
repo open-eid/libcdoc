@@ -64,7 +64,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @return  error code or OK
 	 */
 	virtual int random(std::vector<uint8_t>& dst, int size);
-	/**
+    /**
 	 * @brief Derive shared secret
 	 *
 	 * Derive a shared secret from private key of given lock label and public key using ECDH1 algorithm.
@@ -131,7 +131,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label the label of the capsule (key)
 	 * @return error code or OK
 	 */
-    virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t>& pw_salt,
+    virtual int getKeyMaterial(std::vector<uint8_t>& dst, const std::vector<uint8_t>& pw_salt,
 							   int32_t kdf_iter, const std::string& label);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from symmetric key
@@ -148,8 +148,7 @@ struct CDOC_EXPORT CryptoBackend {
     virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
 							int32_t kdf_iter, const std::string& label);
 
-    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) { return NOT_IMPLEMENTED; };
-
+    virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
 
 	CryptoBackend (const CryptoBackend&) = delete;
 	CryptoBackend& operator= (const CryptoBackend&) = delete;

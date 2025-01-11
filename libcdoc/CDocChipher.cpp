@@ -66,7 +66,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }
 
-    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) override final {
+    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) {
         if (p11) return p11->sign(dst, algorithm, digest, label);
         return libcdoc::NOT_IMPLEMENTED;
     }

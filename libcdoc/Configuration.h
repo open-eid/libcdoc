@@ -21,8 +21,10 @@
  */
 
 #include <libcdoc/Exports.h>
+#include <libcdoc/CDoc.h>
 
 #include <string>
+#include <vector>
 
 namespace libcdoc {
 
@@ -48,6 +50,10 @@ struct CDOC_EXPORT Configuration {
 
 	Configuration (const Configuration&) = delete;
 	Configuration& operator= (const Configuration&) = delete;
+
+#if LIBCDOC_TESTING
+    virtual int64_t test(std::vector<uint8_t>& dst);
+#endif
 };
 
 } // namespace libcdoc

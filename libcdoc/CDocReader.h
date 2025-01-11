@@ -96,6 +96,10 @@ public:
 	static int getCDocFileVersion(const std::string& path);
 
 	static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+
+#if LIBCDOC_TESTING
+    virtual int64_t testConfig(std::vector<uint8_t>& dst);
+#endif
 protected:
 	explicit CDocReader(int _version) : version(_version) {};
 

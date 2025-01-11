@@ -27,7 +27,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
 	virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label) override;
 	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override;
     virtual int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, const std::string& label) override;
-    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) override;
+    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label);
 private:
 	struct Private;
 	std::unique_ptr<Private> d;
