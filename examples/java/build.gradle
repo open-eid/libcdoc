@@ -1,0 +1,17 @@
+plugins {
+    id 'java'
+}
+group 'ee.ria'
+sourceSets.main.java.srcDirs += ['../../build/libcdoc/java']
+java {
+    targetCompatibility JavaVersion.VERSION_17
+    sourceCompatibility JavaVersion.VERSION_17
+}
+base {
+    archivesName = 'CDocTool'
+}
+jar {
+    manifest {
+        attributes 'Main-Class': 'ee.ria.libcdoc.CDocTool'
+    }
+}

@@ -44,15 +44,17 @@
 %apply long long { uint64_t }
 %apply int { int32_t }
 
-//%template(DataStorage) std::vector<uint8_t>;
-
 //
 // std::vector<uint8_t> <- byte[]
 //
 
 %typemap(out) std::vector<uint8_t> %{
+    // std::vector<uint8_t> out
     jresult = jenv->NewByteArray((&result)->size());
     jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
+%}
+%typemap(in) std::vector<uint8_t> %{
+    // std::vector<uint8_t> in
 %}
 %typemap(jtype) std::vector<uint8_t> "byte[]"
 %typemap(jstype) std::vector<uint8_t> "byte[]"
@@ -69,7 +71,7 @@
 //
 
 %typemap(in) (std::vector<uint8_t>&) %{
-    std::cerr << "std::vector<uint8_t>& in " << std::endl;
+    // std::vector<uint8_t>& in
     jsize $input_size = jenv->GetArrayLength($input);
     uint8_t *$input_data = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     std::vector<uint8_t> $1_vec($input_data, $input_data + $input_size);
@@ -77,14 +79,11 @@
 
 %}
 %typemap(freearg) (std::vector<uint8_t>&) %{
-    //std::cerr << "std::vector<uint8_t>& freearg " << std::endl;
-    //jenv->SetByteArrayRegion($input, 0, $1_data.size(), (const jbyte*) $1_data.data());
+    // std::vector<uint8_t>& freearg
+    jenv->ReleaseByteArrayElements($input, (jbyte *) $input_data, 0);
 %}
 %typemap(out) std::vector<uint8_t>& %{
-    std::cerr << "std::vector<uint8_t>& out " << std::endl;
-    std::cerr << "  result " << result << std::endl;
-    std::cerr << "  size " << result->size() << std::endl;
-    std::cerr << "  value " << libcdoc::toHex(*result) << std::endl;
+    // std::vector<uint8_t>& out
     jresult = jenv->NewByteArray(result->size());
     jenv->SetByteArrayRegion(jresult, 0, result->size(), (const jbyte*)result->data());
 %}
@@ -96,22 +95,16 @@
     return $jnicall;
 }
 %typemap(directorin,descriptor="[B") std::vector<uint8_t>& %{
-    std::cerr << "std::vector<uint8_t>& directorin " << std::endl;
     $input = jenv->NewByteArray($1.size());
     jenv->SetByteArrayRegion($input, 0, $1.size(), (const jbyte*)$1.data());
 %}
 %typemap(javadirectorin) std::vector<uint8_t>& "$jniinput"
-%typemap(directorout) std::vector<uint8_t>& %{
-    std::cerr << "std::vector<uint8_t>& directorout " << std::endl;
-%}
-%typemap(javadirectorout) std::vector<uint8_t>& "$javacall"
 
 //
 // std::vector<uint8_t>& dst <-> DataBuffer
 //
 
 %typemap(out) std::vector<uint8_t>& dst %{
-    std::cerr << "DataBuffer out " << std::endl;
     int kalakala_out = 1;
     *(libcdoc::Lock **)&jlock = (libcdoc::Lock *) &lock;
 %}
@@ -119,47 +112,25 @@
     // DataBuffer freearg
 %}
 %typemap(in) std::vector<uint8_t>& dst %{
-    std::cerr << "DataBuffer in (dst " << &$input << ")" << std::endl;
     jclass conf_class = jenv->FindClass("ee/ria/libcdoc/Configuration");
-    std::cerr << "Class " << conf_class << std::endl;
     jmethodID mid = jenv->GetStaticMethodID(conf_class, "getCPtr", "(Lee/ria/libcdoc/Configuration;)J");
-    std::cerr << "Method ID " << mid << std::endl;
     jlong cptr = jenv->CallStaticLongMethod(conf_class, mid, $input);
-    std::cerr << "CPtr " << cptr << std::endl;
     libcdoc::DataBuffer *db = (libcdoc::DataBuffer *) cptr;
-    std::cerr << "vec size " << db->data->size() << std::endl;
     $1 = db->data;
 %}
 %typemap(jtype) std::vector<uint8_t>& dst "DataBuffer"
 %typemap(jstype) std::vector<uint8_t>& dst "DataBuffer"
 %typemap(jni) std::vector<uint8_t>& dst "jobject"
-%typemap(javaout) std::vector<uint8_t>& dst {
-    return $jnicall;
-}
-%typemap(javain) std::vector<uint8_t>& dst %{
-    $javainput
-%}
+%typemap(javaout) std::vector<uint8_t>& dst "$jnicall"
+%typemap(javain) std::vector<uint8_t>& dst "$javainput"
 %typemap(directorin,descriptor="Lee/ria/libcdoc/DataBuffer;") std::vector<uint8_t>& dst %{
-    std::cerr << "DataBuffer directorin (dst " << &dst << ")" << std::endl;
-    std::cerr << "  size " << dst.size() << std::endl;
-    std::cerr << "  value " << libcdoc::toHex(dst) << std::endl;
     libcdoc::DataBuffer $1_db(&$1);
     jclass buf_class = jenv->FindClass("ee/ria/libcdoc/DataBuffer");
-    std::cerr << "Class " << buf_class << std::endl;
     jmethodID mid = jenv->GetMethodID(buf_class, "<init>", "(JZ)V");
-    std::cerr << "Method ID " << mid << std::endl;
     jobject obj = jenv->NewObject(buf_class, mid, (jlong) &$1_db, (jboolean) 0);
-    std::cerr << "Object " << obj << std::endl;
-
-    //*(libcdoc::DataBuffer **)& $input = (libcdoc::DataBuffer *) &$1;
     $input = obj;
 %}
 %typemap(javadirectorin) std::vector<uint8_t>& dst "$jniinput"
-%typemap(directorout) std::vector<uint8_t>& dst %{
-    std::cerr << "DataBuffer directorout "  << std::endl;
-    int a = 123;
-%}
-%typemap(javadirectorout) std::vector<uint8_t>& dst "$javacall"
 
 //
 // std::string_view& -> String
@@ -255,6 +226,22 @@
     }
 };
 %ignore libcdoc::CDocReader::getLocks();
+
+%typemap(javaimports) libcdoc::CDocReader %{
+    import java.io.IOException;
+    import java.io.OutputStream;
+%}
+
+%typemap(javacode) libcdoc::CDocReader %{
+    public void readFile(OutputStream ofs) throws IOException {
+        byte[] buf = new byte[1024];
+        long result = readData(buf);
+        while(result > 0) {
+            ofs.write(buf, 0, (int) result);
+            result = readData(buf);
+        }
+    }
+%}
 
 // int64_t read(uint8_t *dst, size_t const ssize)
 

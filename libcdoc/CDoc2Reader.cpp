@@ -96,12 +96,12 @@ CDoc2Reader::getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cer
 int
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 {
-	std::vector<uint8_t> kek;
+    std::vector<uint8_t> kek;
 	if (lock.type == libcdoc::Lock::Type::PASSWORD) {
 		// Password
 		std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
 		std::vector<uint8_t> kek_pm;
-		crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), lock.getBytes(libcdoc::Lock::PW_SALT), lock.getInt(libcdoc::Lock::KDF_ITER), lock.label);
+        crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), lock.getBytes(libcdoc::Lock::PW_SALT), lock.getInt(libcdoc::Lock::KDF_ITER), lock.label);
 		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 		if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 	} else if (lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY) {
