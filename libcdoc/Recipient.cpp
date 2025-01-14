@@ -6,7 +6,19 @@
 #include "Crypto.h"
 #include "Utils.h"
 
+using namespace std;
+
 namespace libcdoc {
+
+/**
+ * @brief Prefix with what starts machine generated Lock's label.
+ */
+constexpr string_view LABELPREFIX{"data:"};
+
+/**
+ * @brief String after label prefix indicating, the rest of the label is Base64 encoded.
+ */
+constexpr string_view LABELBASE64IND{";base64,"};
 
 Recipient
 Recipient::makeSymmetric(const std::string& label, int32_t kdf_iter)
@@ -82,6 +94,7 @@ Recipient::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
 }
 
 static constexpr std::string_view type_strs[] = {
+    "Unknown",
     "ID-card",
     "Digi-ID",
     "Digi-ID E-RESIDENT"
@@ -91,7 +104,7 @@ std::string
 Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components)
 {
     std::ostringstream ofs;
-    ofs << "data:";
+    ofs << LABELPREFIX;
     bool first = true;
     for (auto& c : components) {
         if (!c.second.empty()) {
@@ -106,13 +119,24 @@ Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>>
 std::string
 Recipient::BuildLabelEID(int version, EIDType type, const std::string& cn, const std::string& serial_number, const std::string& last_name, const std::string& first_name)
 {
-    return buildLabel({
-        {"v", std::to_string(version)},
-        {"type", type_strs[type]},
-        {"serial_number", serial_number},
-        {"last_name", last_name},
-        {"first_name", first_name}
-    });
+    // In case of cards issued to an organization the first name (and last name) are missing. We ommit these parts.
+    if (first_name.empty()) {
+        return buildLabel({
+            {"v", std::to_string(version)},
+            {"type", type_strs[type]},
+            {"cn", cn},
+            {"serial_number", serial_number}
+        });
+    } else {
+        return buildLabel({
+            {"v", std::to_string(version)},
+            {"type", type_strs[type]},
+            {"cn", cn},
+            {"serial_number", serial_number},
+            {"last_name", last_name},
+            {"first_name", first_name}
+        });
+    }
 }
 
 std::string
@@ -156,6 +180,78 @@ Recipient::BuildLabelPassword(int version, const std::string& label)
         {"type", "pw"},
         {"label", label}
     });
+}
+
+Recipient::EIDType Recipient::getEIDType(const std::vector<std::string>& policies)
+{
+    for (std::vector<std::string>::const_reference policy : policies)
+    {
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.3") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2.3")) {
+            return Recipient::EIDType::DigiID;
+        }
+
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.4") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2.4")) {
+            return Recipient::EIDType::DigiID_EResident;
+        }
+
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.1") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.2")) {
+            return Recipient::EIDType::IDCard;
+        }
+    }
+
+    // If the execution reaches so far then EID type determination failed.
+    return Recipient::EIDType::Unknown;
+}
+
+vector<pair<string, string>> Recipient::parseLabel(const string& label)
+{
+    // Check if provided label starts with the prefix.
+    if (!label.starts_with(LABELPREFIX))
+    {
+        return {};
+    }
+
+    string label_wo_prefix(label.substr(LABELPREFIX.size()));
+
+    // Label to be processed
+    string label_to_prcss;
+
+    // We ignore mediatype part
+
+    // Check, if the label is Base64 encoded
+    string::size_type base64IndPos = label_wo_prefix.find(LABELBASE64IND);
+    if (base64IndPos == string::npos)
+    {
+        label_to_prcss = std::move(label_wo_prefix);
+    }
+    else
+    {
+        string base64_label(label_wo_prefix.substr(base64IndPos + LABELBASE64IND.size()));
+        vector<uint8_t> decodedLabel(fromBase64(base64_label));
+        label_to_prcss.assign(decodedLabel.cbegin(), decodedLabel.cend());
+    }
+
+    vector<pair<string, string>> parsed_label;
+    vector<string> label_parts(split(label_to_prcss, '&'));
+    for (vector<string>::const_reference part : label_parts)
+    {
+        vector<string> label_data_parts(split(part, '='));
+        if (label_data_parts.size() != 2)
+        {
+            // Invalid label data. Should we output some error message?
+        }
+        else
+        {
+            parsed_label.push_back(pair(urlDecode(label_data_parts[0]), urlDecode(label_data_parts[1])));
+        }
+    }
+
+    return parsed_label;
 }
 
 } // namespace libcdoc

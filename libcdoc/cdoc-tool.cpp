@@ -13,24 +13,25 @@ using namespace libcdoc;
 
 static void print_usage(ostream& ofs)
 {
-    ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] [-v1] --out OUTPUTFILE FILE [FILE...]" << endl;
+    ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;
-    ofs << "    label:cert:CERTIFICATE_HEX - public key from certificate" << endl;
-    ofs << "    label:skey:SECRET_KEY_HEX - AES key" << endl;
-    ofs << "    label:pkey:SECRET_KEY_HEX - public key" << endl;
-    ofs << "    label:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
-    ofs << "    label:pw:PASSWORD - Derive key using PWBKDF" << endl;
-    ofs << "    label:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
-    ofs << "    label:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
+    ofs << "    [label]:cert:CERTIFICATE_HEX - public key from certificate" << endl;
+    ofs << "    [label]:skey:SECRET_KEY_HEX - AES key" << endl;
+    ofs << "    [label]:pkey:SECRET_KEY_HEX - public key" << endl;
+    ofs << "    [label]:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
+    ofs << "    [label]:pw:PASSWORD - Derive key using PWBKDF" << endl;
+    ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
+    ofs << "    [label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
     ofs << "  -v1 - creates CDOC1 version container. Supported only on encryption with certificate." << endl;
     ofs << "  --server ID SEND_URL - specifies a keyserver. The recipient key will be stored in server instead of in the document." << endl;
+    ofs << "  --genlabel - If specified, the lock label is generated." << endl;
     ofs << endl;
     ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << endl;
     ofs << "  Decrypt container using lock specified by label" << endl;
     ofs << "  Supported arguments" << endl;
     ofs << "    --label LABEL - CDOC container's lock label" << endl;
-    ofs << "    --label_id ID - CDOC container's lock 1-based label index" << endl;
+    ofs << "    --label_idx INDEX - CDOC container's lock 1-based label index" << endl;
     ofs << "    --slot SLOT - PKCS11 slot number" << endl;
     ofs << "    --password PASSWORD - lock's password" << endl;
     ofs << "    --secret SECRET - secret phrase (AES key)" << endl;
@@ -69,129 +70,150 @@ static int ParseAndEncrypt(int argc, char *argv[])
     cout << "Encrypting" << endl;
 
     ToolConf conf;
-    RecipientInfoLabelMap rcpts;
+    RecipientInfoVector rcpts;
     vector<vector<uint8_t>> certs;
 
     for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
-            vector<string> parts = split(argv[i + 1]);
+        string_view arg(argv[i]);
+        if (arg == "--rcpt" && ((i + 1) <= argc)) {
+            vector<string> parts(split(argv[i + 1]));
             if (parts.size() < 3)
                 return 1;
 
-            const string& label = parts[0];
+            RcptInfo rcpt;
+            rcpt.label = parts[0];
             const string& method = parts[1];
             if (method == "cert") {
                 if (parts.size() != 3)
                     return 1;
 
-                rcpts[label] = {
-                    RcptInfo::CERT,
-                    readFile(toUTF8(parts[2])),
-                    {}
-                };
+                rcpt.type = RcptInfo::CERT;
+
+                filesystem::path cert_file(toUTF8(parts[2]));
+                rcpt.cert = std::move(readFile(cert_file.string()));
+                rcpt.key_file_name = cert_file.filename().string();
             }
             else if (method == "key" || method == "skey" || method == "pkey") {
                 // For backward compatibility leave also "key" as the synonym for "skey" method.
                 if (parts.size() != 3)
                     return 1;
 
-                RcptInfo::Type type = method == "pkey" ? RcptInfo::PKEY : RcptInfo::SKEY;
-
-                rcpts[label] = {
-                    type,
-                    {},
-                    fromHex(parts[2])
-                };
+                rcpt.type = method == "pkey" ? RcptInfo::PKEY : RcptInfo::SKEY;
+                rcpt.secret = std::move(fromHex(parts[2]));
             }
             else if (method == "pfkey") {
                 if (parts.size() != 3)
                     return 1;
 
-                vector<uint8_t> key = readAllBytes(parts[2]);
+                rcpt.type = RcptInfo::PKEY;
+                rcpt.secret = std::move(readAllBytes(parts[2]));
 
-                rcpts[label] = {
-                    RcptInfo::PKEY,
-                    {},
-                    key
-                };
+                filesystem::path key_file(parts[2]);
+                rcpt.key_file_name = key_file.filename().string();
             }
             else if (method == "pw") {
                 if (parts.size() != 3)
                     return 1;
 
-                rcpts[label] = {
-                    RcptInfo::PASSWORD,
-                    {},
-                    vector<uint8_t>(parts[2].cbegin(), parts[2].cend())
-                };
+                rcpt.type = RcptInfo::PASSWORD;
+                rcpt.secret.assign(parts[2].cbegin(), parts[2].cend());
             }
             else if (method == "p11sk" || method == "p11pk") {
-                RcptInfo::Type type = method == "p11sk" ? RcptInfo::P11_SYMMETRIC : RcptInfo::P11_PKI;
-
-                if (parts.size() < 5)
-                    return 1;
+                rcpt.type = method == "p11sk" ? RcptInfo::P11_SYMMETRIC : RcptInfo::P11_PKI;
 
                 conf.libraryRequired = true;
-                long slot;
+
+                size_t last_char_idx;
                 if (parts[2].starts_with("0x")) {
-                    slot = std::stol(parts[2].substr(2), nullptr, 16);
+                    rcpt.slot = std::stol(parts[2].substr(2), &last_char_idx, 16);
+                    last_char_idx += 2;
                 } else {
-                    slot = std::stol(parts[2]);
+                    rcpt.slot = std::stol(parts[2], &last_char_idx);
                 }
-                string& pin = parts[3];
-                vector<uint8_t> key_id = fromHex(parts[4]);
-                string key_label = (parts.size() >= 6) ? parts[5] : "";
-                rcpts[label] = {
-                    type,
-                    {}, vector<uint8_t>(pin.cbegin(), pin.cend()),
-                    slot, key_id, key_label
-                };
+                if (last_char_idx < parts[2].size()) {
+                    cerr << "Slot is not a number" << endl;
+                    return 1;
+                }
+
+                if (parts.size() > 3) {
+                    if (!parts[3].empty())
+                        rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
+
+                    if (parts.size() > 4) {
+                        if (!parts[4].empty()) {
+                            rcpt.key_id = std::move(fromHex(parts[4]));
+                        }
+
+                        if (parts.size() > 5)
+                            rcpt.key_label = parts[5];
+                    }
+                }
+
 #ifndef NDEBUG
                 // For debugging
                 cout << "Method: " << method << endl;
-                cout << "Slot: " << slot << endl;
-                if (!pin.empty())
-                    cout << "Pin: " << pin << endl;
-                if (!key_id.empty())
-                    cout << "Key ID: " << parts[4] << endl;
-                if (!key_label.empty())
-                    cout << "Key label: " << key_label << endl;
+                cout << "Slot: " << rcpt.slot << endl;
+                if (!rcpt.secret.empty())
+                    cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
+                if (!rcpt.key_id.empty())
+                    cout << "Key ID: " << toHex(rcpt.key_id) << endl;
+                if (!rcpt.key_label.empty())
+                    cout << "Key label: " << rcpt.key_label << endl;
 #endif
             } else {
-                cerr << "Unkown method: " << method << endl;
+                cerr << "Unknown method: " << method << endl;
                 return 1;
             }
+
+            rcpts.push_back(std::move(rcpt));
+
             i += 1;
-        } else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
+        } else if (arg == "--out" && ((i + 1) <= argc)) {
             conf.out = argv[i + 1];
             i += 1;
-        } else if (!strcmp(argv[i], "--library") && ((i + 1) <= argc)) {
+        } else if (arg == "--library" && ((i + 1) <= argc)) {
             conf.library = argv[i + 1];
             i += 1;
-        } else if (!strcmp(argv[i], "-v1")) {
+        } else if (arg == "-v1") {
             conf.cdocVersion = 1;
-            i++;
-        } else if (!strcmp(argv[i], "--server") && ((i + 2) <= argc)) {
+        } else if (arg == "--server" && ((i + 2) <= argc)) {
             ToolConf::ServerData sdata;
             sdata.ID = argv[i + 1];
             sdata.SEND_URL = argv[i + 2];
             conf.servers.push_back(sdata);
             conf.use_keyserver = true;
             i += 2;
-        } else if (!strcmp(argv[i], "--accept") && ((i + 1) <= argc)) {
-            vector<uint8_t> der = readAllBytes(argv[i + 1]);
-            certs.push_back(der);
+        } else if (arg == "--accept" && ((i + 1) <= argc)) {
+            certs.push_back(std::move(readAllBytes(argv[i + 1])));
             i += 1;
-        } else if (argv[i][0] == '-') {
+        } else if (arg == "--genlabel") {
+            conf.gen_label = true;
+        } else if (arg[0] == '-') {
+            cerr << "Unknown argument: " << arg << endl;
             return 1;
         } else {
             conf.input_files.push_back(argv[i]);
         }
     }
+
+    // Validate input parameters
     if (rcpts.empty()) {
         cerr << "No recipients" << endl;
         return 1;
     }
+    if (!conf.gen_label) {
+        // If labels must not be generated then is there any Recipient without provided label?
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        if (rcpt_wo_label != rcpts.cend()) {
+            if (rcpts.size() > 1) {
+                cerr << "Not all Recipients have label" << endl;
+            } else {
+                cerr << "Label not provided" << endl;
+            }
+            return 1;
+        }
+    }
+
     if (conf.input_files.empty()) {
         cerr << "No files specified" << endl;
         return 1;
@@ -208,12 +230,10 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only in case of encryption with certificate.
     if (conf.cdocVersion == 1) {
-        for (const pair<string, RcptInfo>& rcpt : rcpts) {
-            if (rcpt.second.type != RcptInfo::CERT) {
-                cerr << "CDOC version 1 container can be used on encryption with certificate only." << endl;
-                // print_usage(cerr);
-                return 1;
-            }
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        if (rcpt_type_non_cert != rcpts.cend()) {
+            cerr << "CDOC version 1 container can be used on encryption with certificate only." << endl;
+            return 1;
         }
     }
 
@@ -234,7 +254,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
 {
     ToolConf conf;
 
-    int label_id = -1;
+    int label_idx = -1;
     string label;
     vector<uint8_t> secret;
     long slot;
@@ -250,18 +270,18 @@ static int ParseAndDecrypt(int argc, char *argv[])
     for (int i = 0; i < argc; i++)
     {
         string_view arg(argv[i]);
-        if ((arg == "--label" || arg == "--label_id") && i + 1 < argc) {
-            // Make sure the label or label ID is provided only once.
-            if (!label.empty() || label_id != -1) {
-                cerr << "The label or label ID was already provided" << endl;
+        if ((arg == "--label" || arg == "--label_idx") && i + 1 < argc) {
+            // Make sure the label or label index is provided only once.
+            if (!label.empty() || label_idx != -1) {
+                cerr << "The label or label's index was already provided" << endl;
                 return 1;
             }
-            if (arg == "--label_id") {
+            if (arg == "--label_idx") {
                 size_t last_char_idx;
                 string str(argv[i + 1]);
-                label_id = std::stol(str, &last_char_idx);
+                label_idx = std::stol(str, &last_char_idx);
                 if (last_char_idx < str.size()) {
-                    cerr << "Label ID is not a number" << endl;
+                    cerr << "Label index is not a number" << endl;
                     return 1;
                 }
             } else {
@@ -337,8 +357,8 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     // Validating the input parameters
-    if (label.empty() && label_id == -1) {
-        cerr << "No label nor label ID provided" << endl;
+    if (label.empty() && label_idx == -1) {
+        cerr << "No label nor index was provided" << endl;
         return 1;
     }
 
@@ -357,8 +377,8 @@ static int ParseAndDecrypt(int argc, char *argv[])
         conf.out = ".";
 
     CDocChipher chipher;
-    if (label_id != -1) {
-        RecipientInfoIdMap rcpts {{label_id, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
+    if (label_idx != -1) {
+        RecipientInfoIdMap rcpts {{label_idx, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
         return chipher.Decrypt(conf, rcpts, certs);
     } else {
         RecipientInfoLabelMap rcpts {{label, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};

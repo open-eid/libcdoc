@@ -17,6 +17,9 @@ static constexpr std::string_view SALT = "CDOC20salt";
 static constexpr int KEY_LEN = 32;
 static constexpr int NONCE_LEN = 12;
 
+static constexpr std::string_view KELABELV1START = "data:v=1&";
+static constexpr int KEYLABELVERSION = 1;
+
 // Get salt bitstring for HKDF expand method
 std::string getSaltForExpand(const std::string& label);
 

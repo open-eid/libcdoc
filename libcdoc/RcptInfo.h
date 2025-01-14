@@ -9,7 +9,10 @@ struct RcptInfo {
     enum Type {
         // Detect type from container
         ANY,
+
+        // Certificate from file
         CERT,
+        // Password from command line
         PASSWORD,
         // Symetric key from command line
         SKEY,
@@ -28,6 +31,9 @@ struct RcptInfo {
     long slot = 0;
     std::vector<uint8_t> key_id;
     std::string key_label;
+    std::string key_file_name;
+    // Locks label
+    std::string label;
 };
 
 }

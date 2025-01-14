@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <CDocChipher.h>
+#include <Recipient.h>
 #include <Utils.h>
 
 namespace btools = boost::test_tools;
@@ -13,137 +14,193 @@ namespace fs = std::filesystem;
 using namespace std;
 
 /**
- * @brief Gets path to test data, provided via argument to the unit tests application.
- *
- * The path to the test data has to be provided as the first custom command line argument to the application.
- * @return std::filesystem::path object with the path to test data, or "." if no path was provided to the application.
- */
-fs::path GetTestDataDir()
-{
-    fs::path testDataPath;
-    if (utf::framework::master_test_suite().argc <= 1)
-    {
-        testDataPath = ".";
-    }
-    else
-    {
-        testDataPath = utf::framework::master_test_suite().argv[1];
-    }
-
-    return testDataPath;
-}
-
-/**
- * @brief Checks if the file exists in the test data path.
- *
- * The method prepends the fileName with the test data path and checks its existence. If the file does not
- * exist then appropriate message is appended to returned predicate_result object and the value of the object
- * is set to false.
- * @param fileName the name of the file thats existence has to be checked.
- * @return predicate_result object with the check result.
- */
-boost::test_tools::predicate_result DoesFileExist(const string& fileName)
-{
-    fs::path file(std::move(GetTestDataDir()));
-    file /= fileName;
-    if (fs::exists(file))
-    {
-        return true;
-    }
-    else
-    {
-        btools::predicate_result res(false);
-        res.message() << "File " << file << " does not exist";
-        return res;
-    }
-}
-
-/**
- * @brief Forms file path from given file name by prepending it with the test data path.
- * @param fileName to be appended to the test data path
- * @return std::filesystem::path object with the path to the file in the test data directory.
- */
-fs::path FormFilePath(const string& fileName)
-{
-    fs::path filePath(std::move(GetTestDataDir()));
-    filePath /= fileName;
-    return filePath;
-}
-
-/**
- * @brief ValidateEncryptedFile Validates encrypted file.
- * @param encryptedFilePath Path to the file to be validated.
- * @return predicate_result object with the validation result.
- */
-btools::predicate_result ValidateEncryptedFile(const fs::path& encryptedFilePath)
-{
-    // Check if the encrypted file exists
-    btools::predicate_result resTargetFileExists(fs::exists(encryptedFilePath));
-    if (!resTargetFileExists)
-    {
-        resTargetFileExists.message() << "File " << encryptedFilePath << " does not exist";
-        return resTargetFileExists;
-    }
-
-    // Check if the file size is greater than 0.
-    btools::predicate_result resGtZero(fs::file_size(encryptedFilePath) > 0);
-    if (!resGtZero)
-    {
-        resGtZero.message() << "Encrypted file size is 0";
-        return resGtZero;
-    }
-
-    // Check if the encrypted file starts with "CDOC"
-    ifstream encryptedFile(encryptedFilePath, ios_base::in | ios_base::binary);
-    array<char, 5> header;
-    encryptedFile.read(header.data(), header.size() - 1);
-    btools::predicate_result resCdocHeaderOk(string_view(header.data()) == "CDOC");
-    if (!resCdocHeaderOk)
-    {
-        resCdocHeaderOk.message() << "Encrypted file has no CDOC header";
-    }
-
-    return resCdocHeaderOk;
-}
-
-/**
  * @brief Unencrypted file name.
  */
-const string SourceFile("test_data.txt");
+constexpr string SourceFile("test_data.txt");
 
 /**
  * @brief Encrypted file name.
  */
-const string TargetFile("test_data.txt.cdoc");
+constexpr string TargetFile("test_data.txt.cdoc");
 
-const string Label("Proov");
+constexpr string Label("Proov");
 
-const string Password("Proov123");
+constexpr string Password("Proov123");
 
-const string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
+constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
 
-BOOST_AUTO_TEST_SUITE(PasswordUsage)
+constexpr string_view CDOC2HEADER = "CDOC\x02"sv;
 
-BOOST_AUTO_TEST_CASE(EncryptWithPassword, * utf::description("Encrypting a file with password"))
+const vector<pair<string, string>> ExpectedParsedLabel {
+    {"v", "1"},
+    {"type", "ID-card"},
+    {"serial_number", "PNOEE-38001085718"},
+    {"cn", "JÕEORG,JAAK-KRISTJAN,38001085718"}
+};
+
+/**
+ * @brief The base class for Test Fixtures.
+ */
+class FixtureBase
+{
+public:
+    FixtureBase()
+    {
+        // Get path to test data, provided via argument to the unit tests application
+        if (utf::framework::master_test_suite().argc <= 1)
+        {
+            testDataPath = ".";
+        }
+        else
+        {
+            testDataPath = utf::framework::master_test_suite().argv[1];
+        }
+    }
+
+    /**
+     * @brief Concatenates test-data path with given file name and assigns it to given target.
+     * @param fileName File's name to be appended to test data path.
+     * @param target Target where the result is assigned.
+     */
+    void FormFilePath(const string& fileName, fs::path& target)
+    {
+        target = testDataPath;
+        target /= fileName;
+    }
+
+    /**
+     * @brief Checks if the file exists in the test data path.
+     *
+     * The method prepends the fileName with the test data path and checks its existence. If the file does not
+     * exist then appropriate message is appended to returned predicate_result object and the value of the object
+     * is set to false.
+     * @param fileName the name of the file thats existence has to be checked.
+     * @return predicate_result object with the check result.
+     */
+    boost::test_tools::predicate_result DoesFileExist(const string& fileName)
+    {
+        fs::path file(testDataPath);
+        file /= fileName;
+        if (fs::exists(file))
+        {
+            return true;
+        }
+        else
+        {
+            btools::predicate_result res(false);
+            res.message() << "File " << file << " does not exist";
+            return res;
+        }
+    }
+
+    fs::path testDataPath;
+    fs::path sourceFilePath;
+    fs::path targetFilePath;
+};
+
+/**
+ * @brief The Test Fixture class for encrypt operations.
+ */
+class EncryptFixture : public FixtureBase
+{
+public:
+    EncryptFixture()
+    {
+        BOOST_TEST_MESSAGE("Encrypt fixture setup");
+
+        // Setup source, unencrypted file path
+        FormFilePath(SourceFile, sourceFilePath);
+
+        // Setup target, encrypted file path
+        FormFilePath(TargetFile, targetFilePath);
+
+        // Remove target file if it exists
+        if (fs::exists(targetFilePath))
+        {
+            fs::remove(targetFilePath);
+        }
+    }
+
+    ~EncryptFixture() { BOOST_TEST_MESSAGE("Encrypt fixture deardown"); }
+
+    /**
+     * @brief ValidateEncryptedFile Validates encrypted file.
+     * @param encryptedFilePath Path to the file to be validated.
+     * @return predicate_result object with the validation result.
+     */
+    btools::predicate_result ValidateEncryptedFile(const fs::path& encryptedFilePath)
+    {
+        // Check if the encrypted file exists
+        btools::predicate_result resTargetFileExists(fs::exists(encryptedFilePath));
+        if (!resTargetFileExists)
+        {
+            resTargetFileExists.message() << "File " << encryptedFilePath << " does not exist";
+            return resTargetFileExists;
+        }
+
+        // Check if the file size is greater than 0.
+        btools::predicate_result resGtZero(fs::file_size(encryptedFilePath) > 0);
+        if (!resGtZero)
+        {
+            resGtZero.message() << "Encrypted file size is 0";
+            return resGtZero;
+        }
+
+        // Check if the encrypted file starts with "CDOC"
+        ifstream encryptedFile(encryptedFilePath, ios_base::in | ios_base::binary);
+        vector<char> header(CDOC2HEADER.size() + 1);
+        encryptedFile.read(header.data(), CDOC2HEADER.size());
+        btools::predicate_result resCdocHeaderOk(string_view(header.data()) == CDOC2HEADER);
+        if (!resCdocHeaderOk)
+        {
+            resCdocHeaderOk.message() << "Encrypted file has no CDOC header";
+        }
+
+        return resCdocHeaderOk;
+    }
+};
+
+/**
+ * @brief The Test Fixture class for decrypt operations.
+ */
+class DecryptFixture : public FixtureBase
+{
+public:
+    DecryptFixture()
+    {
+        BOOST_TEST_MESSAGE("Decrypt fixture setup");
+
+        // Setup source, encrypted file path
+        FormFilePath(TargetFile, sourceFilePath);
+
+        // Setup target, unencrypted file path
+        FormFilePath(SourceFile, targetFilePath);
+    }
+
+    ~DecryptFixture()
+    {
+        BOOST_TEST_MESSAGE("Decrypt fixture deardown");
+    }
+};
+
+
+BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture, * utf::description("Encrypting a file with password and given label"))
 {
     // Check if the source, unecrypted file exists
-    fs::path sourceFilePath(FormFilePath(SourceFile));
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
-
-    // Setup target, encrypted file path
-    fs::path targetFilePath(FormFilePath(TargetFile));
-
-    // Remove target file if it exists
-    if (fs::exists(targetFilePath))
-    {
-        fs::remove(targetFilePath);
-    }
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = targetFilePath.string();
 
-    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::PASSWORD, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::PASSWORD;
+    rcpt.secret.assign(Password.cbegin(), Password.cend());
+    rcpt.label = Label;
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
@@ -152,20 +209,16 @@ BOOST_AUTO_TEST_CASE(EncryptWithPassword, * utf::description("Encrypting a file 
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
 }
 
-BOOST_AUTO_TEST_CASE(DecryptWithPassword,
-        * utf::depends_on("PasswordUsage/EncryptWithPassword")
-        * utf::description("Decrypting a file with password"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
+        * utf::depends_on("PasswordUsageWithLabel/EncryptWithPasswordAndLabel")
+        * utf::description("Decrypting a file with password and given label"))
 {
     // Check if the source, encrypted file exists
-    fs::path sourceFilePath(FormFilePath(TargetFile));
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
-
-    // Setup target, unencrypted file path
-    fs::path targetFilePath(FormFilePath(SourceFile));
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
-    conf.out = GetTestDataDir().string();
+    conf.out = testDataPath.string();
 
     libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
 
@@ -173,34 +226,29 @@ BOOST_AUTO_TEST_CASE(DecryptWithPassword,
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
 
-BOOST_AUTO_TEST_SUITE(AESKeyUsage)
+BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
 
-BOOST_AUTO_TEST_CASE(EncryptWithAESKey, * utf::description("Encrypting a file with symmetric AES key"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture, * utf::description("Encrypting a file with password and without label"))
 {
     // Check if the source, unecrypted file exists
-    fs::path sourceFilePath(FormFilePath(SourceFile));
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
-
-    // Setup target, encrypted file path
-    fs::path targetFilePath(FormFilePath(TargetFile));
-
-    // Remove target file if it exists
-    if (fs::exists(targetFilePath))
-    {
-        fs::remove(targetFilePath);
-    }
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
 
     libcdoc::ToolConf conf;
+    conf.gen_label = true;
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = targetFilePath.string();
 
-    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::SKEY, {}, libcdoc::fromHex(AESKey)} }};
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::PASSWORD;
+    rcpt.secret.assign(Password.cbegin(), Password.cend());
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
 
     libcdoc::CDocChipher chipher;
     BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
@@ -209,20 +257,64 @@ BOOST_AUTO_TEST_CASE(EncryptWithAESKey, * utf::description("Encrypting a file wi
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
 }
 
-BOOST_AUTO_TEST_CASE(DecryptWithAESKey,
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture,
+                                   * utf::depends_on("PasswordUsageWithoutLabel/EncryptWithPasswordWithoutLabel")
+                                   * utf::description("Decrypting a file with password and label index"))
+{
+    // Check if the source, encrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = testDataPath.string();
+
+    libcdoc::RecipientInfoIdMap rcpts {{1, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+
+    libcdoc::CDocChipher chipher;
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
+
+    // Check if the encrypted file exists
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+
+BOOST_AUTO_TEST_SUITE(AESKeyUsage)
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture, * utf::description("Encrypting a file with symmetric AES key"))
+{
+    // Check if the source, unecrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::SKEY;
+    rcpt.secret = std::move(libcdoc::fromHex(AESKey));
+    rcpt.label = Label;
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
+
+    libcdoc::CDocChipher chipher;
+    BOOST_CHECK_EQUAL(chipher.Encrypt(conf, rcpts, {}), 0);
+
+    // Validate the encrypted file
+    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+}
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
                      * utf::depends_on("AESKeyUsage/EncryptWithAESKey")
                      * utf::description("Decrypting a file with with symmetric AES key"))
 {
     // Check if the source, encrypted file exists
-    fs::path sourceFilePath(FormFilePath(TargetFile));
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
-
-    // Setup target, unencrypted file path
-    fs::path targetFilePath(FormFilePath(SourceFile));
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
-    conf.out = GetTestDataDir().string();
+    conf.out = testDataPath.string();
 
     libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)} }};
 
@@ -230,7 +322,51 @@ BOOST_AUTO_TEST_CASE(DecryptWithAESKey,
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+
+BOOST_AUTO_TEST_SUITE(MacineLabelParsing)
+
+BOOST_AUTO_TEST_CASE(PlainLabelParsing)
+{
+    const string label("data:v=1&type=ID-card&serial_number=PNOEE-38001085718&cn=J%C3%95EORG%2CJAAK-KRISTJAN%2C38001085718");
+
+    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
+    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
+    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    {
+        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
+        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Base64LabelParsing)
+{
+    const string label("data:;base64,dj0xJnR5cGU9SUQtY2FyZCZzZXJpYWxfbnVtYmVyPVBOT0VFLTM4MDAxMDg1NzE4JmNuPUolQzMlOTVFT1JHJTJDSkFBSy1LUklTVEpBTiUyQzM4MDAxMDg1NzE4");
+
+    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
+    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
+    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    {
+        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
+        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Base64LabelParsingWithMediaType)
+{
+    const string label("data:application/x-www-form-urlencoded;base64,dj0xJnR5cGU9SUQtY2FyZCZzZXJpYWxfbnVtYmVyPVBOT0VFLTM4MDAxMDg1NzE4JmNuPUolQzMlOTVFT1JHJTJDSkFBSy1LUklTVEpBTiUyQzM4MDAxMDg1NzE4");
+
+    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
+    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
+    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    {
+        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
+        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

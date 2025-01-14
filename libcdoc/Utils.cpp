@@ -16,6 +16,16 @@ toBase64(const uint8_t *data, size_t len)
     return result;
 }
 
+std::vector<uint8_t>
+fromBase64(const std::string& data)
+{
+    std::vector<uint8_t> input(data.cbegin(), data.cend());
+    std::vector<uint8_t> result(input.size() / 4 * 3, 0);
+    int size = EVP_DecodeBlock(result.data(), input.data(), static_cast<int>(input.size()));
+    result.resize(size);
+    return result;
+}
+
 int
 parseURL(const std::string& url, std::string& host, int& port, std::string& path)
 {

@@ -66,6 +66,8 @@ extension(X509 *x509, int nid )
 std::vector<std::string>
 Certificate::policies() const
 {
+    constexpr int PolicyBufferLen = 50;
+
 	X509 *peerCert = Crypto::toX509(cert);
 	if(!peerCert) return {};
 
@@ -78,8 +80,8 @@ Certificate::policies() const
 	std::vector<std::string> list;
 	for(int i = 0; i < sk_POLICYINFO_num(cp); i++) {
 		POLICYINFO *pi = sk_POLICYINFO_value(cp, i);
-		char buf[50];
-		int len = OBJ_obj2txt(buf, 50, pi->policyid, 1);
+        char buf[PolicyBufferLen + 1]{};
+        int len = OBJ_obj2txt(buf, PolicyBufferLen, pi->policyid, 1);
 		if(len != NID_undef) {
 			list.push_back(std::string(buf));
 		}

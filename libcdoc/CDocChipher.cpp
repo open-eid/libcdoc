@@ -1,10 +1,13 @@
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <map>
 
 #include "CDocChipher.h"
 #include "CDocReader.h"
 #include "CDoc.h"
+#include "CDoc2.h"
+#include "Certificate.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
 
@@ -135,19 +138,88 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
 
 #define PUSH true
 
-int CDocChipher::Encrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients, const vector<vector<uint8_t>>& certs)
+
+int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const vector<vector<uint8_t>>& certs)
 {
-    ToolCrypto crypto(recipients);
+    RecipientInfoLabelMap rcptsInfo;
+    ToolCrypto crypto(rcptsInfo);
     ToolNetwork network(&crypto);
     network.certs = certs;
 
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);
 
-    std::vector<libcdoc::Recipient> rcpts;
-    for (const std::pair<std::string, RcptInfo>& pair : crypto.rcpts) {
-        const std::string& label = pair.first;
-        const RcptInfo& rcpt = pair.second;
+    vector<libcdoc::Recipient> rcpts;
+    for (RecipientInfoVector::const_reference rcpt : recipients)
+    {
+        // Generate the labels if needed
+        string label;
+        if (conf.gen_label)
+        {
+            switch (rcpt.type)
+            {
+            case RcptInfo::Type::PASSWORD:
+                label = std::move(Recipient::BuildLabelPassword(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label));
+                break;
+
+            case RcptInfo::Type::SKEY:
+                label = std::move(Recipient::BuildLabelSymmetricKey(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label, rcpt.key_file_name));
+                break;
+
+            case RcptInfo::Type::PKEY:
+                label = std::move(Recipient::BuildLabelPublicKey(CDoc2::KEYLABELVERSION, rcpt.key_file_name));
+                break;
+
+            case RcptInfo::Type::P11_PKI:
+            {
+                bool isRsa;
+                vector<uint8_t> cert_bytes;
+                ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
+                int result = p11->getCertificate(cert_bytes, isRsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
+                if (result != libcdoc::OK)
+                {
+                    cerr << "Certificate reading from SC card failed. Key label: " << rcpt.key_label << endl;
+                    return 1;
+                }
+                Certificate cert(cert_bytes);
+                label = std::move(Recipient::BuildLabelEID(CDoc2::KEYLABELVERSION, Recipient::getEIDType(cert.policies()), cert.getCommonName(), cert.getSerialNumber(), cert.getSurname(), cert.getGivenName()));
+                break;
+            }
+
+            case RcptInfo::Type::CERT:
+            {
+                Certificate cert(rcpt.cert);
+
+                // TODO: How to get certificate fingerprint without re-calculating it?
+                label = std::move(Recipient::BuildLabelCertificate(CDoc2::KEYLABELVERSION, rcpt.key_file_name, cert.getCommonName(), {}));
+                break;
+            }
+            case RcptInfo::Type::P11_SYMMETRIC:
+                // TODO: what label should be generated in this case?
+                break;
+
+            default:
+                cerr << "Unhandled recipient type " << rcpt.type << " for generating the lock's label" << endl;
+                break;
+            }
+#ifndef NDEBUG
+            cerr << "Generated label: " << label << endl;
+#endif
+        }
+        else
+        {
+            label = rcpt.label;
+        }
+
+        if (label.empty()) {
+            cerr << "No lock label" << endl;
+            return 1;
+        }
+
+        // Map does not have value's move assignment operator. Hence,
+        // the object is always copied, even if an R-value is assigned.
+        rcptsInfo[label] = rcpt;
+
         libcdoc::Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
             key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
@@ -183,7 +255,7 @@ int CDocChipher::Encrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients
             key = libcdoc::Recipient::makeSymmetric(label, 65535);
         }
 
-        rcpts.push_back(key);
+        rcpts.push_back(std::move(key));
     }
 
     if (rcpts.empty()) {
@@ -210,7 +282,7 @@ int CDocChipher::Encrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients
     return result;
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, const std::vector<std::vector<uint8_t>>& certs)
+int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, const vector<vector<uint8_t>>& certs)
 {
     RecipientInfoLabelMap rcpts;
     ToolCrypto crypto(rcpts);
@@ -226,7 +298,7 @@ int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, c
     }
 
     // Acquire the locks and get the labels according to the index
-    const vector<const Lock> locks(std::move(rdr->getLocks()));
+    const vector<const Lock> locks(rdr->getLocks());
     int labelIndex = recipients.cbegin()->first - 1;
     if (labelIndex < 0) {
         cerr << "Indexing of labels starts from 1" << endl;
@@ -266,7 +338,7 @@ int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients
         return 1;
     }
     cout << "Reader created" << endl;
-    vector<const Lock> locks(std::move(rdr->getLocks()));
+    vector<const Lock> locks(rdr->getLocks());
     for (const Lock& lock : locks) {
         if (lock.label == label) {
             cerr << "Found matching label: " << label << endl;
@@ -283,14 +355,14 @@ int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, const Lock& lock, co
     vector<uint8_t> fmk;
     int result = rdr->getFMK(fmk, lock);
     if (result != libcdoc::OK) {
-        cerr << "Error extracting FMK: " << result << endl;
+        cerr << "Error on extracting FMK: " << result << endl;
         cerr << rdr->getLastErrorStr() << endl;
         return 1;
     }
     FileListConsumer fileWriter(base_path);
     result = rdr->decrypt(fmk, &fileWriter);
     if (result != libcdoc::OK) {
-        cerr << "Error decrypting files: " << result << endl;
+        cerr << "Error on decrypting files: " << result << endl;
         cerr << rdr->getLastErrorStr() << endl;
         return 1;
     }
@@ -301,10 +373,53 @@ int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, const Lock& lock, co
 void CDocChipher::Locks(const char* file) const
 {
     unique_ptr<CDocReader> rdr(CDocReader::createReader(file, nullptr, nullptr, nullptr));
-    const vector<const Lock> locks(std::move(rdr->getLocks()));
+    const vector<const Lock> locks(rdr->getLocks());
 
-    int lock_id = 0;
+    int lock_id = 1;
     for (const Lock& lock : locks) {
-        cout << ++lock_id << ": " << lock.label << endl;
+        vector<pair<string, string>> parsed_label(Recipient::parseLabel(lock.label));
+        if (parsed_label.empty()) {
+            // Human-readable label
+            cout << lock_id << ": " << lock.label << endl;
+        } else {
+            // Machine generated label
+            // Find the longest field
+            int maxFieldLength = 0;
+            for (vector<pair<string, string>>::const_reference pair : parsed_label) {
+                if (pair.first.size() > maxFieldLength) {
+                    maxFieldLength = static_cast<int>(pair.first.size());
+                }
+            }
+
+            // Output the fields with their values
+            cout << lock_id << ":" << endl;
+            for (vector<pair<string, string>>::const_reference pair : parsed_label) {
+                cout << "  " << setw(maxFieldLength + 1) << left << pair.first << ": " << pair.second << endl;
+            }
+
+            cout << endl;
+        }
+
+        lock_id++;
     }
+}
+
+string CDocChipher::GenerateRandomSequence() const
+{
+    constexpr uint32_t upperbound = 'z' - '0' + 1;
+    constexpr int MaxSequenceLength = 11;
+
+    uint32_t rnd;
+    ostringstream sequence;
+    for (int cnt = 0; cnt < MaxSequenceLength;)
+    {
+        rnd = arc4random_uniform(upperbound) + '0';
+        if (isalnum(rnd))
+        {
+            sequence << static_cast<char>(rnd);
+            cnt++;
+        }
+    }
+
+    return sequence.str();
 }

@@ -46,6 +46,7 @@ struct CDOC_EXPORT Recipient {
 	};
 
     enum EIDType {
+        Unknown,
         IDCard,
         DigiID,
         DigiID_EResident
@@ -86,6 +87,10 @@ struct CDOC_EXPORT Recipient {
     static std::string BuildLabelPublicKey(int version, const std::string file);
     static std::string BuildLabelSymmetricKey(int version, const std::string& label, const std::string file);
     static std::string BuildLabelPassword(int version, const std::string& label);
+
+    static EIDType getEIDType(const std::vector<std::string>& policies);
+
+    static std::vector<std::pair<std::string, std::string>> parseLabel(const std::string& label);
 
     bool operator== (const Recipient& other) const = default;
 protected:

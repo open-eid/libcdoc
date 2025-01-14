@@ -14,19 +14,19 @@ public:
 		ECC
 	};
 
-	std::vector<uint8_t> cert;
+    std::vector<uint8_t> cert;
 
-	Certificate(const std::vector<uint8_t> cert) : cert(cert) {}
+    Certificate(const std::vector<uint8_t>& cert) : cert(cert) {}
 
 	std::string getCommonName() const;
 	std::string getGivenName() const;
 	std::string getSurname() const;
-	std::string getSerialNumber() const;
+    std::string getSerialNumber() const;
 
 	std::vector<std::string> policies() const;
 
 	std::vector<uint8_t> getPublicKey() const;
-	Algorithm getAlgorithm() const;
+    Algorithm getAlgorithm() const;
 };
 
 } // Namespace
