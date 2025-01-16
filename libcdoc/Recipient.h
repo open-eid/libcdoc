@@ -22,6 +22,7 @@
 
 #include <libcdoc/Exports.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -90,7 +91,7 @@ struct CDOC_EXPORT Recipient {
 
     static EIDType getEIDType(const std::vector<std::string>& policies);
 
-    static std::vector<std::pair<std::string, std::string>> parseLabel(const std::string& label);
+    static std::map<std::string, std::string> parseLabel(const std::string& label);
 
     bool operator== (const Recipient& other) const = default;
 protected:

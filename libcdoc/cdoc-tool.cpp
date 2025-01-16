@@ -23,7 +23,7 @@ static void print_usage(ostream& ofs)
     ofs << "    [label]:pw:PASSWORD - Derive key using PWBKDF" << endl;
     ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
     ofs << "    [label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
-    ofs << "  -v1 - creates CDOC1 version container. Supported only on encryption with certificate." << endl;
+    ofs << "  -v1 - creates CDOC1 version container. Supported only for encryption with certificate." << endl;
     ofs << "  --server ID SEND_URL - specifies a keyserver. The recipient key will be stored in server instead of in the document." << endl;
     ofs << "  --genlabel - If specified, the lock label is generated." << endl;
     ofs << endl;
@@ -228,11 +228,11 @@ static int ParseAndEncrypt(int argc, char *argv[])
         return 1;
     }
 
-    // CDOC1 is supported only in case of encryption with certificate.
+    // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
         auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
-            cerr << "CDOC version 1 container can be used on encryption with certificate only." << endl;
+            cerr << "CDOC version 1 container can be used for encryption with certificate only." << endl;
             return 1;
         }
     }

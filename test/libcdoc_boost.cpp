@@ -3,6 +3,7 @@
 #include <boost/test/unit_test.hpp>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <CDocChipher.h>
 #include <Recipient.h>
 #include <Utils.h>
@@ -31,7 +32,7 @@ constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648
 
 constexpr string_view CDOC2HEADER = "CDOC\x02"sv;
 
-const vector<pair<string, string>> ExpectedParsedLabel {
+const map<string, string> ExpectedParsedLabel {
     {"v", "1"},
     {"type", "ID-card"},
     {"serial_number", "PNOEE-38001085718"},
@@ -189,7 +190,7 @@ BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture, * utf::description("Encrypting a file with password and given label"))
 {
     // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
@@ -214,7 +215,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
         * utf::description("Decrypting a file with password and given label"))
 {
     // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
@@ -226,7 +227,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -237,7 +238,7 @@ BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture, * utf::description("Encrypting a file with password and without label"))
 {
     // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
     libcdoc::ToolConf conf;
     conf.gen_label = true;
@@ -262,7 +263,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
                                    * utf::description("Decrypting a file with password and label index"))
 {
     // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
@@ -274,7 +275,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -285,7 +286,7 @@ BOOST_AUTO_TEST_SUITE(AESKeyUsage)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture, * utf::description("Encrypting a file with symmetric AES key"))
 {
     // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
@@ -310,7 +311,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
                      * utf::description("Decrypting a file with with symmetric AES key"))
 {
     // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " does not exist");
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
@@ -322,7 +323,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
     BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
 
     // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " does not exist");
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -334,12 +335,15 @@ BOOST_AUTO_TEST_CASE(PlainLabelParsing)
 {
     const string label("data:v=1&type=ID-card&serial_number=PNOEE-38001085718&cn=J%C3%95EORG%2CJAAK-KRISTJAN%2C38001085718");
 
-    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
-    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
-    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    map<string, string> result = libcdoc::Recipient::parseLabel(label);
+    for (map<string, string>::const_reference expected_pair : ExpectedParsedLabel)
     {
-        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
-        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+        map<string, string>::const_iterator result_pair = result.find(expected_pair.first);
+        BOOST_TEST((result_pair != result.cend()), "Field " << expected_pair.first << " presented");
+        if (result_pair != result.end())
+        {
+            BOOST_CHECK_EQUAL(result_pair->second, expected_pair.second);
+        }
     }
 }
 
@@ -347,12 +351,15 @@ BOOST_AUTO_TEST_CASE(Base64LabelParsing)
 {
     const string label("data:;base64,dj0xJnR5cGU9SUQtY2FyZCZzZXJpYWxfbnVtYmVyPVBOT0VFLTM4MDAxMDg1NzE4JmNuPUolQzMlOTVFT1JHJTJDSkFBSy1LUklTVEpBTiUyQzM4MDAxMDg1NzE4");
 
-    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
-    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
-    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    map<string, string> result = libcdoc::Recipient::parseLabel(label);
+    for (map<string, string>::const_reference expected_pair : ExpectedParsedLabel)
     {
-        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
-        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+        map<string, string>::const_iterator result_pair = result.find(expected_pair.first);
+        BOOST_TEST((result_pair != result.cend()), "Field " << expected_pair.first << " presented");
+        if (result_pair != result.end())
+        {
+            BOOST_CHECK_EQUAL(result_pair->second, expected_pair.second);
+        }
     }
 }
 
@@ -360,12 +367,15 @@ BOOST_AUTO_TEST_CASE(Base64LabelParsingWithMediaType)
 {
     const string label("data:application/x-www-form-urlencoded;base64,dj0xJnR5cGU9SUQtY2FyZCZzZXJpYWxfbnVtYmVyPVBOT0VFLTM4MDAxMDg1NzE4JmNuPUolQzMlOTVFT1JHJTJDSkFBSy1LUklTVEpBTiUyQzM4MDAxMDg1NzE4");
 
-    vector<pair<string, string>> result = libcdoc::Recipient::parseLabel(label);
-    BOOST_REQUIRE_EQUAL(result.size(), ExpectedParsedLabel.size());
-    for (size_t cnt = 0; cnt < result.size(); cnt++)
+    map<string, string> result = libcdoc::Recipient::parseLabel(label);
+    for (map<string, string>::const_reference expected_pair : ExpectedParsedLabel)
     {
-        BOOST_CHECK_EQUAL(result[cnt].first, ExpectedParsedLabel[cnt].first);
-        BOOST_CHECK_EQUAL(result[cnt].second, ExpectedParsedLabel[cnt].second);
+        map<string, string>::const_iterator result_pair = result.find(expected_pair.first);
+        BOOST_TEST((result_pair != result.cend()), "Field " << expected_pair.first << " presented");
+        if (result_pair != result.end())
+        {
+            BOOST_CHECK_EQUAL(result_pair->second, expected_pair.second);
+        }
     }
 }
 

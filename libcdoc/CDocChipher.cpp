@@ -189,9 +189,8 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
             case RcptInfo::Type::CERT:
             {
                 Certificate cert(rcpt.cert);
-
-                // TODO: How to get certificate fingerprint without re-calculating it?
-                label = std::move(Recipient::BuildLabelCertificate(CDoc2::KEYLABELVERSION, rcpt.key_file_name, cert.getCommonName(), {}));
+                vector<uint8_t> digest = cert.getDigest();
+                label = std::move(Recipient::BuildLabelCertificate(CDoc2::KEYLABELVERSION, rcpt.key_file_name, cert.getCommonName(), digest));
                 break;
             }
             case RcptInfo::Type::P11_SYMMETRIC:
@@ -377,7 +376,7 @@ void CDocChipher::Locks(const char* file) const
 
     int lock_id = 1;
     for (const Lock& lock : locks) {
-        vector<pair<string, string>> parsed_label(Recipient::parseLabel(lock.label));
+        map<string, string> parsed_label(Recipient::parseLabel(lock.label));
         if (parsed_label.empty()) {
             // Human-readable label
             cout << lock_id << ": " << lock.label << endl;
@@ -385,7 +384,7 @@ void CDocChipher::Locks(const char* file) const
             // Machine generated label
             // Find the longest field
             int maxFieldLength = 0;
-            for (vector<pair<string, string>>::const_reference pair : parsed_label) {
+            for (map<string, string>::const_reference pair : parsed_label) {
                 if (pair.first.size() > maxFieldLength) {
                     maxFieldLength = static_cast<int>(pair.first.size());
                 }
@@ -393,7 +392,7 @@ void CDocChipher::Locks(const char* file) const
 
             // Output the fields with their values
             cout << lock_id << ":" << endl;
-            for (vector<pair<string, string>>::const_reference pair : parsed_label) {
+            for (map<string, string>::const_reference pair : parsed_label) {
                 cout << "  " << setw(maxFieldLength + 1) << left << pair.first << ": " << pair.second << endl;
             }
 

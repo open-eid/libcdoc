@@ -45,7 +45,7 @@ target_include_directories(cdoc_obj PUBLIC
 )
 
 set(CDOC_PRIV_SOURCES
-    Certificate.cpp
+    Certificate.cpp Certificate.h
     Crypto.cpp
     Tar.cpp
     XMLReader.cpp
@@ -63,6 +63,7 @@ set(CDOC_PRIV_SOURCES
     CDocChipher.h CDocChipher.cpp
     RcptInfo.h
     ToolConf.h
+    CDoc2.h
 )
 
 add_library(cdoc_priv_obj OBJECT

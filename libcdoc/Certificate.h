@@ -27,6 +27,8 @@ public:
 
 	std::vector<uint8_t> getPublicKey() const;
     Algorithm getAlgorithm() const;
+
+    std::vector<uint8_t> getDigest();
 };
 
 } // Namespace

@@ -124,4 +124,29 @@ Certificate::getAlgorithm() const
 	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : Algorithm::ECC;
 }
 
+std::vector<uint8_t> Certificate::getDigest()
+{
+    X509* x509 = Crypto::toX509(cert);
+    if(!x509)
+        return {};
+
+    const EVP_MD* digest_type = EVP_get_digestbyname("sha1");
+
+    std::vector<uint8_t> digest(EVP_MAX_MD_SIZE);
+    unsigned int digest_len = 0;
+
+    if (X509_digest(x509, digest_type, digest.data(), &digest_len))
+    {
+        digest.resize(digest_len);
+    }
+    else
+    {
+        digest.clear();
+    }
+
+    X509_free(x509);
+
+    return digest;
+}
+
 } // namespace libcdoc

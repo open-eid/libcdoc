@@ -208,9 +208,9 @@ Recipient::EIDType Recipient::getEIDType(const std::vector<std::string>& policie
     return Recipient::EIDType::Unknown;
 }
 
-vector<pair<string, string>> Recipient::parseLabel(const string& label)
+map<string, string> Recipient::parseLabel(const string& label)
 {
-    // Check if provided label starts with the prefix.
+    // Check if provided label starts with the machine generated label prefix.
     if (!label.starts_with(LABELPREFIX))
     {
         return {};
@@ -236,18 +236,18 @@ vector<pair<string, string>> Recipient::parseLabel(const string& label)
         label_to_prcss.assign(decodedLabel.cbegin(), decodedLabel.cend());
     }
 
-    vector<pair<string, string>> parsed_label;
+    map<string, string> parsed_label;
     vector<string> label_parts(split(label_to_prcss, '&'));
     for (vector<string>::const_reference part : label_parts)
     {
         vector<string> label_data_parts(split(part, '='));
         if (label_data_parts.size() != 2)
         {
-            // Invalid label data. Should we output some error message?
+            // Invalid label data. We just ignore them.
         }
         else
         {
-            parsed_label.push_back(pair(urlDecode(label_data_parts[0]), urlDecode(label_data_parts[1])));
+            parsed_label[urlDecode(label_data_parts[0])] = urlDecode(label_data_parts[1]);
         }
     }
 
