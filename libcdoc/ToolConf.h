@@ -44,6 +44,11 @@ struct ToolConf : public Configuration {
      */
     std::string out;
 
+    /**
+     * @brief If the label has to be generated.
+     */
+    bool gen_label = false;
+
     std::string getValue(const std::string_view& param) override final {
         return {};
     }

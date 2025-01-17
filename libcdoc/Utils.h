@@ -15,6 +15,8 @@ static std::string toBase64(const std::vector<uint8_t> data) {
     return toBase64(data.data(), data.size());
 }
 
+std::vector<uint8_t> fromBase64(const std::string& data);
+
 template <typename F>
 static std::string toHex(const F &data)
 {
