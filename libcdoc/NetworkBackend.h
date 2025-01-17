@@ -93,6 +93,10 @@ struct CDOC_EXPORT NetworkBackend {
         return NOT_IMPLEMENTED;
     }
 
+#if LIBCDOC_TESTING
+    virtual int64_t test(std::vector<std::vector<uint8_t>> &dst);
+#endif
+
     NetworkBackend (const NetworkBackend&) = delete;
 	NetworkBackend& operator= (const NetworkBackend&) = delete;
 };

@@ -89,6 +89,16 @@ libcdoc::NetworkBackend::getLastErrorStr(int code) const
 	return "Internal error";
 }
 
+#if LIBCDOC_TESTING
+int64_t
+libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
+{
+    std::cerr << "NetworkBackend::test::Native superclass" << std::endl;
+    return OK;
+}
+#endif
+
+
 int
 libcdoc::CDocReader::getCDocFileVersion(const std::string& path)
 {
@@ -132,6 +142,18 @@ libcdoc::CDocReader::testConfig(std::vector<uint8_t>& dst)
         return conf->test(dst);
     }
     std::cerr << "CDocReader::testConfig::conf is null" << std::endl;
+    return WORKFLOW_ERROR;
+}
+
+int64_t
+libcdoc::CDocReader::testNetwork(std::vector<std::vector<uint8_t>>& dst)
+{
+    std::cerr << "CDocReader::testNetwork::Native superclass" << std::endl;
+    if (network) {
+        std::cerr << "CDocReader::testNetwork this=" << this << " network=" << network << std::endl;
+        return network->test(dst);
+    }
+    std::cerr << "CDocReader::testNetwork::network is null" << std::endl;
     return WORKFLOW_ERROR;
 }
 #endif

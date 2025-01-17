@@ -1,9 +1,14 @@
 #define __CRYPTOBACKEND_CPP__
 
-#include <openssl/rand.h>
-
 #include "Crypto.h"
 #include "CryptoBackend.h"
+#include "Utils.h"
+
+#include <openssl/rand.h>
+
+#include <iostream>
+
+#define LOCAL_DEBUG
 
 namespace libcdoc {
 
@@ -65,7 +70,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 		int result = getSecret(secret, label);
 		if (result < 0) return result;
 #ifdef LOCAL_DEBUG
-		std::cerr << "Secret: " << Crypto::toHex(secret) << std::endl;
+        std::cerr << "Secret: " << toHex(secret) << std::endl;
 #endif
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 		std::fill(secret.begin(), secret.end(), 0);
@@ -75,7 +80,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 		if (result < 0) return result;
 	}
 #ifdef LOCAL_DEBUG
-	std::cerr << "Key material: " << Crypto::toHex(key_material) << std::endl;
+    std::cerr << "Key material: " << toHex(key_material) << std::endl;
 #endif
     return OK;
 }
@@ -93,7 +98,7 @@ CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8
 	std::fill(key_material.begin(), key_material.end(), 0);
 	if (kek_pm.empty()) return OPENSSL_ERROR;
 #ifdef LOCAL_DEBUG
-	std::cerr << "Extract: " << Crypto::toHex(kek_pm) << std::endl;
+    std::cerr << "Extract: " << toHex(kek_pm) << std::endl;
 #endif
     return OK;
 }

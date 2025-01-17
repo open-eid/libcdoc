@@ -31,6 +31,8 @@
 
 namespace libcdoc {
 
+typedef int64_t result_t;
+
 enum {
     /**
      * @brief Operation completed successfully

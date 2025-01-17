@@ -68,7 +68,7 @@ public:
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
 	virtual int nextFile(std::string& name, int64_t& size) = 0;
     int nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
-	virtual int64_t readData(uint8_t *dst, size_t size) = 0;
+    virtual int64_t readData(uint8_t *dst, size_t size) = 0;
 	virtual int finishDecryption() = 0;
 
 
@@ -99,6 +99,7 @@ public:
 
 #if LIBCDOC_TESTING
     virtual int64_t testConfig(std::vector<uint8_t>& dst);
+    virtual int64_t testNetwork(std::vector<std::vector<uint8_t>>& dst);
 #endif
 protected:
 	explicit CDocReader(int _version) : version(_version) {};

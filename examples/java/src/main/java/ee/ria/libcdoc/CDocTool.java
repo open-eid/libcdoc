@@ -76,41 +76,46 @@ public class CDocTool {
 
     static void decrypt(String file, String label, String password) {
         System.out.println("Decrypting file " + file);
-        ToolConf conf = new ToolConf();
-        DataBuffer buf = new DataBuffer();
-        ToolCrypto crypto = new ToolCrypto();
-        crypto.setPassword(password);
-        CDocReader rdr = CDocReader.createReader(file, conf, crypto, null);
-        System.out.format("Reader created (version %d)\n", rdr.getVersion());
+        try {
+            ToolConf conf = new ToolConf();
+            DataBuffer buf = new DataBuffer();
+            ToolCrypto crypto = new ToolCrypto();
+            crypto.setPassword(password);
+            CDocReader rdr = CDocReader.createReader(file, conf, crypto, null);
+            System.out.format("Reader created (version %d)\n", rdr.getVersion());
 
-        rdr.testConfig(buf);
-        System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
+            //rdr.testConfig(buf);
+            System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
 
-        LockVector locks = rdr.getLocks();
-        for (Lock lock : locks) {
-            if (lock.getLabel().equals(label)) {
-                System.out.format("Found lock: %s\n", label);
-                byte[] fmk = rdr.getFMK(lock);
-                System.out.format("FMK: %s\n", hex.formatHex(fmk));
-                rdr.beginDecryption(fmk);
-                FileInfo fi = new FileInfo();
-                int result = rdr.nextFile(fi);
-                System.out.format("Result: %d\n", result);
-                try {
-                    while (result == CDoc.OK) {
-                        System.out.format("File %s length %d\n", fi.getName(), fi.getSize());
-                        OutputStream ofs = new FileOutputStream(fi.getName());
-                        rdr.readFile(ofs);
-                        result = rdr.nextFile(fi);
+            LockVector locks = rdr.getLocks();
+            for (Lock lock : locks) {
+                if (lock.getLabel().equals(label)) {
+                    System.out.format("Found lock: %s\n", label);
+                    byte[] fmk = rdr.getFMK(lock);
+                    System.out.format("FMK is: %s\n", hex.formatHex(fmk));
+                    System.out.format("Stored data is: %s\n", hex.formatHex(stored.getData()));
+                    rdr.beginDecryption(fmk);
+                    FileInfo fi = new FileInfo();
+                    int result = rdr.nextFile(fi);
+                    System.out.format("nextFile result: %d\n", result);
+                    try {
+                        while (result == CDoc.OK) {
+                            System.out.format("File %s length %d\n", fi.getName(), fi.getSize());
+                            OutputStream ofs = new FileOutputStream(fi.getName());
+                            rdr.readFile(ofs);
+                            result = rdr.nextFile(fi);
+                        }
+                    } catch (IOException exc) {
+                        System.err.println("IO Exception: " + exc.getMessage());
                     }
-                } catch (IOException exc) {
-                    System.err.println("IO Exception: " + exc.getMessage());
+                    rdr.finishDecryption();
+                    return;
                 }
-                rdr.finishDecryption();
-                return;
             }
+            System.err.format("No such lock: %s\n", label);
+        } catch (CDocException exc) {
+            // Caught CDoc exception
         }
-        System.err.format("No such lock: %s\n", label);
     }
 
     static void encrypt(String file, String label, String password, Collection<String> files) {
@@ -163,12 +168,24 @@ public class CDocTool {
         buf.setData(bytes);
         System.err.format("Buffer: %s\n", hex.formatHex(buf.getData()));
 
+        System.err.println("Creating ToolNetwork");
+        ToolNetwork network = new ToolNetwork();
+
         System.err.println("Creating reader: " + path);
-        CDocReader rdr = CDocReader.createReader(path, conf, null, null);
+        CDocReader rdr = CDocReader.createReader(path, conf, null, network);
         System.err.format("Reader created (version %d)\n", rdr.getVersion());
 
         rdr.testConfig(buf);
         System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
+        System.err.println("Success");
+
+        CertificateList certs = new CertificateList();
+        rdr.testNetwork(certs);
+        System.err.format("Num certs: %s\n", certs.size());
+        for (int i = 0; i < certs.size(); i++) {
+            byte[] cert = certs.getCertificate(i);
+            System.err.format("  %s\n", hex.formatHex(cert));
+        }
         System.err.println("Success");
     }
 
@@ -178,16 +195,17 @@ public class CDocTool {
             System.err.println("ToolConf.test: Java subclass implementation");
             //System.err.println("CPtr is: " + dst.getCPtr());
             Object obj = (Object) dst;
-            System.err.println("Objectified");
-            System.err.println("Is DataBuffer: " + obj.getClass());
-            System.err.println("Buffer is: " + dst.getData());
+            System.err.println("ToolConf:Class: " + obj.getClass());
+            System.err.println("ToolConf:Buffer is: " + dst.getData());
             byte[] bytes = {4, 5, 6, 7, 8};
-            System.err.format("Buffer in: %s\n", hex.formatHex(dst.getData()));
+            System.err.format("ToolConf:Buffer in: %s\n", hex.formatHex(dst.getData()));
             dst.setData(bytes);
-            System.err.format("Buffer out: %s\n", hex.formatHex(dst.getData()));
+            System.err.format("ToolConf:Buffer out: %s\n", hex.formatHex(dst.getData()));
             return CDoc.OK;
         }
     }
+
+    private static DataBuffer stored = null;
 
     private static class ToolCrypto extends CryptoBackend {
         private byte[] secret;
@@ -198,7 +216,19 @@ public class CDocTool {
     
         @Override
         public int getSecret(DataBuffer dst, String label) {
+            stored = dst;
             dst.setData(secret);
+            return CDoc.OK;
+        }
+    }
+
+    private static class ToolNetwork extends NetworkBackend {
+        @Override
+        public long test(CertificateList dst) {
+            System.err.println("ToolNetwork.test: Java subclass implementation");
+            System.err.format("dst: %s\n", dst);
+            dst.addCertificate(new byte[] {1, 2, 3});
+            dst.addCertificate(new byte[] {4, 5, 6, 7, 8});
             return CDoc.OK;
         }
     }
