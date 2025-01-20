@@ -8,8 +8,8 @@ public:
 	~CDoc2Reader() final;
 
 	const std::vector<const libcdoc::Lock> getLocks() override final;
-	bool getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cert) override final;
-	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock) override final;
+    int getLockForCert(const std::vector<uint8_t>& cert) override final;
+    int getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) override final;
 	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
 
 	// Pull interface

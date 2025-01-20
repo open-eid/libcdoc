@@ -134,7 +134,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
     std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> fb_rcpts;
 
 	std::vector<uint8_t> xor_key(libcdoc::CDoc2::KEY_LEN);
-    for(const libcdoc::Recipient& rcpt: recipients) {
+    for (unsigned int rcpt_idx = 0; rcpt_idx < recipients.size(); rcpt_idx++) {
+        const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
         if (rcpt.isPKI()) {
             if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
 				std::vector<uint8_t> kek;
@@ -278,7 +279,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			crypto->random(salt, 32);
 			std::vector<uint8_t> pw_salt;
 			crypto->random(pw_salt, 32);
-            crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt.label);
+            crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt_idx);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 #ifndef NDEBUG
             std::cerr << "Label: " << rcpt.label << std::endl;

@@ -80,35 +80,42 @@ CDoc2Reader::getLocks()
 	return locks;
 }
 
-bool
-CDoc2Reader::getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cert){
+int
+CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 	libcdoc::Certificate cc(cert);
 	std::vector<uint8_t> other_key = cc.getPublicKey();
-	for (const libcdoc::Lock *ll : priv->locks) {
+    for (int lock_idx = 0; lock_idx < priv->locks.size(); lock_idx++) {
+        const libcdoc::Lock *ll = priv->locks.at(lock_idx);
 		if (ll->hasTheSameKey(other_key)) {
-			lock = *ll;
-			return true;
+            return lock_idx;
 		}
 	}
-	return false;
+    return libcdoc::NOT_FOUND;
 }
 
 int
-CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
+CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
+    std::cerr << "CDoc2Reader::getFMK: " << lock_idx << std::endl;
+    std::cerr << "CDoc2Reader::locks: " << priv->locks.size() << std::endl;
+    const libcdoc::Lock& lock = *priv->locks.at(lock_idx);
     std::vector<uint8_t> kek;
 	if (lock.type == libcdoc::Lock::Type::PASSWORD) {
 		// Password
-		std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
+        std::cerr << "password" << std::endl;
+        std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
 		std::vector<uint8_t> kek_pm;
-        crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), lock.getBytes(libcdoc::Lock::PW_SALT), lock.getInt(libcdoc::Lock::KDF_ITER), lock.label);
-		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+        crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), lock.getBytes(libcdoc::Lock::PW_SALT), lock.getInt(libcdoc::Lock::KDF_ITER), lock_idx);
+        std::cerr << "password2" << std::endl;
+        kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 		if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-	} else if (lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY) {
+        std::cerr << "password3" << std::endl;
+    } else if (lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY) {
 		// Symmetric key
-		std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
+        std::cerr << "symmetric" << std::endl;
+        std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
 		std::vector<uint8_t> kek_pm;
-		crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), {}, 0, lock.label);
+        crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), {}, 0, lock_idx);
 		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 #ifndef NDEBUG
         std::cerr << "Label: " << lock.label << std::endl;
@@ -142,14 +149,14 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
         std::cerr << "Key material: " << libcdoc::toHex(key_material) << std::endl;
 #endif
 		if (lock.isRSA()) {
-			int result = crypto->decryptRSA(kek, key_material, true, lock.label);
+            int result = crypto->decryptRSA(kek, key_material, true, lock_idx);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
 				return result;
 			}
 		} else {
 			std::vector<uint8_t> kek_pm;
-			int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), lock.label);
+            int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), lock_idx);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
 				return result;

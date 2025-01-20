@@ -2,6 +2,7 @@
 #define __WRAPPER_H__
 
 #include <vector>
+#include <cstdint>
 
 namespace libcdoc {
 

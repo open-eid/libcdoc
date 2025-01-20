@@ -221,10 +221,10 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = testDataPath.string();
 
-    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
 
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, Label, rcpt, {}), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
@@ -269,10 +269,10 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = testDataPath.string();
 
-    libcdoc::RecipientInfoIdMap rcpts {{1, {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())} }};
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
 
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, 1, rcpt, {}), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
@@ -317,10 +317,10 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
     conf.input_files.push_back(sourceFilePath.string());
     conf.out = testDataPath.string();
 
-    libcdoc::RecipientInfoLabelMap rcpts {{Label, {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)} }};
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)};
 
     libcdoc::CDocChipher chipher;
-    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(chipher.Decrypt(conf, Label, rcpt, {}), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");

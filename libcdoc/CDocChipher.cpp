@@ -16,13 +16,13 @@ using namespace libcdoc;
 
 
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
-    const RecipientInfoLabelMap& rcpts;
+    const RecipientInfoVector& rcpts;
 
-    ToolPKCS11(const std::string& library, const RecipientInfoLabelMap& map) : libcdoc::PKCS11Backend(library), rcpts(map) {}
+    ToolPKCS11(const std::string& library, const RecipientInfoVector& vec) : libcdoc::PKCS11Backend(library), rcpts(vec) {}
 
-    int connectToKey(const std::string& label, bool priv) override final {
-        if (!rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
-        const RcptInfo& rcpt = rcpts.at(label);
+    int connectToKey(int idx, bool priv) override final {
+        if ((idx < 0) || (idx >= rcpts.size())) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = rcpts.at(idx);
         int result = libcdoc::CRYPTO_ERROR;
         if (!priv) {
             result = useSecretKey(rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
@@ -35,10 +35,10 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 };
 
 struct ToolCrypto : public libcdoc::CryptoBackend {
-    const RecipientInfoLabelMap& rcpts;
+    const RecipientInfoVector& rcpts;
     std::unique_ptr<libcdoc::PKCS11Backend> p11;
 
-    ToolCrypto(const RecipientInfoLabelMap& recipients) : rcpts(recipients) {
+    ToolCrypto(const RecipientInfoVector& recipients) : rcpts(recipients) {
     }
 
     bool connectLibrary(const std::string& library) {
@@ -46,31 +46,31 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         return true;
     }
 
-    int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override final {
-        if (p11) return p11->decryptRSA(dst, data, oaep, label);
+    int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
+        if (p11) return p11->decryptRSA(dst, data, oaep, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
     int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
-                        const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label) override final {
-        if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, label);
+                        const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx) override final {
+        if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, const std::string& label) override final {
-        if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, label);
+    int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final {
+        if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, const std::string& label) override {
-        if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, label);
-        return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, label);
+    int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override {
+        if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
+        return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
     }
-    int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final {
-        const RcptInfo& rcpt = rcpts.at(label);
+    int getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
+        const RcptInfo& rcpt = rcpts.at(idx);
         secret =rcpt.secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }
 
-    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) {
-        if (p11) return p11->sign(dst, algorithm, digest, label);
+    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, int idx) {
+        if (p11) return p11->sign(dst, algorithm, digest, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
 };
@@ -78,7 +78,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 struct ToolNetwork : public libcdoc::NetworkBackend {
     ToolCrypto *crypto;
 
-    std::string label;
+    int rcpt_idx = -1;
 
     std::vector<std::vector<uint8_t>> certs;
 
@@ -86,8 +86,8 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     int getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
-        if (!crypto->rcpts.contains(label)) return libcdoc::CRYPTO_ERROR;
-        const RcptInfo& rcpt = crypto->rcpts.at(label);
+        if ((rcpt_idx < 0) || (rcpt_idx >= crypto->rcpts.size())) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = crypto->rcpts.at(rcpt_idx);
         bool rsa = false;
         return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
     }
@@ -98,7 +98,8 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     int signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
-        return crypto->p11->sign(dst, algorithm, digest, label);
+        if ((rcpt_idx < 0) || (rcpt_idx >= crypto->rcpts.size())) return libcdoc::CRYPTO_ERROR;
+        return crypto->p11->sign(dst, algorithm, digest, rcpt_idx);
     }
 
 };
@@ -141,7 +142,7 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
 
 int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const vector<vector<uint8_t>>& certs)
 {
-    RecipientInfoLabelMap rcptsInfo;
+    RecipientInfoVector rcptsInfo;
     ToolCrypto crypto(rcptsInfo);
     ToolNetwork network(&crypto);
     network.certs = certs;
@@ -217,7 +218,7 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
 
         // Map does not have value's move assignment operator. Hence,
         // the object is always copied, even if an R-value is assigned.
-        rcptsInfo[label] = rcpt;
+        rcptsInfo.push_back(rcpt);
 
         libcdoc::Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
@@ -281,9 +282,9 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
     return result;
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, const vector<vector<uint8_t>>& certs)
+int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
 {
-    RecipientInfoLabelMap rcpts;
+    RecipientInfoVector rcpts;
     ToolCrypto crypto(rcpts);
     ToolNetwork network(&crypto);
     network.certs = certs;
@@ -298,35 +299,36 @@ int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoIdMap& recipients, c
 
     // Acquire the locks and get the labels according to the index
     const vector<const Lock> locks(rdr->getLocks());
-    int labelIndex = recipients.cbegin()->first - 1;
-    if (labelIndex < 0) {
+    int lock_idx = idx_base_1 - 1;
+    if (lock_idx < 0) {
         cerr << "Indexing of labels starts from 1" << endl;
         return 1;
     }
-    if (labelIndex >= locks.size()) {
+    if (lock_idx >= locks.size()) {
         cerr << "Label index is out of range" << endl;
         return 1;
     }
+    rcpts.resize(locks.size());
+    rcpts[lock_idx] = recipient;
 
-    const Lock& lock = locks[labelIndex];
+    const Lock& lock = locks[lock_idx];
     cerr << "Found matching label: " << lock.label << endl;
-    network.label = lock.label;
-    rcpts[lock.label] = recipients.cbegin()->second;
+    network.rcpt_idx = lock_idx;
+    rcpts.resize(locks.size());
+    rcpts[idx_base_1] = recipient;
 
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);
 
-    return Decrypt(rdr, lock, conf.out);
+    return Decrypt(rdr, lock_idx, conf.out);
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients, const vector<vector<uint8_t>>& certs)
+int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
 {
-    ToolCrypto crypto(recipients);
+    RecipientInfoVector rcpts;
+    ToolCrypto crypto(rcpts);
     ToolNetwork network(&crypto);
     network.certs = certs;
-
-    const string& label = recipients.cbegin()->first;
-    network.label = label;
 
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);
@@ -337,22 +339,34 @@ int CDocChipher::Decrypt(ToolConf& conf, const RecipientInfoLabelMap& recipients
         return 1;
     }
     cout << "Reader created" << endl;
-    vector<const Lock> locks(rdr->getLocks());
-    for (const Lock& lock : locks) {
-        if (lock.label == label) {
-            cerr << "Found matching label: " << label << endl;
-            return Decrypt(rdr, lock, conf.out);
+
+    // Acquire the locks and get the labels according to the index
+    int lock_idx = -1;
+    const vector<const Lock> locks(rdr->getLocks());
+    for (unsigned int i = 0; i < locks.size(); i++) {
+        if (locks[i].label == label) {
+            lock_idx = i;
+            break;
         }
     }
+    if (lock_idx < 0) {
+        cerr << "Lock not found: " << label << endl;
+        return 1;
+    }
+    cerr << "Found matching label: " << label << endl;
+    rcpts.resize(locks.size());
+    rcpts[lock_idx] = recipient;
 
-    cerr << "Lock not found: " << label << endl;
-    return 1;
+    network.rcpt_idx = lock_idx;
+    return Decrypt(rdr, lock_idx, conf.out);
 }
 
-int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, const Lock& lock, const string& base_path)
+int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_path)
 {
     vector<uint8_t> fmk;
-    int result = rdr->getFMK(fmk, lock);
+    cout << "Fetching FMK, idx=" << lock_idx << endl;
+    int result = rdr->getFMK(fmk, lock_idx);
+    cout << "Got FMK" << endl;
     if (result != libcdoc::OK) {
         cerr << "Error on extracting FMK: " << result << endl;
         cerr << rdr->getLastErrorStr() << endl;

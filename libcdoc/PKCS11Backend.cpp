@@ -358,11 +358,11 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
 }
 
 int
-libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, const std::string& label)
+libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
 
-    int result = connectToKey(label, true);
+    int result = connectToKey(idx, true);
     if (result != OK) return result;
 
 	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
@@ -383,11 +383,11 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
 }
 
 int
-libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label)
+libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
 
-    int result = connectToKey(label, true);
+    int result = connectToKey(idx, true);
     if (result != OK) return result;
 
 	std::vector<uint8_t> sharedSecret;
@@ -421,13 +421,13 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 }
 
 int
-libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, const std::string& label)
+libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
 	if (kdf_iter > 0) return libcdoc::NOT_IMPLEMENTED;
 
 	if(!d) return CRYPTO_ERROR;
 
-    int result = connectToKey(label, false);
+    int result = connectToKey(idx, false);
     if (result != OK) return result;
 
 	CK_HKDF_PARAMS hkdf_params = {
@@ -475,11 +475,11 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 }
 
 int
-libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label)
+libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx)
 {
     if(!d) return CRYPTO_ERROR;
 
-    int result = connectToKey(label, true);
+    int result = connectToKey(idx, true);
     if (result != OK) return result;
 
     CK_KEY_TYPE keyType = CKK_RSA;

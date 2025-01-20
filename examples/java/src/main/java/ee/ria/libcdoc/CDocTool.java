@@ -160,6 +160,14 @@ public class CDocTool {
     }
 
     static void test(String path) {
+        System.err.println("Testing label generation");
+        String label = Recipient.buildLabel(new String[] {"Alpha", "1", "Beta", "2", "Gamma", "3", "Delta"});
+        System.err.format("Label: %s\n", label);
+        java.util.Map<String,String> map = Recipient.parseLabel(label);
+        for (String key : map.keySet()) {
+            System.err.format("  %s:%s\n", key, map.get(key));
+        }
+
         System.err.println("Creating ToolConf...");
         ToolConf conf = new ToolConf();
         System.err.println("Creating DataBuffer...");

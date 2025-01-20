@@ -81,7 +81,7 @@
 // const uint8_t *src, size_t len <- byte[]
 //
 
-    %typemap(in) (const uint8_t *src, size_t size) %{
+%typemap(in) (const uint8_t *src, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
@@ -136,7 +136,6 @@
     std::vector<uint8_t> $1_vec($input_data, $input_data + $input_size);
     jenv->ReleaseByteArrayElements($input, (jbyte *) $input_data, 0);
     $1 = &$1_vec;
-
 %}
 %typemap(freearg) (std::vector<uint8_t>&) %{
     // std::vector<uint8_t>& freearg
@@ -207,12 +206,57 @@
 %}
 
 //
+// std::vector<std::string>& <- String[]
+//
+
+%typemap(in) std::vector<std::string>& %{
+    // std::vector<std::string>& in
+    jsize $input_size = jenv->GetArrayLength($input);
+    std::vector<std::string> $1_vec;
+    for (jsize i = 0; i < $input_size; i++) {
+        jstring jstr = (jstring) jenv->GetObjectArrayElement($input, i);
+        const char *chars = jenv->GetStringUTFChars(jstr, nullptr);
+        $1_vec.push_back(chars);
+        jenv->ReleaseStringUTFChars(jstr, chars);
+    }
+    $1 = &$1_vec;
+%}
+%typemap(jtype) std::vector<std::string>& "String[]"
+%typemap(jstype) std::vector<std::string>& "String[]"
+%typemap(jni) std::vector<std::string>& "jobjectArray"
+%typemap(javain) std::vector<std::string>& "$javainput"
+
+//
+// std::map<std::string, std::string> -> java.util.Map<String,String>
+//
+
+%typemap(out) std::map<std::string, std::string> %{
+    jclass map_class = jenv->FindClass("java/util/Hashtable");
+    std::cerr << "Map class:" << (void *) map_class << std::endl;
+    jmethodID mid_new = jenv->GetMethodID(map_class, "<init>", "()V");
+    std::cerr << "Mid_new:" << mid_new << std::endl;
+    jmethodID mid_put = jenv->GetMethodID(map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    std::cerr << "Mid_put:" << mid_put << std::endl;
+    jobject map = jenv->NewObject(map_class, mid_new);
+    std::cerr << "Map:" << (void *) map << std::endl;
+    for(auto pair : *(&result)) {
+        jstring key = jenv->NewStringUTF(pair.first.c_str());
+        jstring val = jenv->NewStringUTF(pair.second.c_str());
+        jenv->CallObjectMethod(map, mid_put, key, val);
+    }
+    jresult = map;
+%}
+%typemap(jtype) std::map<std::string, std::string> "java.util.Map<String,String>"
+%typemap(jstype) std::map<std::string, std::string> "java.util.Map<String,String>"
+%typemap(jni) std::map<std::string, std::string> "jobject"
+%typemap(javaout) std::map<std::string, std::string> {
+    return $jnicall;
+}
+
+//
 // std::vector<std::vector<uint8_t>> <- CertificateList
 //
 
-%typemap(out) std::vector<std::vector<uint8_t>>& %{
-    // CertificateList out
-%}
 %typemap(in) std::vector<std::vector<uint8_t>>& %{
     // CertificateList in
     std::cerr << "%typemap(in) std::vector<std::vector<uint8_t>>&" << std::endl;
@@ -228,10 +272,6 @@
 %typemap(jtype) std::vector<std::vector<uint8_t>>& "CertificateList"
 %typemap(jstype) std::vector<std::vector<uint8_t>>& "CertificateList"
 %typemap(jni) std::vector<std::vector<uint8_t>>& "jobject"
-%typemap(javaout) std::vector<std::vector<uint8_t>>& %{
-    // std::vector<std::vector<uint8_t>>& javaout
-    return $jnicall;
-%}
 %typemap(javain) std::vector<std::vector<uint8_t>>& "$javainput"
 
 %typemap(directorin,descriptor="Lee/ria/libcdoc/CertificateList;") std::vector<std::vector<uint8_t>>& %{
@@ -314,14 +354,14 @@
         std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
         return std::move(p);
     }
-    libcdoc::Lock getLockForCert(const std::vector<uint8_t>& cert) {
-        libcdoc::Lock lock;
-        $self->getLockForCert(lock, cert);
-        return lock;
-    }
-    std::vector<uint8_t> getFMK(const libcdoc::Lock& lock) {
+    //libcdoc::Lock getLockForCert(const std::vector<uint8_t>& cert) {
+    //    libcdoc::Lock lock;
+    //    $self->getLockForCert(lock, cert);
+    //    return lock;
+    //}
+    std::vector<uint8_t> getFMK(unsigned int lock_idx) {
         std::vector<uint8_t> fmk;
-        $self->getFMK(fmk, lock);
+        $self->getFMK(fmk, lock_idx);
         return fmk;
     }
 };
@@ -359,6 +399,8 @@
 %ignore libcdoc::CertificateList::data;
 %ignore libcdoc::CertificateList::CertificateList(std::vector<std::vector<uint8_t>> *_data);
 %ignore libcdoc::CertificateList::reset();
+%ignore libcdoc::CertificateList::setData(const std::vector<std::vector<uint8_t>>& _data);
+%ignore libcdoc::CertificateList::getData();
 
 //
 // Recipient

@@ -63,17 +63,17 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param size the requested amount of random data
 	 * @return  error code or OK
 	 */
-	virtual int random(std::vector<uint8_t>& dst, int size);
+    virtual int random(std::vector<uint8_t>& dst, unsigned int size);
     /**
 	 * @brief Derive shared secret
 	 *
 	 * Derive a shared secret from private key of given lock label and public key using ECDH1 algorithm.
 	 * @param dst the container for shared secret
 	 * @param public_key ECDH public key used to derive shared secret
-	 * @param label Label of the lock
+     * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-	virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string& label) { return NOT_IMPLEMENTED; }
+    virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief decryptRSA
 	 * @param dst the destination container for decrypted data
@@ -82,7 +82,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param label Label of the lock
 	 * @return error code or OK
 	 */
-    virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, const std::string& label) { return NOT_IMPLEMENTED; };
+    virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *
@@ -94,12 +94,12 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param algorithm_id OtherInfo info parameters to input
 	 * @param party_uinfo OtherInfo info parameters to input
 	 * @param party_vinfo OtherInfo info parameters to input
-	 * @param label Label of the lock that the key belongs to
+     * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
 	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
-								 const std::vector<uint8_t> &party_vinfo, const std::string& label);
+                                 const std::vector<uint8_t> &party_vinfo, unsigned int idx);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from ECC key
 	 *
@@ -108,18 +108,17 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param dst the container for derived key
 	 * @param public_key
 	 * @param salt
-	 * @param label Label of the lock that the key belongs to
+     * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-	virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt,
-								  const std::string& label);
+    virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx);
 	/**
 	 * @brief Get secret value (either password or symmetric key) for a lock with given label
 	 * @param secret the destination container for secret
-	 * @param label label the label of the capsule (key)
+     * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int getSecret(std::vector<uint8_t>& dst, const std::string& label) { return NOT_IMPLEMENTED; };
+    virtual int getSecret(std::vector<uint8_t>& dst, unsigned int idx) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 *
@@ -128,11 +127,11 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param key_material the destination container for key material
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
-	 * @param label the label of the capsule (key)
+     * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
     virtual int getKeyMaterial(std::vector<uint8_t>& dst, const std::vector<uint8_t>& pw_salt,
-							   int32_t kdf_iter, const std::string& label);
+                               int32_t kdf_iter, unsigned int idx);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from symmetric key
 	 *
@@ -142,11 +141,11 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param salt the salt value for HKDF extract
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
-	 * @param label the label of the capsule (key)
+     * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
     virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
-							int32_t kdf_iter, const std::string& label);
+                            int32_t kdf_iter, unsigned int idx);
 
     virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
 

@@ -31,6 +31,7 @@ static constexpr Result results[] = {
     {PKCS11_ERROR, "PKCS11 error"},
     {HASH_MISMATCH, "Hash mismatch"},
     {CONFIGURATION_ERROR, "Configuration error"},
+    {NOT_FOUND, "Object not found"},
     {UNSPECIFIED_ERROR, "Unspecified error"},
     };
 

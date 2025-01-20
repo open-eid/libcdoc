@@ -64,53 +64,54 @@ CDoc1Reader::getLocks()
 	return locks;
 }
 
-bool
-CDoc1Reader::getLockForCert(libcdoc::Lock& lock, const std::vector<uint8_t>& cert)
+int
+CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
 {
 	if (!SUPPORTED_METHODS.contains(d->method)) return false;
 	libcdoc::Certificate cc(cert);
-	for(const libcdoc::Lock *ll : d->locks) {
+    for (size_t i = 0; i < d->locks.size(); i++) {
+        const libcdoc::Lock *ll = d->locks.at(i);
 		if (!ll->isCDoc1()) continue;
 		std::vector<uint8_t> cert = ll->getBytes(libcdoc::Lock::Params::CERT);
 		if(cert != cc.cert || ll->encrypted_fmk.empty()) continue;
 		if(cc.getAlgorithm() == libcdoc::Certificate::RSA) {
 			if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
-				lock = *ll;
-				return true;
+                return i;
 			}
 		} else {
 			std::vector<uint8_t> eph_key = ll->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
 			if(!eph_key.empty() && SUPPORTED_KWAES.contains(ll->getString(libcdoc::Lock::Params::METHOD))) {
-				lock = *ll;
-				return true;
+                return i;
 			}
 		}
 	}
-	return false;
+    return libcdoc::NOT_FOUND;
 }
 
 int
-CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
+CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
-	if (lock.type != libcdoc::Lock::Type::CDOC1) {
+    if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
+    const libcdoc::Lock *lock = d->locks.at(lock_idx);
+    if (lock->type != libcdoc::Lock::Type::CDOC1) {
 		setLastError("Not a CDoc1 key");
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 	setLastError({});
 	std::vector<uint8_t> decrypted_key;
-	if (lock.isRSA()) {
-		int result = crypto->decryptRSA(decrypted_key, lock.encrypted_fmk, false, lock.label);
+    if (lock->isRSA()) {
+        int result = crypto->decryptRSA(decrypted_key, lock->encrypted_fmk, false, lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
 			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
-		std::vector<uint8_t> eph_key = lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, lock.getString(libcdoc::Lock::Params::CONCAT_DIGEST),
-											 lock.getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
-											 lock.getBytes(libcdoc::Lock::Params::PARTY_UINFO),
-											 lock.getBytes(libcdoc::Lock::Params::PARTY_VINFO),
-											 lock.label);
+        std::vector<uint8_t> eph_key = lock->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
+        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST),
+                                             lock->getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
+                                             lock->getBytes(libcdoc::Lock::Params::PARTY_UINFO),
+                                             lock->getBytes(libcdoc::Lock::Params::PARTY_VINFO),
+                                             lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
 			return libcdoc::CRYPTO_ERROR;
@@ -120,10 +121,10 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock)
 		setLastError("Failed to decrypt/derive key");
 		return libcdoc::CRYPTO_ERROR;
 	}
-	if(lock.isRSA()) {
+    if(lock->isRSA()) {
 		fmk = decrypted_key;
 	} else {
-		fmk = libcdoc::Crypto::AESWrap(decrypted_key, lock.encrypted_fmk, false);
+        fmk = libcdoc::Crypto::AESWrap(decrypted_key, lock->encrypted_fmk, false);
 	}
 	if (fmk.empty()) {
 		setLastError("Failed to decrypt/derive fmk");

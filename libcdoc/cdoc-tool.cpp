@@ -378,11 +378,11 @@ static int ParseAndDecrypt(int argc, char *argv[])
 
     CDocChipher chipher;
     if (label_idx != -1) {
-        RecipientInfoIdMap rcpts {{label_idx, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
-        return chipher.Decrypt(conf, rcpts, certs);
+        RcptInfo rcpt {RcptInfo::ANY, {}, secret, slot, key_id, key_label};
+        return chipher.Decrypt(conf, label_idx, rcpt, certs);
     } else {
-        RecipientInfoLabelMap rcpts {{label, {RcptInfo::ANY, {}, secret, slot, key_id, key_label} }};
-        return chipher.Decrypt(conf, rcpts, certs);
+        RcptInfo rcpt {RcptInfo::ANY, {}, secret, slot, key_id, key_label};
+        return chipher.Decrypt(conf, label, rcpt, certs);
     }
 }
 

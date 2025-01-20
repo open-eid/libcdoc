@@ -105,6 +105,10 @@ enum {
      */
     CONFIGURATION_ERROR = -115,
     /**
+     * @brief Object not found
+     */
+    NOT_FOUND = -116,
+    /**
      * @brief Unspecified error
      */
     UNSPECIFIED_ERROR = -199,

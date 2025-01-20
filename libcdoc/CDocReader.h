@@ -43,16 +43,15 @@ public:
 	 * @brief Get decryption locks in given document
 	 * @return a vector of locks
 	 */
-	virtual const std::vector<const Lock> getLocks() = 0;
+    virtual const std::vector<const Lock> getLocks() = 0;
 	/**
 	 * @brief Fetches the lock for certificate
 	 *
 	 * Returns the first lock that can be opened by the private key of the certificate holder.
-	 * @param lock reference to result
 	 * @param cert a x509 certificate (der)
-	 * @return true if lock was found
+     * @return lock index or error code
 	 */
-	virtual bool getLockForCert(Lock& lock, const std::vector<uint8_t>& cert) = 0;
+    virtual int getLockForCert(const std::vector<uint8_t>& cert) = 0;
 	/**
 	 * @brief Fetches FMK from provided lock
 	 *
@@ -62,7 +61,7 @@ public:
 	 * @param lock a lock (from document lock list)
 	 * @return error code or OK
 	 */
-	virtual int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock& lock) = 0;
+    virtual int getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) = 0;
 
 	// Pull interface
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
