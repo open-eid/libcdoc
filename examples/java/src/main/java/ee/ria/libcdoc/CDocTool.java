@@ -11,49 +11,35 @@ import java.util.Collection;
 import java.util.HexFormat;
 
 public class CDocTool {
-    //static {
-    //    System.loadLibrary("digidoc_java");
-    //}
+    private enum Action {
+        INVALID,
+        ENCRYPT,
+        DECRYPT,
+        LOCKS,
+        TEST
+    }
 
     private static HexFormat hex = HexFormat.of();
 
     public static void main(String[] args) {
         System.out.println("Starting app...");
-        File lib = new File("../../build/libcdoc/libcdoc_javad.jnilib");
-        System.load(lib.getAbsolutePath());
-        System.out.println("Library loaded");
-        String label = "";
-        String password = "";
+
+        String library = "../../build/libcdoc/libcdoc_java.jnilib";
+        Action action = Action.INVALID;
         ArrayList<String> files = new ArrayList<>();
+        String label = null;
+        String password = null;
+        String out = "test.cdoc2";
+    
         for (int i = 0; i < args.length; i++) {
-            if (args[i].equals("--decrypt")) {
-                i += 1;
-                if (i >= args.length) {
-                    System.err.println("Invalid arguments");
-                    System.exit(1);
-                }
-                decrypt(args[i], label, password);
-            } else if (args[i].equals("--encrypt")) {
-                i += 1;
-                if (i >= args.length) {
-                    System.err.println("Invalid arguments");
-                    System.exit(1);
-                }
-                encrypt(args[i], label, password, files);
-            } else if (args[i].equals("--locks")) {
-                i += 1;
-                if (i >= args.length) {
-                    System.err.println("Invalid arguments");
-                    System.exit(1);
-                }
-                locks(args[i]);
-            } else if (args[i].equals("--test")) {
-                i += 1;
-                if (i >= args.length) {
-                    System.err.println("Invalid arguments");
-                    System.exit(1);
-                }
-                test(args[i]);
+            if (args[i].equals("test")) {
+                action = Action.TEST;
+            } else if (args[i].equals("encrypt")) {
+                action = Action.ENCRYPT;
+            } else if (args[i].equals("decrypt")) {
+                action = Action.DECRYPT;
+            } else if (args[i].equals("locks")) {
+                action = Action.LOCKS;
             } else if (args[i].equals("--label")) {
                 i += 1;
                 if (i >= args.length) {
@@ -61,6 +47,13 @@ public class CDocTool {
                     System.exit(1);
                 }
                 label = args[i];
+            } else if (args[i].equals("--library")) {
+                i += 1;
+                if (i >= args.length) {
+                    System.err.println("Invalid arguments");
+                    System.exit(1);
+                }
+                library = args[i];
             } else if (args[i].equals("--password")) {
                 i += 1;
                 if (i >= args.length) {
@@ -72,6 +65,25 @@ public class CDocTool {
                 files.add(args[i]);
             }
         }
+
+        File lib = new File(library);
+        System.load(lib.getAbsolutePath());
+        System.out.println("Library loaded");
+
+        switch (action) {
+            case ENCRYPT:
+                encrypt(out, label, password, files);
+                break;
+            case DECRYPT:
+                decrypt(files.get(0), label, password);
+                break;
+            case LOCKS:
+                locks(files.get(0));
+                break;
+            case TEST:
+                test();
+                break;
+        }
     }
 
     static void decrypt(String file, String label, String password) {
@@ -81,17 +93,21 @@ public class CDocTool {
             DataBuffer buf = new DataBuffer();
             ToolCrypto crypto = new ToolCrypto();
             crypto.setPassword(password);
-            CDocReader rdr = CDocReader.createReader(file, conf, crypto, null);
+
+            IStreamSource src = new IStreamSource(new FileInputStream(file));
+
+            CDocReader rdr = CDocReader.createReader(src, false, conf, crypto, null);
             System.out.format("Reader created (version %d)\n", rdr.getVersion());
 
             //rdr.testConfig(buf);
             System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
 
             LockVector locks = rdr.getLocks();
-            for (Lock lock : locks) {
+            for (int idx = 0; idx < locks.size(); idx++) {
+                Lock lock = locks.get(idx);
                 if (lock.getLabel().equals(label)) {
                     System.out.format("Found lock: %s\n", label);
-                    byte[] fmk = rdr.getFMK(lock);
+                    byte[] fmk = rdr.getFMK(idx);
                     System.out.format("FMK is: %s\n", hex.formatHex(fmk));
                     System.out.format("Stored data is: %s\n", hex.formatHex(stored.getData()));
                     rdr.beginDecryption(fmk);
@@ -101,7 +117,8 @@ public class CDocTool {
                     try {
                         while (result == CDoc.OK) {
                             System.out.format("File %s length %d\n", fi.getName(), fi.getSize());
-                            OutputStream ofs = new FileOutputStream(fi.getName());
+                            File ofile = new File(fi.getName());
+                            OutputStream ofs = new FileOutputStream(ofile.getName());
                             rdr.readFile(ofs);
                             result = rdr.nextFile(fi);
                         }
@@ -114,6 +131,8 @@ public class CDocTool {
             }
             System.err.format("No such lock: %s\n", label);
         } catch (CDocException exc) {
+            // Caught CDoc exception
+        } catch (IOException exc) {
             // Caught CDoc exception
         }
     }
@@ -159,7 +178,7 @@ public class CDocTool {
         }
     }
 
-    static void test(String path) {
+    static void test() {
         System.err.println("Testing label generation");
         String label = Recipient.buildLabel(new String[] {"Alpha", "1", "Beta", "2", "Gamma", "3", "Delta"});
         System.err.format("Label: %s\n", label);
@@ -167,6 +186,8 @@ public class CDocTool {
         for (String key : map.keySet()) {
             System.err.format("  %s:%s\n", key, map.get(key));
         }
+
+        String path = "test.cdoc2";
 
         System.err.println("Creating ToolConf...");
         ToolConf conf = new ToolConf();
@@ -223,7 +244,7 @@ public class CDocTool {
         }
     
         @Override
-        public int getSecret(DataBuffer dst, String label) {
+        public int getSecret(DataBuffer dst, int idx) {
             stored = dst;
             dst.setData(secret);
             return CDoc.OK;

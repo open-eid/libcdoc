@@ -22,6 +22,7 @@ public:
 	CDoc2Reader(const std::string &path);
 
 	static bool isCDoc2File(const std::string& path);
+    static bool isCDoc2File(libcdoc::DataSource *src);
 private:
 	struct Private;
 

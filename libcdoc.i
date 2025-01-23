@@ -19,6 +19,8 @@
 
 %include "typemaps.i"
 
+%ignore libcdoc::MultiDataSource;
+%ignore libcdoc::MultiDataConsumer;
 %ignore libcdoc::ChainedConsumer;
 %ignore libcdoc::ChainedSource;
 %ignore libcdoc::IStreamSource;
@@ -45,6 +47,7 @@
 %apply long long { int64_t }
 %apply long long { uint64_t }
 %apply int { int32_t }
+%apply int { unsigned int }
 
 %typemap(javaout) libcdoc::result_t %{
 {
@@ -105,6 +108,21 @@
 %typemap(jni) (uint8_t *dst, size_t size) "jbyteArray"
 %typemap(jtype) (uint8_t *dst, size_t size) "byte[]"
 %typemap(jstype) (uint8_t *dst, size_t size) "byte[]"
+%typemap(directorin,descriptor="[B") (uint8_t *dst, size_t size) %{
+    // (uint8_t *dst, size_t size) directorin
+
+    // Use scope guard to read back after Java call
+    auto del = [&] (jbyteArray *ba) {
+        // std::cerr << "deleting Byte array\n";
+        uint8_t *data = (uint8_t *) jenv->GetByteArrayElements(*ba, NULL);
+        memcpy($1, data, $2);
+        jenv->ReleaseByteArrayElements(*ba, (jbyte *) data, 0);
+    };
+    std::unique_ptr<jbyteArray, decltype(del)> $1_ba(new jbyteArray, del);
+    *$1_ba = jenv->NewByteArray($2);
+    $input = *$1_ba;
+%}
+%typemap(javadirectorin) (uint8_t *dst, size_t size) "$jniinput"
 
 //
 // std::vector<uint8_t> <- byte[]
@@ -393,6 +411,12 @@
 %ignore libcdoc::DataBuffer::reset();
 
 //
+// DataConsumer
+//
+
+%ignore libcdoc::DataConsumer::write(const std::vector<uint8_t>& src);
+
+//
 // CertificateList
 //
 
@@ -487,6 +511,7 @@ import java.util.ArrayList;
 //}
 //%ignore libcdoc::NetworkBackend::getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst);
 
+%feature("director") libcdoc::DataSource;
 %feature("director") libcdoc::CryptoBackend;
 %feature("director") libcdoc::NetworkBackend;
 %feature("director") libcdoc::Configuration;
@@ -499,6 +524,7 @@ import java.util.ArrayList;
 
 %include "CDoc.h"
 %include "Wrapper.h"
+%include "Io.h"
 %include "Recipient.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"

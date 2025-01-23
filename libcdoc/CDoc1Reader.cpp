@@ -38,7 +38,9 @@ const std::set<std::string_view> SUPPORTED_KWAES = {
 class CDoc1Reader::Private
 {
 public:
-    std::string file, mime, method;
+    libcdoc::DataSource *dsrc = nullptr;
+    bool src_owned = false;
+    std::string mime, method;
 	std::vector<libcdoc::Lock *> locks;
     std::map<std::string,std::string> properties;
 
@@ -53,6 +55,7 @@ public:
             delete lock;
         }
         locks.clear();
+        if (src_owned) delete dsrc;
     }
 };
 
@@ -261,10 +264,11 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
  * CDoc1Reader constructor.
  * @param file File to open reading
  */
-CDoc1Reader::CDoc1Reader(const std::string &file)
+CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 	: CDocReader(1), d(new Private)
 {
-	d->file = file;
+    d->dsrc = src;
+    d->src_owned = delete_on_close;
 	auto hex2bin = [](const std::string &in) {
 		std::vector<uint8_t> out;
 		char data[] = "00";
@@ -279,7 +283,7 @@ CDoc1Reader::CDoc1Reader(const std::string &file)
 		return out;
 	};
 
-	XMLReader reader(file);
+    XMLReader reader(d->dsrc, false);
 	while (reader.read()) {
 		if(reader.isEndElement())
 			continue;
@@ -350,13 +354,32 @@ CDoc1Reader::~CDoc1Reader()
 	delete d;
 }
 
+CDoc1Reader::CDoc1Reader(const std::string &path)
+    : CDoc1Reader(new libcdoc::IStreamSource(path), true)
+{
+}
+
+bool
+CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
+{
+    // fixme: better check
+    static const std::string XML_TAG("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+    std::vector<uint8_t>buf(XML_TAG.size());
+    if (src->read(buf.data(), XML_TAG.size()) != XML_TAG.size()) return false;
+    if (XML_TAG.compare(0, XML_TAG.size(), (char *) buf.data())) return false;
+    return true;
+}
+
 /**
  * Returns decrypted data
  * @param key Transport key to used for decrypt data
  */
 std::vector<uint8_t> CDoc1Reader::decryptData(const std::vector<uint8_t> &key)
 {
-	XMLReader reader(d->file);
+    if (d->dsrc->seek(0) != libcdoc::OK) {
+        return {};
+    }
+    XMLReader reader(d->dsrc, false);
 	std::vector<uint8_t> data;
 	int skipKeyInfo = 0;
 	while (reader.read()) {

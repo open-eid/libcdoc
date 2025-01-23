@@ -10,8 +10,9 @@ class Token;
 class CDoc1Reader : public libcdoc::CDocReader
 {
 public:
-	CDoc1Reader(const std::string &file);
-	~CDoc1Reader();
+    CDoc1Reader(libcdoc::DataSource *src, bool take_ownership = false);
+    CDoc1Reader(const std::string& path);
+    ~CDoc1Reader();
 
 	const std::vector<const libcdoc::Lock> getLocks() override final;
     int getLockForCert(const std::vector<uint8_t>& cert) override final;
@@ -23,6 +24,8 @@ public:
 	int nextFile(std::string& name, int64_t& size) override final;
 	int64_t readData(uint8_t *dst, size_t size) override final;
 	int finishDecryption() override final;
+
+    static bool isCDoc1File(libcdoc::DataSource *src);
 private:
 	CDoc1Reader(const CDoc1Reader &) = delete;
 	CDoc1Reader &operator=(const CDoc1Reader &) = delete;

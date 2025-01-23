@@ -103,9 +103,9 @@ struct CDOC_EXPORT DataSource {
 	 * @param size the number of bytes to read
 	 * @return thenumber of bytes read or error code
 	 */
-	virtual int64_t read(uint8_t *dst, size_t size) = 0;
-	virtual bool isError() = 0;
-	virtual bool isEof() = 0;
+    virtual int64_t read(uint8_t *dst, size_t size) { return NOT_IMPLEMENTED; }
+    virtual bool isError() { return NOT_IMPLEMENTED; }
+    virtual bool isEof() { return NOT_IMPLEMENTED; }
 	virtual std::string getLastErrorStr(int code) const;
 
 	int64_t skip(size_t size);

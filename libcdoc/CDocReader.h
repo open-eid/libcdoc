@@ -93,8 +93,10 @@ public:
 	 * @return version, -1 if not a valid CDoc file
 	 */
 	static int getCDocFileVersion(const std::string& path);
+    static int getCDocFileVersion(DataSource *src);
 
-	static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+    static CDocReader *createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+    static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
 #if LIBCDOC_TESTING
     virtual int64_t testConfig(std::vector<uint8_t>& dst);

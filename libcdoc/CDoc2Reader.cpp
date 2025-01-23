@@ -443,13 +443,23 @@ CDoc2Reader::CDoc2Reader(const std::string &path)
 }
 
 bool
+CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
+{
+    uint8_t in[libcdoc::CDoc2::LABEL.size()];
+	constexpr size_t len = libcdoc::CDoc2::LABEL.size();
+    if (src->read(&in[0], len) != len) return false;
+    if (libcdoc::CDoc2::LABEL.compare(0, len, (char *) &in[0], len)) return false;
+	return true;
+}
+
+bool
 CDoc2Reader::isCDoc2File(const std::string& path)
 {
-	std::ifstream fb(path);
-	char in[libcdoc::CDoc2::LABEL.size()];
-	constexpr size_t len = libcdoc::CDoc2::LABEL.size();
-	if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;
-	if (libcdoc::CDoc2::LABEL.compare(0, len, &in[0], len)) return false;
-	return true;
+    std::ifstream fb(path);
+    char in[libcdoc::CDoc2::LABEL.size()];
+    constexpr size_t len = libcdoc::CDoc2::LABEL.size();
+    if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;
+    if (libcdoc::CDoc2::LABEL.compare(0, len, &in[0], len)) return false;
+    return true;
 }
 

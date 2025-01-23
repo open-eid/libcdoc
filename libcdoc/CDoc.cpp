@@ -101,29 +101,33 @@ libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
 
 
 int
+libcdoc::CDocReader::getCDocFileVersion(DataSource *src)
+{
+    if (src->seek(0) != libcdoc::OK) return -1;
+    if (CDoc2Reader::isCDoc2File(src)) return 2;
+    src->seek(0);
+    if (CDoc1Reader::isCDoc1File(src)) return 1;
+    return -1;
+}
+
+int
 libcdoc::CDocReader::getCDocFileVersion(const std::string& path)
 {
-	if (CDoc2Reader::isCDoc2File(path)) return 2;
-	// fixme: better check
-	static const std::string XML_TAG("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-	std::vector<char>buf(XML_TAG.size());
-	std::ifstream ifs(path);
-	if (!ifs.is_open()) return -1;
-	ifs.read(buf.data(), XML_TAG.size());
-	if (ifs.gcount() != XML_TAG.size()) return -1;
-	if (XML_TAG.compare(0, XML_TAG.size(), buf.data())) return -1;
-	return 1;
+    IStreamSource ifs(path);
+    return getCDocFileVersion(&ifs);
 }
 
 libcdoc::CDocReader *
-libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
-	int version = getCDocFileVersion(path);
-	CDocReader *reader;
+    int version = getCDocFileVersion(src);
+    std::cerr << "CDocReader::createReader: version " << version << std::endl;
+    if (src->seek(0) != libcdoc::OK) return nullptr;
+    CDocReader *reader;
 	if (version == 1) {
-		reader = new CDoc1Reader(path);
+        reader = new CDoc1Reader(src, take_ownership);
 	} else if (version == 2) {
-		reader = new CDoc2Reader(path);
+        reader = new CDoc2Reader(src, take_ownership);
 	} else {
 		return nullptr;
 	}
@@ -131,6 +135,24 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
 	reader->crypto = crypto;
     reader->network = network;
 	return reader;
+}
+
+libcdoc::CDocReader *
+libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+{
+    int version = getCDocFileVersion(path);
+    CDocReader *reader;
+    if (version == 1) {
+        reader = new CDoc1Reader(path);
+    } else if (version == 2) {
+        reader = new CDoc2Reader(path);
+    } else {
+        return nullptr;
+    }
+    reader->conf = conf;
+    reader->crypto = crypto;
+    reader->network = network;
+    return reader;
 }
 
 #if LIBCDOC_TESTING
