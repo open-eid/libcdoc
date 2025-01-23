@@ -35,7 +35,7 @@ public:
 	static const XMLWriter::NS DENC, DS, XENC11, DSIG11;
 	std::string method, documentFormat = "ENCDOC-XML|1.1", lastError;
 
-	bool writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, libcdoc::Crypto::Key transportKey);
+    bool writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, const libcdoc::Crypto::Key& transportKey);
 };
 
 const XMLWriter::NS CDoc1Writer::Private::DENC{ "denc", "http://www.w3.org/2001/04/xmlenc#" };
@@ -54,7 +54,7 @@ CDoc1Writer::~CDoc1Writer()
 	delete d;
 }
 
-bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, libcdoc::Crypto::Key transportKey)
+bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, const libcdoc::Crypto::Key& transportKey)
 {
 	SCOPE(X509, peerCert, libcdoc::Crypto::toX509(recipient));
 	if(!peerCert)

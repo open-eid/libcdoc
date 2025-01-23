@@ -66,6 +66,10 @@ readAllBytes(const std::string_view filename)
     // Determine the file size
     keyStream.seekg(0, std::ios_base::end);
     size_t length = keyStream.tellg();
+    if (length == 0) {
+        std::cerr << "readAllBytes(): the file '" << filename << "' is empty" << std::endl;
+        return {};
+    }
 
     // Read the file
     std::vector<uint8_t> dst(length);
