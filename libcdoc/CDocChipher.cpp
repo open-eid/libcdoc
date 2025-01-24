@@ -117,7 +117,7 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
     for (const std::string& file : files) {
         std::filesystem::path path(file);
         if (!std::filesystem::exists(path)) {
-            Logger->LogMessage(LogLevelError, format("File does not exist: {}", file));
+            LOG_ERROR(format("File does not exist: {}", file));
             return 1;
         }
         size_t size = std::filesystem::file_size(path);
@@ -128,7 +128,7 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
             uint8_t b[256];
             int64_t len = src.read(b, 256);
             if (len < 0) {
-                Logger->LogMessage(LogLevelError, format("IO error: {}", file));
+                LOG_ERROR(format("IO error: {}", file));
                 return 1;
             }
             int64_t nbytes = writer.writeData(b, len);
@@ -180,7 +180,7 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
                 int result = p11->getCertificate(cert_bytes, isRsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
                 if (result != libcdoc::OK)
                 {
-                    Logger->LogMessage(LogLevelError, format("Certificate reading from SC card failed. Key label: {}", rcpt.key_label));
+                    LOG_ERROR(format("Certificate reading from SC card failed. Key label: {}", rcpt.key_label));
                     return 1;
                 }
                 Certificate cert(cert_bytes);
@@ -200,11 +200,11 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
                 break;
 
             default:
-                Logger->LogMessage(LogLevelError, format("Unhandled recipient type {} for generating the lock's label", static_cast<int>(rcpt.type)));
+                LOG_ERROR(format("Unhandled recipient type {} for generating the lock's label", static_cast<int>(rcpt.type)));
                 break;
             }
 #ifndef NDEBUG
-            Logger->LogMessage(LogLevelDebug, format("Generated label: {}", label));
+            LOG_DBG(format("Generated label: {}", label));
 #endif
         }
         else
@@ -213,7 +213,7 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
         }
 
         if (label.empty()) {
-            Logger->LogMessage(LogLevelError, "No lock label");
+            LOG_ERROR("No lock label");
             return 1;
         }
 
@@ -224,14 +224,14 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
             key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
         } else if (rcpt.type == RcptInfo::Type::SKEY) {
             key = libcdoc::Recipient::makeSymmetric(label, 0);
-            Logger->LogMessage(LogLevelDebug, "Creating symmetric key:");
+            LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
             if (!conf.servers.empty()) {
                 key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
             } else {
                 key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
             }
-            Logger->LogMessage(LogLevelDebug, "Creating public key:");
+            LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
             key = libcdoc::Recipient::makeSymmetric(label, 0);
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
@@ -240,17 +240,17 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
             ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
             int result = p11->getPublicKey(val, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
             if (result != libcdoc::OK) {
-                Logger->LogMessage(LogLevelError, format("No such public key: {}", rcpt.key_label));
+                LOG_ERROR(format("No such public key: {}", rcpt.key_label));
                 continue;
             }
-            Logger->LogMessage(LogLevelDebug, format("Public key ({}): {}", rsa ? "rsa" : "ecc", toHex(val)));
+            LOG_DBG(format("Public key ({}): {}", rsa ? "rsa" : "ecc", toHex(val)));
             if (!conf.servers.empty()) {
                 key = libcdoc::Recipient::makeServer(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
             } else {
                 key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
-            Logger->LogMessage(LogLevelDebug, "Creating password key:");
+            LOG_DBG("Creating password key:");
             key = libcdoc::Recipient::makeSymmetric(label, 65535);
         }
 
@@ -258,7 +258,7 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
     }
 
     if (rcpts.empty()) {
-        Logger->LogMessage(LogLevelError, "No key for encryption was found");
+        LOG_ERROR("No key for encryption was found");
         return 1;
     }
 
@@ -272,10 +272,10 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
         result = writer->encrypt(src, rcpts);
     }
     if (result < 0) {
-        Logger->LogMessage(LogLevelError, format("Encryption failed: error {}", result));
+        LOG_ERROR(format("Encryption failed: error {}", result));
         cerr << writer->getLastErrorStr() << endl;
     } else {
-        Logger->LogMessage(LogLevelInfo, format("File encrypted successfully: {}", conf.out));
+        LOG_INFO(format("File encrypted successfully: {}", conf.out));
     }
 
     return result;
@@ -290,9 +290,9 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
 
     unique_ptr<CDocReader> rdr(CDocReader::createReader(conf.input_files[0], &conf, &crypto, &network));
     if (rdr) {
-        Logger->LogMessage(LogLevelDebug, "Reader created");
+        LOG_DBG("Reader created");
     } else {
-        Logger->LogMessage(LogLevelError, "Cannot create reader (invalid file?)");
+        LOG_ERROR("Cannot create reader (invalid file?)");
         return 1;
     }
 
@@ -300,18 +300,18 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
     const vector<const Lock> locks(rdr->getLocks());
     int lock_idx = idx_base_1 - 1;
     if (lock_idx < 0) {
-        Logger->LogMessage(LogLevelError, "Indexing of labels starts from 1");
+        LOG_ERROR("Indexing of labels starts from 1");
         return 1;
     }
     if (lock_idx >= locks.size()) {
-        Logger->LogMessage(LogLevelError, "Label index is out of range");
+        LOG_ERROR("Label index is out of range");
         return 1;
     }
     rcpts.resize(locks.size());
     rcpts[lock_idx] = recipient;
 
     const Lock& lock = locks[lock_idx];
-    Logger->LogMessage(LogLevelInfo, format("Found matching label: {}", lock.label));
+    LOG_INFO(format("Found matching label: {}", lock.label));
     network.rcpt_idx = lock_idx;
     rcpts.resize(locks.size());
     rcpts[idx_base_1] = recipient;
@@ -334,10 +334,10 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
 
     unique_ptr<CDocReader> rdr(CDocReader::createReader(conf.input_files[0], &conf, &crypto, &network));
     if (!rdr) {
-        Logger->LogMessage(LogLevelError, "Cannot create reader (invalid file?)");
+        LOG_ERROR("Cannot create reader (invalid file?)");
         return 1;
     }
-    Logger->LogMessage(LogLevelDebug, "Reader created");
+    LOG_DBG("Reader created");
 
     // Acquire the locks and get the labels according to the index
     int lock_idx = -1;
@@ -349,10 +349,10 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
         }
     }
     if (lock_idx < 0) {
-        Logger->LogMessage(LogLevelError, format("Lock not found: {}", label));
+        LOG_ERROR(format("Lock not found: {}", label));
         return 1;
     }
-    Logger->LogMessage(LogLevelInfo, format("Found matching label: {}", label));
+    LOG_INFO(format("Found matching label: {}", label));
     rcpts.resize(locks.size());
     rcpts[lock_idx] = recipient;
 
@@ -363,20 +363,20 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
 int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_path)
 {
     vector<uint8_t> fmk;
-    Logger->LogMessage(LogLevelDebug, format("Fetching FMK, idx=", lock_idx));
+    LOG_DBG(format("Fetching FMK, idx=", lock_idx));
     int result = rdr->getFMK(fmk, lock_idx);
-    Logger->LogMessage(LogLevelDebug, "Got FMK");
+    LOG_DBG("Got FMK");
     if (result != libcdoc::OK) {
-        Logger->LogMessage(LogLevelError, format("Error on extracting FMK: {} {}", result, rdr->getLastErrorStr()));
+        LOG_ERROR(format("Error on extracting FMK: {} {}", result, rdr->getLastErrorStr()));
         return 1;
     }
     FileListConsumer fileWriter(base_path);
     result = rdr->decrypt(fmk, &fileWriter);
     if (result != libcdoc::OK) {
-        Logger->LogMessage(LogLevelError, format("Error on decrypting files: {} {}", result, rdr->getLastErrorStr()));
+        LOG_ERROR(format("Error on decrypting files: {} {}", result, rdr->getLastErrorStr()));
         return 1;
     }
-    Logger->LogMessage(LogLevelInfo, "File decrypted successfully");
+    LOG_INFO("File decrypted successfully");
     return 0;
 }
 

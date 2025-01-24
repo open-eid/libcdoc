@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <iostream>
-#include <memory>
 
 #include "CDocChipher.h"
 #include "ConsoleLogger.h"
@@ -68,7 +67,7 @@ static void print_usage(ostream& ofs)
 
 static int ParseAndEncrypt(int argc, char *argv[])
 {
-    Logger->LogMessage(LogLevelInfo, "Encrypting");
+    LOG_INFO("Encrypting");
 
     ToolConf conf;
     RecipientInfoVector rcpts;
@@ -136,7 +135,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
                     rcpt.slot = std::stol(parts[2], &last_char_idx);
                 }
                 if (last_char_idx < parts[2].size()) {
-                    Logger->LogMessage(LogLevelError, "Slot is not a number");
+                    LOG_ERROR("Slot is not a number");
                     return 2;
                 }
 
@@ -156,17 +155,17 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
 #ifndef NDEBUG
                 // For debugging
-                Logger->LogMessage(LogLevelDebug, format("Method: {}", method));
-                Logger->LogMessage(LogLevelDebug, format("Slot: {}", rcpt.slot));
+                LOG_DBG(format("Method: {}", method));
+                LOG_DBG(format("Slot: {}", rcpt.slot));
                 if (!rcpt.secret.empty())
-                    Logger->LogMessage(LogLevelDebug, format("Pin: {}", string(rcpt.secret.cbegin(), rcpt.secret.cend())));
+                    LOG_DBG(format("Pin: {}", string(rcpt.secret.cbegin(), rcpt.secret.cend())));
                 if (!rcpt.key_id.empty())
-                    Logger->LogMessage(LogLevelDebug, format("Key ID: {}", toHex(rcpt.key_id)));
+                    LOG_DBG(format("Key ID: {}", toHex(rcpt.key_id)));
                 if (!rcpt.key_label.empty())
-                    Logger->LogMessage(LogLevelDebug, format("Key label: {}", rcpt.key_label));
+                    LOG_DBG(format("Key label: {}", rcpt.key_label));
 #endif
             } else {
-                Logger->LogMessage(LogLevelError, format("Unknown method: {}", method));
+                LOG_ERROR(format("Unknown method: {}", method));
                 return 2;
             }
 
@@ -194,7 +193,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
         } else if (arg == "--genlabel") {
             conf.gen_label = true;
         } else if (arg[0] == '-') {
-            Logger->LogMessage(LogLevelError, format("Unknown argument: {}", arg));
+            LOG_ERROR(format("Unknown argument: {}", arg));
             return 2;
         } else {
             conf.input_files.push_back(argv[i]);
@@ -203,7 +202,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
     // Validate input parameters
     if (rcpts.empty()) {
-        Logger->LogMessage(LogLevelError, "No recipients");
+        LOG_ERROR("No recipients");
         return 2;
     }
     if (!conf.gen_label) {
@@ -211,25 +210,25 @@ static int ParseAndEncrypt(int argc, char *argv[])
         auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
-                Logger->LogMessage(LogLevelError, "Not all Recipients have label");
+                LOG_ERROR("Not all Recipients have label");
             } else {
-                Logger->LogMessage(LogLevelError, "Label not provided");
+                LOG_ERROR("Label not provided");
             }
             return 2;
         }
     }
 
     if (conf.input_files.empty()) {
-        Logger->LogMessage(LogLevelError, "No files specified");
+        LOG_ERROR("No files specified");
         return 2;
     }
     if (conf.out.empty()) {
-        Logger->LogMessage(LogLevelError, "No output specified");
+        LOG_ERROR("No output specified");
         return 2;
     }
 
     if (conf.libraryRequired && conf.library.empty()) {
-        Logger->LogMessage(LogLevelError, "Cryptographic library is required");
+        LOG_ERROR("Cryptographic library is required");
         return 2;
     }
 
@@ -237,7 +236,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     if (conf.cdocVersion == 1) {
         auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
-            Logger->LogMessage(LogLevelError, "CDOC version 1 container can be used for encryption with certificate only.");
+            LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
         }
     }
@@ -278,7 +277,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
         if ((arg == "--label" || arg == "--label_idx") && i + 1 < argc) {
             // Make sure the label or label index is provided only once.
             if (!label.empty() || label_idx != -1) {
-                Logger->LogMessage(LogLevelError, "The label or label's index was already provided");
+                LOG_ERROR("The label or label's index was already provided");
                 return 2;
             }
             if (arg == "--label_idx") {
@@ -286,7 +285,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
                 string str(argv[i + 1]);
                 label_idx = std::stol(str, &last_char_idx);
                 if (last_char_idx < str.size()) {
-                    Logger->LogMessage(LogLevelError, "Label index is not a number");
+                    LOG_ERROR("Label index is not a number");
                     return 2;
                 }
             } else {
@@ -320,7 +319,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
                 slot = std::stol(str, &last_char_idx);
             }
             if (last_char_idx < str.size()) {
-                Logger->LogMessage(LogLevelError, "Slot is not a number");
+                LOG_ERROR("Slot is not a number");
                 return 2;
             }
             i += 1;
@@ -363,17 +362,17 @@ static int ParseAndDecrypt(int argc, char *argv[])
 
     // Validating the input parameters
     if (label.empty() && label_idx == -1) {
-        Logger->LogMessage(LogLevelError, "No label nor index was provided");
+        LOG_ERROR("No label nor index was provided");
         return 2;
     }
 
     if (conf.libraryRequired && conf.library.empty()) {
-        Logger->LogMessage(LogLevelError, "Cryptographic library is required");
+        LOG_ERROR("Cryptographic library is required");
         return 2;
     }
 
     if (conf.input_files.empty()) {
-        Logger->LogMessage(LogLevelError, "No file to decrypt");
+        LOG_ERROR("No file to decrypt");
         return 2;
     }
 
@@ -406,30 +405,31 @@ static int ParseAndGetLocks(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-    chrono::time_point<chrono::system_clock> epoch;
-    auto now = chrono::system_clock::now();
-
-    // Add console logger by default
-    add_logger(make_shared<ConsoleLogger>());
-    set_min_loglevel(LogLevelDebug);
-
-    Logger->LogMessage(LogLevelInfo, format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now));
-
-    // auto c_now = chrono::system_clock::to_time_t(now);
-
-    // cout << put_time(gmtime(&c_now), "%FT%T %Z") << endl;
-    Logger->LogMessage(LogLevelInfo, format("{0:%F}T{0:%T} {0:%Z}", now));
-
     if (argc < 2) {
         print_usage(cerr);
         return 1;
     }
 
-    string_view command(argv[1]);
-    Logger->LogMessage(LogLevelInfo, format("Command: {}", command));
+    chrono::time_point<chrono::system_clock> epoch;
+    auto now = chrono::system_clock::now();
 
-    libcdoc::CDocChipher chipher;
-    int retVal = 0;
+    // Add console logger by default
+    ConsoleLogger console_logger;
+    console_logger.SetMinLogLevel(LogLevelDebug);
+    int cookie = add_logger(&console_logger);
+
+    LOG_INFO(format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now));
+
+    // auto c_now = chrono::system_clock::to_time_t(now);
+
+    // cout << put_time(gmtime(&c_now), "%FT%T %Z") << endl;
+    LOG_INFO(format("{0:%F}T{0:%T} {0:%Z}", now));
+
+    string_view command(argv[1]);
+    LOG_INFO(format("Command: {}", command));
+
+    CDocChipher chipher;
+    int retVal = 2;     // Output the help by default.
     if (command == "encrypt") {
         retVal = ParseAndEncrypt(argc - 2, argv + 2);
     } else if (command == "decrypt") {
@@ -479,14 +479,14 @@ int main(int argc, char *argv[])
 			writeFile(toUTF8(argv[6]) + "/" + r.fileName(), r.decryptData(token.get()));
 #endif
     } else {
-        print_usage(cout);
-        return 0;
-	}
+        cerr << "Invalid command: " << command << endl;
+    }
 
     if (retVal == 2) {
         // We print usage information only in case the parse-function returned 2. Value 1 indicates other error.
         print_usage(cout);
     }
 
+    remove_logger(cookie);
     return retVal;
 }

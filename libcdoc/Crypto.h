@@ -16,7 +16,7 @@ namespace libcdoc {
 class Crypto
 {
 public:
-    typedef typename std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> EVP_PKEY_PTR;
+    typedef typename std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> EVP_PKEY_ptr;
 
 	struct Cipher {
 		struct evp_cipher_ctx_st *ctx;
@@ -67,14 +67,14 @@ public:
 
 	static std::vector<uint8_t> pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>& salt, uint32_t iter);
 
-    static EVP_PKEY_PTR fromRSAPublicKeyDer(const std::vector<uint8_t> &der);
+    static EVP_PKEY_ptr fromRSAPublicKeyDer(const std::vector<uint8_t> &der);
 
     /* Create public key from short encoding (0x04...) */
-    static EVP_PKEY_PTR fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
+    static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
     /* Create public key from long encoding (0x30...) */
-    static EVP_PKEY_PTR fromECPublicKeyDer(const std::vector<uint8_t> &der);
+    static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der);
 
-    static EVP_PKEY_PTR genECKey(EVP_PKEY *params);
+    static EVP_PKEY_ptr genECKey(EVP_PKEY *params);
 	static std::vector<uint8_t> toPublicKeyDer(EVP_PKEY *key);
 
 	static std::vector<uint8_t> random(uint32_t len = 32);

@@ -171,7 +171,7 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
                 return {};
 			break;
         default:
-            Logger->LogMessage(LogLevelWarning, std::format("Usnupported hash length {}", hashLen));
+            LOG_WARN(std::format("Usnupported hash length {}", hashLen));
             return key;
 		}
 		key.insert(key.cend(), hash.cbegin(), hash.cend());
@@ -183,10 +183,10 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 	const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo)
 {
-    Logger->LogMessage(LogLevelDebug, std::format("Ksr {}", toHex(z)));
-    Logger->LogMessage(LogLevelDebug, std::format("AlgorithmID {}", toHex(AlgorithmID)));
-    Logger->LogMessage(LogLevelDebug, std::format("PartyUInfo {}", toHex(PartyUInfo)));
-    Logger->LogMessage(LogLevelDebug, std::format("PartyVInfo {}", toHex(PartyVInfo)));
+    LOG_DBG(std::format("Ksr {}", toHex(z)));
+    LOG_DBG(std::format("AlgorithmID {}", toHex(AlgorithmID)));
+    LOG_DBG(std::format("PartyUInfo {}", toHex(PartyUInfo)));
+    LOG_DBG(std::format("PartyVInfo {}", toHex(PartyVInfo)));
 
 	std::vector<uint8_t> otherInfo;
 	otherInfo.insert(otherInfo.cend(), AlgorithmID.cbegin(), AlgorithmID.cend());
@@ -221,7 +221,7 @@ std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, 
             return {};
 
 		result.insert(result.cend(), tag.cbegin(), tag.cend());
-        Logger->LogMessage(LogLevelDebug, std::format("GCM TAG {}", toHex(tag)));
+        LOG_DBG(std::format("GCM TAG {}", toHex(tag)));
 	}
 	return result;
 }
@@ -254,8 +254,8 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	std::vector<uint8_t> iv(data.cbegin(), data.cbegin() + EVP_CIPHER_iv_length(cipher));
 	dataSize -= iv.size();
 
-    Logger->LogMessage(LogLevelDebug, std::format("iv {}", toHex(iv)));
-    Logger->LogMessage(LogLevelDebug, std::format("transport {}", toHex(key)));
+    LOG_DBG(std::format("iv {}", toHex(iv)));
+    LOG_DBG(std::format("transport {}", toHex(key)));
 
 	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
     if (!ctx)
@@ -274,7 +274,7 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 		std::vector<uint8_t> tag(data.cend() - 16, data.cend());
         EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, int(tag.size()), tag.data());
 		dataSize -= tag.size();
-        Logger->LogMessage(LogLevelDebug, std::format("GCM TAG {}", toHex(tag)));
+        LOG_DBG(std::format("GCM TAG {}", toHex(tag)));
 	}
 
 	int size = 0;
@@ -298,7 +298,7 @@ std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
 	std::vector<uint8_t> result;
 	if (!data)
     {
-        Logger->LogMessage(LogLevelError, "decodeBase64: null pointer was provided as input data");
+        LOG_ERROR("decodeBase64: null pointer was provided as input data");
 		return result;
     }
 	result.resize(strlen((const char*)data));
@@ -447,7 +447,7 @@ Crypto::pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>
 	return key;
 }
 
-Crypto::EVP_PKEY_PTR
+Crypto::EVP_PKEY_ptr
 Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
 {
 	const uint8_t *p = der.data();
@@ -455,10 +455,10 @@ Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
     if (!key)
         LogSslError("d2i_PublicKey");
 
-    return EVP_PKEY_PTR(key, EVP_PKEY_free);
+    return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
 
-Crypto::EVP_PKEY_PTR
+Crypto::EVP_PKEY_ptr
 Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 {
 	EVP_PKEY *params = nullptr;
@@ -478,10 +478,10 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
     if (!key)
         LogSslError("d2i_PublicKey");
 
-    return EVP_PKEY_PTR(key, EVP_PKEY_free);
+    return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
 
-Crypto::EVP_PKEY_PTR
+Crypto::EVP_PKEY_ptr
 Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
 {
     const uint8_t *p = der.data();
@@ -489,10 +489,10 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
     if (!key)
         LogSslError("d2i_PUBKEY");
 
-    return EVP_PKEY_PTR(key, EVP_PKEY_free);
+    return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
 
-Crypto::EVP_PKEY_PTR
+Crypto::EVP_PKEY_ptr
 Crypto::genECKey(EVP_PKEY *params)
 {
 	EVP_PKEY *key = nullptr;
@@ -533,7 +533,7 @@ Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, con
 {
     if(lhs.size() != rhs.size())
     {
-        Logger->LogMessage(LogLevelError, std::format("xor_data: left-side and right-side vector's length differ. Left-side length: {}, right-side length: {}", lhs.size(), rhs.size()));
+        LOG_ERROR(std::format("xor_data: left-side and right-side vector's length differ. Left-side length: {}, right-side length: {}", lhs.size(), rhs.size()));
         return CRYPTO_ERROR;
     }
 
@@ -563,7 +563,7 @@ void Crypto::LogSslError(const char* funcName)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        Logger->LogMessage(LogLevelError, std::format("{} failed: {}", funcName, sslErrorStr));
+        LOG_ERROR(std::format("{} failed: {}", funcName, sslErrorStr));
 
         // Get next error code
         errorCode = ERR_get_error();
