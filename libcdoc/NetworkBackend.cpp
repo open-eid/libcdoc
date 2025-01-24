@@ -1,5 +1,17 @@
-#include <chrono>
 #define __NETWORK_BACKEND_CPP__
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <Windows.h>
+#include <IntSafe.h>
+#endif
+
+#define OPENSSL_SUPPRESS_DEPRECATED
+
+#include <openssl/bio.h>
+#include <openssl/http.h>
+#include "openssl/ssl.h"
+
+#include <chrono>
 
 #include "NetworkBackend.h"
 
@@ -8,12 +20,6 @@
 #include "CryptoBackend.h"
 #include "json.hpp"
 #include "Utils.h"
-
-#define OPENSSL_SUPPRESS_DEPRECATED
-
-#include <openssl/bio.h>
-#include <openssl/http.h>
-#include "openssl/ssl.h"
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"

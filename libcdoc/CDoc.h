@@ -20,6 +20,8 @@
  *
  */
 
+#include "Exports.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -114,7 +116,7 @@ enum {
     UNSPECIFIED_ERROR = -199,
 };
 
-std::string getErrorStr(int64_t code);
+CDOC_EXPORT std::string getErrorStr(int64_t code);
 
 struct FileInfo {
     std::string name;

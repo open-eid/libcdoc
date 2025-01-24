@@ -3,6 +3,8 @@
 
 #include <libcdoc/CryptoBackend.h>
 
+#include <memory>
+
 namespace libcdoc {
 
 struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {

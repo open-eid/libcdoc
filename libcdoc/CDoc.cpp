@@ -37,7 +37,7 @@ static constexpr Result results[] = {
 
 static constexpr int n_results = sizeof(results) / sizeof(Result);
 
-CDOC_EXPORT std::string
+std::string
 getErrorStr(int64_t code) {
     for (auto& r : results) {
         if (r.code == code) return std::string(r.message);

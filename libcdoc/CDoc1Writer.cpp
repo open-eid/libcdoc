@@ -6,6 +6,10 @@
 #include "CDoc.h"
 #include "XmlWriter.h"
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <IntSafe.h>
+#endif
+
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/x509.h>

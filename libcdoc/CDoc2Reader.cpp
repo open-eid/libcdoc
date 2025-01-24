@@ -1,7 +1,12 @@
 #define __CDOC2_READER_CPP__
 
+#define NOMINMAX
+
+#include <limits>
 #include <fstream>
 #include <iostream>
+
+#define OPENSSL_SUPPRESS_DEPRECATED
 
 #include "openssl/evp.h"
 #include <openssl/x509.h>
@@ -72,10 +77,10 @@ CDoc2Reader::~CDoc2Reader()
 {
 }
 
-const std::vector<const libcdoc::Lock>
+const std::vector<libcdoc::Lock>
 CDoc2Reader::getLocks()
 {
-	std::vector<const libcdoc::Lock> locks;
+	std::vector<libcdoc::Lock> locks;
 	for (libcdoc::Lock *l : priv->locks) locks.push_back(*l);
 	return locks;
 }

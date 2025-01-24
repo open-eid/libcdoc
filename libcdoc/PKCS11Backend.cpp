@@ -6,6 +6,10 @@
 
 #include "pkcs11.h"
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <IntSafe.h>
+#endif
+
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/ec.h>
@@ -15,9 +19,9 @@
 #include <iostream>
 
 #ifdef _WIN32
-#include <Windows.h>
-#include <wincrypt.h>
-#include <cryptuiapi.h>
+//#include <Windows.h>
+//#include <wincrypt.h>
+//#include <cryptuiapi.h>
 #else
 #include <dlfcn.h>
 #endif
@@ -38,7 +42,7 @@ public:
 	bool load(const std::string &driver)
 	{
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-		return (h = LoadLibraryW(filesystem::u8path(driver).c_str())) != 0;
+		return (h = LoadLibraryW(std::filesystem::u8path(driver).c_str())) != 0;
 #else
 		return false;
 #endif

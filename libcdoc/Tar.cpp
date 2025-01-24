@@ -2,6 +2,7 @@
 
 #include "Tar.h"
 
+#include <array>
 #include <sstream>
 
 std::vector<std::string>
@@ -222,8 +223,11 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 	_current_size = size;
 	Header h {};
 	std::string filename(name);
-    std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
-    std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
+	size_t len = name.size();
+	if (len > h.name.size()) len = h.name.size();
+	std::copy(name.cbegin(), name.cbegin() + len, h.name.begin());
+    //std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
+    //std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
 
 	if(filename.size() > 100 || size > 07777777) {
 		h.typeflag = 'x';

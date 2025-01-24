@@ -1,5 +1,9 @@
 #define __CRYPTO_CPP__
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#endif
+
 #include "CDoc.h"
 #include "Crypto.h"
 #include "Utils.h"

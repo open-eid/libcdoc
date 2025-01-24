@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <vector>
 
 namespace libcdoc {
@@ -104,8 +105,8 @@ struct CDOC_EXPORT DataSource {
 	 * @return thenumber of bytes read or error code
 	 */
     virtual int64_t read(uint8_t *dst, size_t size) { return NOT_IMPLEMENTED; }
-    virtual bool isError() { return NOT_IMPLEMENTED; }
-    virtual bool isEof() { return NOT_IMPLEMENTED; }
+    virtual bool isError() { return true; }
+    virtual bool isEof() { return true; }
 	virtual std::string getLastErrorStr(int code) const;
 
 	int64_t skip(size_t size);

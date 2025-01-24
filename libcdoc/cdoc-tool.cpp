@@ -257,7 +257,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
     int label_idx = -1;
     string label;
     vector<uint8_t> secret;
-    long slot;
+    long slot = -1;
     vector<uint8_t> key_id;
     string key_label;
     vector<vector<uint8_t>> certs;

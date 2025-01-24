@@ -34,7 +34,10 @@ add_library(cdoc_obj OBJECT
     ${CDOC_SOURCES}
 )
 
-set_property(TARGET cdoc_obj PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_target_properties(cdoc_obj PROPERTIES
+    COMPILE_DEFINITIONS cdoc_EXPORTS
+    POSITION_INDEPENDENT_CODE YES
+)
 
 target_include_directories(cdoc_obj PUBLIC
     ${LIBXML2_INCLUDE_DIR}
@@ -83,6 +86,7 @@ target_include_directories(cdoc_priv_obj PUBLIC
 target_link_libraries(cdoc_priv_obj
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
+    OpenSSL::SSL
 )
 
 add_library(cdoc_priv STATIC

@@ -14,7 +14,7 @@ public:
     CDoc1Reader(const std::string& path);
     ~CDoc1Reader();
 
-	const std::vector<const libcdoc::Lock> getLocks() override final;
+	const std::vector<libcdoc::Lock> getLocks() override final;
     int getLockForCert(const std::vector<uint8_t>& cert) override final;
     int getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) override final;
 	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst) override final;

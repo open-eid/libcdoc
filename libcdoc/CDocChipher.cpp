@@ -298,7 +298,7 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
     }
 
     // Acquire the locks and get the labels according to the index
-    const vector<const Lock> locks(rdr->getLocks());
+    const vector<Lock> locks(rdr->getLocks());
     int lock_idx = idx_base_1 - 1;
     if (lock_idx < 0) {
         cerr << "Indexing of labels starts from 1" << endl;
@@ -342,7 +342,7 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
 
     // Acquire the locks and get the labels according to the index
     int lock_idx = -1;
-    const vector<const Lock> locks(rdr->getLocks());
+    const vector<Lock> locks(rdr->getLocks());
     for (unsigned int i = 0; i < locks.size(); i++) {
         if (locks[i].label == label) {
             lock_idx = i;
@@ -386,7 +386,7 @@ int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_id
 void CDocChipher::Locks(const char* file) const
 {
     unique_ptr<CDocReader> rdr(CDocReader::createReader(file, nullptr, nullptr, nullptr));
-    const vector<const Lock> locks(rdr->getLocks());
+    const vector<Lock> locks(rdr->getLocks());
 
     int lock_id = 1;
     for (const Lock& lock : locks) {
@@ -416,6 +416,14 @@ void CDocChipher::Locks(const char* file) const
         lock_id++;
     }
 }
+
+#if defined(_WIN32) || defined(_WIN64)
+static uint32_t
+arc4random_uniform(uint32_t upperbound)
+{
+    return rand() % upperbound;
+}
+#endif
 
 string CDocChipher::GenerateRandomSequence() const
 {

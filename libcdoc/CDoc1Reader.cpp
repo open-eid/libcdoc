@@ -59,10 +59,10 @@ public:
     }
 };
 
-const std::vector<const libcdoc::Lock>
+const std::vector<libcdoc::Lock>
 CDoc1Reader::getLocks()
 {
-	std::vector<const libcdoc::Lock> locks;
+	std::vector<libcdoc::Lock> locks;
 	for (libcdoc::Lock *l : d->locks) locks.push_back(*l);
 	return locks;
 }

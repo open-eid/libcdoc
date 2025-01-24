@@ -1,10 +1,16 @@
 #define __CRYPTOBACKEND_CPP__
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#endif
+
+#define OPENSSL_SUPPRESS_DEPRECATED
+
+#include <openssl/rand.h>
+
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "Utils.h"
-
-#include <openssl/rand.h>
 
 #include <iostream>
 
