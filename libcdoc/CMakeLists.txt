@@ -18,6 +18,8 @@ set(PUBLIC_HEADERS
     CryptoBackend.h
     NetworkBackend.h
     PKCS11Backend.h
+    ILogger.h
+    ConsoleLogger.h
 )
 
 set(CDOC_SOURCES
@@ -28,6 +30,7 @@ set(CDOC_SOURCES
     CryptoBackend.cpp
     NetworkBackend.cpp
     PKCS11Backend.cpp
+    LogEngine.cpp
 )
 
 add_library(cdoc_obj OBJECT
@@ -49,12 +52,12 @@ target_include_directories(cdoc_obj PUBLIC
 
 set(CDOC_PRIV_SOURCES
     Certificate.cpp Certificate.h
-    Crypto.cpp
+    Crypto.cpp Crypto.h
     Tar.cpp
     XMLReader.cpp
     XMLWriter.cpp
     ZStream.cpp
-    Utils.cpp
+    Utils.cpp Utils.h
     CDoc1Reader.cpp
     CDoc1Writer.cpp
     CDoc2Reader.cpp

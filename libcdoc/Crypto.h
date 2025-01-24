@@ -1,10 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include <iomanip>
 #include <memory>
 #include <string>
-#include <sstream>
 #include <vector>
 
 typedef unsigned char uint8_t;
@@ -15,9 +13,14 @@ typedef struct x509_st X509;
 
 namespace libcdoc {
 
+#define SSL_FAILED(retval,func) Crypto::isError((retval), (func), __FILE__, __LINE__)
+#define LOG_SSL_ERROR(func) Crypto::LogSslError((func), __FILE__, __LINE__)
+
 class Crypto
 {
 public:
+    typedef typename std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> EVP_PKEY_ptr;
+
 	struct Cipher {
 		struct evp_cipher_ctx_st *ctx;
 		Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt = true);
@@ -39,7 +42,13 @@ public:
 	static const char *AES128CBC_MTH, *AES192CBC_MTH, *AES256CBC_MTH, *AES128GCM_MTH, *AES192GCM_MTH, *AES256GCM_MTH;
 	static const std::string RSA_MTH, CONCATKDF_MTH, AGREEMENT_MTH;
 
-	struct Key { std::vector<uint8_t> key, iv; };
+    struct Key {
+        std::vector<uint8_t> key;
+        std::vector<uint8_t> iv;
+
+        Key() {}
+        Key(size_t keySize, size_t ivSize) : key(keySize), iv(ivSize) {}
+    };
 
 	static std::vector<uint8_t> AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt);
 	static const EVP_CIPHER *cipher(const std::string &algo);
@@ -61,20 +70,31 @@ public:
 
 	static std::vector<uint8_t> pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>& salt, uint32_t iter);
 
-	static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromRSAPublicKeyDer(const std::vector<uint8_t> &der);
+    static EVP_PKEY_ptr fromRSAPublicKeyDer(const std::vector<uint8_t> &der);
 
     /* Create public key from short encoding (0x04...) */
-	static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
+    static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
     /* Create public key from long encoding (0x30...) */
-    static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> fromECPublicKeyDer(const std::vector<uint8_t> &der);
+    static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der);
 
-    static std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> genECKey(EVP_PKEY *params);
+    static EVP_PKEY_ptr genECKey(EVP_PKEY *params);
 	static std::vector<uint8_t> toPublicKeyDer(EVP_PKEY *key);
 
 	static std::vector<uint8_t> random(uint32_t len = 32);
 	static int xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs);
 
 	static X509* toX509(const std::vector<uint8_t> &data);
+
+    static bool isError(int retval, const char* funcName, const char* file, int line)
+    {
+        if (retval < 1) {
+            LogSslError(funcName, file, line);
+            return true;
+        } else
+            return false;
+    }
+
+    static void LogSslError(const char* funcName, const char* file, int line);
 };
 
 }; // namespace libcdoc
