@@ -19,15 +19,6 @@ public:
     LogEngine(const LogEngine&) = delete;
     LogEngine(LogEngine&&) noexcept = delete;
 
-    void LogMessage(libcdoc::LogLevel level, const std::string& message) override
-    {
-        lock_guard<mutex> guard(loggers_protector);
-        for (map<int, ILogger*>::const_reference logger : loggers)
-        {
-            logger.second->LogMessage(level, message);
-        }
-    }
-
     void LogMessage(libcdoc::LogLevel level, const char* file, int line, const std::string& message) override
     {
         lock_guard<mutex> guard(loggers_protector);

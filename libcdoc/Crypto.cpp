@@ -50,21 +50,21 @@ Crypto::Cipher::~Cipher()
 bool Crypto::Cipher::updateAAD(const std::vector<uint8_t> &data) const
 {
 	int len = 0;
-    return !isError(EVP_CipherUpdate(ctx, nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate");
+    return !SSL_FAILED(EVP_CipherUpdate(ctx, nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate");
 }
 
 bool
 Crypto::Cipher::update(uint8_t *data, int size) const
 {
 	int len = 0;
-    return !isError(EVP_CipherUpdate(ctx, data, &len, data, size), "EVP_CipherUpdate");
+    return !SSL_FAILED(EVP_CipherUpdate(ctx, data, &len, data, size), "EVP_CipherUpdate");
 }
 
 bool Crypto::Cipher::result() const
 {
 	std::vector<uint8_t> result(EVP_CIPHER_CTX_block_size(ctx), 0);
 	int len = int(result.size());
-    if(isError(EVP_CipherFinal(ctx, result.data(), &len), "EVP_CipherFinal"))
+    if(SSL_FAILED(EVP_CipherFinal(ctx, result.data(), &len), "EVP_CipherFinal"))
         return false;
     if(result.size() != len)
         result.resize(len);
@@ -75,14 +75,14 @@ std::vector<uint8_t>
 Crypto::Cipher::tag() const
 {
 	std::vector<uint8_t> result(tagLen(), 0);
-    if (isError(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, int(result.size()), result.data()), "EVP_CIPHER_CTX_ctrl"))
+    if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, int(result.size()), result.data()), "EVP_CIPHER_CTX_ctrl"))
         return {};
     return result;
 }
 
 bool Crypto::Cipher::setTag(const std::vector<uint8_t> &data) const
 {
-    return !isError(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, int(data.size()), (void *) data.data()), "EVP_CIPHER_CTX_ctrl");
+    return !SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, int(data.size()), (void *) data.data()), "EVP_CIPHER_CTX_ctrl");
 }
 
 int
@@ -94,8 +94,8 @@ Crypto::Cipher::blockSize() const
 std::vector<uint8_t> Crypto::AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt)
 {
 	AES_KEY aes;
-    if (encrypt && isError(AES_set_encrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_encrypt_key") ||
-        !encrypt && isError(AES_set_decrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_decrypt_key"))
+    if (encrypt && SSL_FAILED(AES_set_encrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_encrypt_key") ||
+        !encrypt && SSL_FAILED(AES_set_decrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_decrypt_key"))
         return {};
 
 	std::vector<uint8_t> result(data.size() + 8);
@@ -148,26 +148,26 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 		switch(hashLen)
 		{
 		case SHA256_DIGEST_LENGTH:
-            if (isError(SHA256_Init(&sha256), "SHA256_Init") ||
-                isError(SHA256_Update(&sha256, intToFourBytes, 4), "SHA256_Update") ||
-                isError(SHA256_Update(&sha256, z.data(), z.size()), "SHA256_Update") ||
-                isError(SHA256_Update(&sha256, otherInfo.data(), otherInfo.size()), "SHA256_Update") ||
-                isError(SHA256_Final(hash.data(), &sha256), "SHA256_Final"))
+            if (SSL_FAILED(SHA256_Init(&sha256), "SHA256_Init") ||
+                SSL_FAILED(SHA256_Update(&sha256, intToFourBytes, 4), "SHA256_Update") ||
+                SSL_FAILED(SHA256_Update(&sha256, z.data(), z.size()), "SHA256_Update") ||
+                SSL_FAILED(SHA256_Update(&sha256, otherInfo.data(), otherInfo.size()), "SHA256_Update") ||
+                SSL_FAILED(SHA256_Final(hash.data(), &sha256), "SHA256_Final"))
                 return {};
 			break;
 		case SHA384_DIGEST_LENGTH:
-            if (isError(SHA384_Init(&sha512), "SHA384_Init") ||
-                isError(SHA384_Update(&sha512, intToFourBytes, 4), "SHA384_Update") ||
-                isError(SHA384_Update(&sha512, z.data(), z.size()), "SHA384_Update") ||
-                isError(SHA384_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA384_Update") ||
-                isError(SHA384_Final(hash.data(), &sha512), "SHA384_Final"))
+            if (SSL_FAILED(SHA384_Init(&sha512), "SHA384_Init") ||
+                SSL_FAILED(SHA384_Update(&sha512, intToFourBytes, 4), "SHA384_Update") ||
+                SSL_FAILED(SHA384_Update(&sha512, z.data(), z.size()), "SHA384_Update") ||
+                SSL_FAILED(SHA384_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA384_Update") ||
+                SSL_FAILED(SHA384_Final(hash.data(), &sha512), "SHA384_Final"))
                 return {};
 			break;
 		case SHA512_DIGEST_LENGTH:
-            if (isError(SHA512_Init(&sha512), "SHA512_Init") ||
-                isError(SHA512_Update(&sha512, intToFourBytes, 4), "SHA512_Update") ||
-                isError(SHA512_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA512_Update") ||
-                isError(SHA512_Final(hash.data(), &sha512), "SHA512_Update"))
+            if (SSL_FAILED(SHA512_Init(&sha512), "SHA512_Init") ||
+                SSL_FAILED(SHA512_Update(&sha512, intToFourBytes, 4), "SHA512_Update") ||
+                SSL_FAILED(SHA512_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA512_Update") ||
+                SSL_FAILED(SHA512_Final(hash.data(), &sha512), "SHA512_Update"))
                 return {};
 			break;
         default:
@@ -199,7 +199,7 @@ std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, 
 {
 	const EVP_CIPHER *c = cipher(method);
 	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
-    if (isError(EVP_CipherInit(ctx.get(), c, key.key.data(), key.iv.data(), 1), "EVP_CipherInit"))
+    if (SSL_FAILED(EVP_CipherInit(ctx.get(), c, key.key.data(), key.iv.data(), 1), "EVP_CipherInit"))
         return {};
 
     std::vector<uint8_t> result(data.size() + size_t(EVP_CIPHER_CTX_block_size(ctx.get())), 0);
@@ -207,17 +207,17 @@ std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, 
 	std::vector<char> buf(10 * 1024, 0);
     size_t total = 0;
     int sizeIn = 0;
-    if (isError(EVP_CipherUpdate(ctx.get(), result.data(), &sizeIn, data.data(), data.size()), "EVP_CipherUpdate"))
+    if (SSL_FAILED(EVP_CipherUpdate(ctx.get(), result.data(), &sizeIn, data.data(), data.size()), "EVP_CipherUpdate"))
         return {};
     total += sizeIn;
-    if (isError(EVP_CipherFinal(ctx.get(), result.data() + sizeIn, &sizeIn), "EVP_CipherFinal"))
+    if (SSL_FAILED(EVP_CipherFinal(ctx.get(), result.data() + sizeIn, &sizeIn), "EVP_CipherFinal"))
         return {};
     total += sizeIn;
     result.resize(total);
 	result.insert(result.cbegin(), key.iv.cbegin(), key.iv.cend());
     if(EVP_CIPHER_mode(c) == EVP_CIPH_GCM_MODE) {
 		std::vector<uint8_t> tag(16, 0);
-        if (isError(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
+        if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
             return {};
 
 		result.insert(result.cend(), tag.cbegin(), tag.cend());
@@ -231,17 +231,17 @@ Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
 {
 	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(pub, nullptr));
 	size_t size = 0;
-    if (isError(EVP_PKEY_encrypt_init(ctx.get()), "isError") ||
-        isError(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding") ||
-        isError(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
+    if (SSL_FAILED(EVP_PKEY_encrypt_init(ctx.get()), "EVP_PKEY_encrypt_init") ||
+        SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding") ||
+        SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
 		return {};
 	if(padding == RSA_PKCS1_OAEP_PADDING) {
-        if (isError(EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_oaep_md") ||
-            isError(EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_mgf1_md"))
+        if (SSL_FAILED(EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_oaep_md") ||
+            SSL_FAILED(EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_mgf1_md"))
 			return {};
 	}
 	std::vector<uint8_t> result(int(size), 0);
-	if(isError(EVP_PKEY_encrypt(ctx.get(), result.data(), &size,
+    if(SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), result.data(), &size,
             data.data(), data.size()), "EVP_PKEY_encrypt"))
 		return {};
 	return result;
@@ -260,11 +260,11 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
     if (!ctx)
     {
-        LogSslError("EVP_CIPHER_CTX_new");
+        LOG_SSL_ERROR("EVP_CIPHER_CTX_new");
         return {};
     }
 
-    if (isError(EVP_CipherInit(ctx.get(), cipher, key.data(), iv.data(), 0), "EVP_CipherInit"))
+    if (SSL_FAILED(EVP_CipherInit(ctx.get(), cipher, key.data(), iv.data(), 0), "EVP_CipherInit"))
     {
         return {};
     }
@@ -279,13 +279,13 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 
 	int size = 0;
 	std::vector<uint8_t> result(dataSize + size_t(EVP_CIPHER_CTX_block_size(ctx.get())), 0);
-    if (isError(EVP_CipherUpdate(ctx.get(), result.data(), &size, &data[iv.size()], int(dataSize)), "EVP_CipherUpdate"))
+    if (SSL_FAILED(EVP_CipherUpdate(ctx.get(), result.data(), &size, &data[iv.size()], int(dataSize)), "EVP_CipherUpdate"))
     {
         return {};
     }
 
 	int size2 = 0;
-    if (isError(EVP_CipherFinal(ctx.get(), result.data() + size, &size2), "EVP_CipherFinal"))
+    if (SSL_FAILED(EVP_CipherFinal(ctx.get(), result.data() + size, &size2), "EVP_CipherFinal"))
     {
         return {};
     }
@@ -305,7 +305,7 @@ std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
 	SCOPE(EVP_ENCODE_CTX, ctx, EVP_ENCODE_CTX_new());
     if (!ctx)
     {
-        LogSslError("EVP_ENCODE_CTX_new");
+        LOG_SSL_ERROR("EVP_ENCODE_CTX_new");
         return {};
     }
 
@@ -313,12 +313,12 @@ std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
 	int size1 = 0, size2 = 0;
 	if(EVP_DecodeUpdate(ctx.get(), result.data(), &size1, data, int(result.size())) == -1)
 	{
-        LogSslError("EVP_DecodeUpdate");
+        LOG_SSL_ERROR("EVP_DecodeUpdate");
 		result.clear();
 		return result;
 	}
 
-    if(isError(EVP_DecodeFinal(ctx.get(), result.data(), &size2), "EVP_DecodeFinal"))
+    if(SSL_FAILED(EVP_DecodeFinal(ctx.get(), result.data(), &size2), "EVP_DecodeFinal"))
         result.clear();
 	else
         result.resize(size_t(size1 + size2));
@@ -333,12 +333,12 @@ std::vector<uint8_t> Crypto::deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPK
 	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(pkey, nullptr));
     if (!ctx)
     {
-        LogSslError("EVP_PKEY_CTX_new");
+        LOG_SSL_ERROR("EVP_PKEY_CTX_new");
         return sharedSecret;
     }
-    if (isError(EVP_PKEY_derive_init(ctx.get()), "EVP_PKEY_derive_init") ||
-        isError(EVP_PKEY_derive_set_peer(ctx.get(), peerPKey), "EVP_PKEY_derive_set_peer") ||
-        isError(EVP_PKEY_derive(ctx.get(), nullptr, &sharedSecretLen), "EVP_PKEY_derive"))
+    if (SSL_FAILED(EVP_PKEY_derive_init(ctx.get()), "EVP_PKEY_derive_init") ||
+        SSL_FAILED(EVP_PKEY_derive_set_peer(ctx.get(), peerPKey), "EVP_PKEY_derive_set_peer") ||
+        SSL_FAILED(EVP_PKEY_derive(ctx.get(), nullptr, &sharedSecretLen), "EVP_PKEY_derive"))
 		return sharedSecret;
 
 	sharedSecret.resize(sharedSecretLen);
@@ -359,7 +359,7 @@ Crypto::Key Crypto::generateKey(const std::string &method)
 	uint8_t salt[PKCS5_SALT_LEN], indata[128];
 	RAND_bytes(salt, sizeof(salt));
 	RAND_bytes(indata, sizeof(indata));
-    if (isError(EVP_BytesToKey(c, EVP_sha256(), salt, indata, sizeof(indata), 1, key.key.data(), key.iv.data()), "EVP_BytesToKey"))
+    if (SSL_FAILED(EVP_BytesToKey(c, EVP_sha256(), salt, indata, sizeof(indata), 1, key.key.data(), key.iv.data()), "EVP_BytesToKey"))
         return {};
     else
         return key;
@@ -379,19 +379,19 @@ Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, 
 	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx)
     {
-        LogSslError("EVP_PKEY_CTX_new_id");
+        LOG_SSL_ERROR("EVP_PKEY_CTX_new_id");
         return {};
     }
 	std::vector<uint8_t> out(len, 0);
     size_t outlen = out.size();
 	if(!ctx ||
-        isError(EVP_PKEY_derive_init(ctx.get()), "EVP_PKEY_derive_init") ||
-        isError(EVP_PKEY_CTX_hkdf_mode(ctx.get(), mode), "EVP_PKEY_CTX_hkdf_mode") ||
-        isError(EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_hkdf_md") ||
-        isError(EVP_PKEY_CTX_set1_hkdf_key(ctx.get(), key.data(), int(key.size())), "EVP_PKEY_CTX_set1_hkdf_key") ||
-        isError(EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), salt.data(), int(salt.size())), "EVP_PKEY_CTX_set1_hkdf_salt") ||
-        isError(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info") ||
-        isError(EVP_PKEY_derive(ctx.get(), out.data(), &outlen), "EVP_PKEY_derive"))
+        SSL_FAILED(EVP_PKEY_derive_init(ctx.get()), "EVP_PKEY_derive_init") ||
+        SSL_FAILED(EVP_PKEY_CTX_hkdf_mode(ctx.get(), mode), "EVP_PKEY_CTX_hkdf_mode") ||
+        SSL_FAILED(EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_hkdf_md") ||
+        SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_key(ctx.get(), key.data(), int(key.size())), "EVP_PKEY_CTX_set1_hkdf_key") ||
+        SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), salt.data(), int(salt.size())), "EVP_PKEY_CTX_set1_hkdf_salt") ||
+        SSL_FAILED(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info") ||
+        SSL_FAILED(EVP_PKEY_derive(ctx.get(), out.data(), &outlen), "EVP_PKEY_derive"))
 		return {};
 
 	return out;
@@ -415,7 +415,7 @@ Crypto::sign_hmac(const std::vector<uint8_t> &key, const std::vector<uint8_t> &d
 	EVP_PKEY *pkey = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, nullptr, key.data(), int(key.size()));
     if (!pkey)
     {
-        LogSslError("EVP_PKEY_new_mac_key");
+        LOG_SSL_ERROR("EVP_PKEY_new_mac_key");
         return {};
     }
 
@@ -423,16 +423,16 @@ Crypto::sign_hmac(const std::vector<uint8_t> &key, const std::vector<uint8_t> &d
 	SCOPE(EVP_MD_CTX, ctx, EVP_MD_CTX_new());
     if (!ctx)
     {
-        LogSslError("EVP_MD_CTX_new");
+        LOG_SSL_ERROR("EVP_MD_CTX_new");
         return {};
     }
-    if (isError(EVP_DigestSignInit(ctx.get(), nullptr, EVP_sha256(), nullptr, pkey), "EVP_DigestSignInit") ||
-        isError(EVP_DigestSignUpdate(ctx.get(), data.data(), data.size()), "EVP_DigestSignUpdate") ||
-        isError(EVP_DigestSignFinal(ctx.get(), nullptr, &req), "EVP_DigestSignFinal"))
+    if (SSL_FAILED(EVP_DigestSignInit(ctx.get(), nullptr, EVP_sha256(), nullptr, pkey), "EVP_DigestSignInit") ||
+        SSL_FAILED(EVP_DigestSignUpdate(ctx.get(), data.data(), data.size()), "EVP_DigestSignUpdate") ||
+        SSL_FAILED(EVP_DigestSignFinal(ctx.get(), nullptr, &req), "EVP_DigestSignFinal"))
 		return {};
 
 	std::vector<uint8_t> sig(int(req), 0);
-    if(isError(EVP_DigestSignFinal(ctx.get(), sig.data(), &req), "EVP_DigestSignFinal"))
+    if(SSL_FAILED(EVP_DigestSignFinal(ctx.get(), sig.data(), &req), "EVP_DigestSignFinal"))
 		sig.clear();
 	return sig;
 }
@@ -441,7 +441,7 @@ std::vector<uint8_t>
 Crypto::pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>& salt, uint32_t iter)
 {
 	std::vector<uint8_t> key(32, 0);
-    isError(PKCS5_PBKDF2_HMAC(reinterpret_cast<const char *>(pw.data()), pw.size(),
+    SSL_FAILED(PKCS5_PBKDF2_HMAC(reinterpret_cast<const char *>(pw.data()), pw.size(),
 					  (const unsigned char *) salt.data(), int(salt.size()),
                       iter, EVP_sha256(), int(key.size()), (unsigned char *)key.data()), "PKCS5_PBKDF2_HMAC");
 	return key;
@@ -453,7 +453,7 @@ Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_RSA, nullptr, &p, long(der.size()));
     if (!key)
-        LogSslError("d2i_PublicKey");
+        LOG_SSL_ERROR("d2i_PublicKey");
 
     return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
@@ -464,19 +464,19 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 	EVP_PKEY *params = nullptr;
     SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
     if (!ctx)
-        LogSslError("EVP_PKEY_CTX_new_id");
+        LOG_SSL_ERROR("EVP_PKEY_CTX_new_id");
 
     if(!ctx ||
-        isError(EVP_PKEY_paramgen_init(ctx.get()), "EVP_PKEY_paramgen_init") ||
-        isError(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), curveName), "EVP_PKEY_CTX_set_ec_paramgen_curve_nid") ||
-        isError(EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE), "EVP_PKEY_CTX_set_ec_param_enc") ||
-        isError(EVP_PKEY_paramgen(ctx.get(), &params), "EVP_PKEY_paramgen"))
+        SSL_FAILED(EVP_PKEY_paramgen_init(ctx.get()), "EVP_PKEY_paramgen_init") ||
+        SSL_FAILED(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), curveName), "EVP_PKEY_CTX_set_ec_paramgen_curve_nid") ||
+        SSL_FAILED(EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE), "EVP_PKEY_CTX_set_ec_param_enc") ||
+        SSL_FAILED(EVP_PKEY_paramgen(ctx.get(), &params), "EVP_PKEY_paramgen"))
 		return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(nullptr, EVP_PKEY_free);
 
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(der.size()));
     if (!key)
-        LogSslError("d2i_PublicKey");
+        LOG_SSL_ERROR("d2i_PublicKey");
 
     return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
@@ -487,7 +487,7 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
     const uint8_t *p = der.data();
     EVP_PKEY *key = d2i_PUBKEY(nullptr, &p, (long) der.size());
     if (!key)
-        LogSslError("d2i_PUBKEY");
+        LOG_SSL_ERROR("d2i_PUBKEY");
 
     return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
@@ -499,8 +499,8 @@ Crypto::genECKey(EVP_PKEY *params)
 	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(params, nullptr));
 	SCOPE(EVP_PKEY, result, nullptr);
 	if(ctx &&
-        !isError(EVP_PKEY_keygen_init(ctx.get()), "EVP_PKEY_keygen_init") &&
-        !isError(EVP_PKEY_keygen(ctx.get(), &key), "EVP_PKEY_keygen"))
+        !SSL_FAILED(EVP_PKEY_keygen_init(ctx.get()), "EVP_PKEY_keygen_init") &&
+        !SSL_FAILED(EVP_PKEY_keygen(ctx.get(), &key), "EVP_PKEY_keygen"))
 		result.reset(key);
 	return result;
 }
@@ -513,7 +513,7 @@ Crypto::toPublicKeyDer(EVP_PKEY *key)
 	auto *p = der.data();
     if(i2d_PublicKey(key, &p) != der.size())
     {
-        LogSslError("i2d_PublicKey");
+        LOG_SSL_ERROR("i2d_PublicKey");
         der.clear();
     }
 	return der;
@@ -523,7 +523,7 @@ std::vector<uint8_t>
 Crypto::random(uint32_t len)
 {
 	std::vector<uint8_t> out(len, 0);
-    if(isError(RAND_bytes(out.data(), len), "RAND_bytes"))
+    if(SSL_FAILED(RAND_bytes(out.data(), len), "RAND_bytes"))
 		out.clear();
 	return out;
 }
@@ -549,12 +549,12 @@ X509* Crypto::toX509(const std::vector<uint8_t> &data)
     X509* x509 = d2i_X509(nullptr, &p, int(data.size()));
     if (!x509)
     {
-        LogSslError("d2i_X509");
+        LOG_SSL_ERROR("d2i_X509");
     }
     return x509;
 }
 
-void Crypto::LogSslError(const char* funcName)
+void Crypto::LogSslError(const char* funcName, const char* file, int line)
 {
     constexpr size_t errorStrBufLen = 256;
     char sslErrorStr[errorStrBufLen + 1]{};
@@ -563,7 +563,7 @@ void Crypto::LogSslError(const char* funcName)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        LOG_ERROR(std::format("{} failed: {}", funcName, sslErrorStr));
+        Logger->LogMessage(LogLevelError, file, line, std::format("{} failed: {}", funcName, sslErrorStr));
 
         // Get next error code
         errorCode = ERR_get_error();

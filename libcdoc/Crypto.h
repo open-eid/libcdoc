@@ -13,6 +13,9 @@ typedef struct x509_st X509;
 
 namespace libcdoc {
 
+#define SSL_FAILED(retval,func) Crypto::isError((retval), (func), __FILE__, __LINE__)
+#define LOG_SSL_ERROR(func) Crypto::LogSslError((func), __FILE__, __LINE__)
+
 class Crypto
 {
 public:
@@ -82,16 +85,16 @@ public:
 
 	static X509* toX509(const std::vector<uint8_t> &data);
 
-    static bool isError(int retval, const char* funcName)
+    static bool isError(int retval, const char* funcName, const char* file, int line)
     {
         if (retval < 1) {
-            LogSslError(funcName);
+            LogSslError(funcName, file, line);
             return true;
         } else
             return false;
     }
 
-    static void LogSslError(const char* funcName);
+    static void LogSslError(const char* funcName, const char* file, int line);
 };
 
 }; // namespace libcdoc

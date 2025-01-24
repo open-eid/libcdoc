@@ -37,10 +37,12 @@ enum LogLevel
      */
     LogLevelDebug,
 
+#ifndef NDEBUG
     /**
      * @brief Most verbose level. Used for development and seldom enabled in production.
      */
     LogLevelTrace
+#endif
 };
 
 
@@ -52,16 +54,6 @@ class CDOC_EXPORT ILogger
 public:
     ILogger() : minLogLevel(LogLevelWarning) {}
     virtual ~ILogger() {}
-
-    /**
-     * @brief Logs given message with given severity.
-     * @param level Severity of the log message.
-     * @param message The log message.
-     *
-     * Every class implementing the ILogger interface must implement the member function.
-     * Default implementation does nothing.
-     */
-    virtual void LogMessage(LogLevel level, const std::string& message) {}
 
     /**
      * @brief Logs given message with given severity, file name and line number.
@@ -124,7 +116,12 @@ CDOC_EXPORT ILogger* remove_logger(int cookie);
 #define LOG_WARN(m) Logger->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, (m))
 #define LOG_INFO(m) Logger->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, (m))
 #define LOG_DBG(m) Logger->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, (m))
+
+#ifdef NDEBUG
+#define LOG_TRACE(m)
+#else
 #define LOG_TRACE(m) Logger->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, (m))
+#endif
 
 }
 
