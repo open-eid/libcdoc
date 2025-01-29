@@ -15,7 +15,7 @@ getName(const std::vector<uint8_t>& cert, int NID)
 		X509_NAME *name = X509_get_subject_name(peerCert);
 		if(!name)
 			return cn;
-		int pos = X509_NAME_get_index_by_NID(name, NID, 0);
+        int pos = X509_NAME_get_index_by_NID(name, NID, -1);
 		if(pos == -1)
 			return cn;
 		X509_NAME_ENTRY *e = X509_NAME_get_entry(name, pos);
