@@ -7,6 +7,9 @@
 #include "ConsoleLogger.h"
 #include "Utils.h"
 
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
+
 using namespace std;
 using namespace libcdoc;
 
@@ -155,17 +158,19 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
 #ifndef NDEBUG
                 // For debugging
-                LOG_DBG(format("Method: {}", method));
-                LOG_DBG(format("Slot: {}", rcpt.slot));
-                if (!rcpt.secret.empty())
-                    LOG_DBG(format("Pin: {}", string(rcpt.secret.cbegin(), rcpt.secret.cend())));
+                LOG_DBG(fmt::format("Method: {}", method));
+                LOG_DBG(fmt::format("Slot: {}", rcpt.slot));
+                if (!rcpt.secret.empty()) {
+                    string str(rcpt.secret.cbegin(), rcpt.secret.cend());
+                    LOG_DBG(fmt::format("Pin: {}", str));
+                }
                 if (!rcpt.key_id.empty())
-                    LOG_DBG(format("Key ID: {}", toHex(rcpt.key_id)));
+                    LOG_DBG(fmt::format("Key ID: {}", toHex(rcpt.key_id)));
                 if (!rcpt.key_label.empty())
-                    LOG_DBG(format("Key label: {}", rcpt.key_label));
+                    LOG_DBG(fmt::format("Key label: {}", rcpt.key_label));
 #endif
             } else {
-                LOG_ERROR(format("Unknown method: {}", method));
+                LOG_ERROR(fmt::format("Unknown method: {}", method));
                 return 2;
             }
 
@@ -193,7 +198,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
         } else if (arg == "--genlabel") {
             conf.gen_label = true;
         } else if (arg[0] == '-') {
-            LOG_ERROR(format("Unknown argument: {}", arg));
+            LOG_ERROR(fmt::format("Unknown argument: {}", arg));
             return 2;
         } else {
             conf.input_files.push_back(argv[i]);
@@ -418,15 +423,8 @@ int main(int argc, char *argv[])
     console_logger.SetMinLogLevel(LogLevelDebug);
     int cookie = add_logger(&console_logger);
 
-    LOG_INFO(format("The time of the Unix epoch was {0:%F}T{0:%R%z}.", now));
-
-    // auto c_now = chrono::system_clock::to_time_t(now);
-
-    // cout << put_time(gmtime(&c_now), "%FT%T %Z") << endl;
-    LOG_INFO(format("{0:%F}T{0:%T} {0:%Z}", now));
-
     string_view command(argv[1]);
-    LOG_INFO(format("Command: {}", command));
+    LOG_INFO(fmt::format("Command: {}", command));
 
     CDocChipher chipher;
     int retVal = 2;     // Output the help by default.

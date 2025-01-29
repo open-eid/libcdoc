@@ -54,8 +54,6 @@ set(CDOC_PRIV_SOURCES
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
     Tar.cpp
-    XMLReader.cpp
-    XMLWriter.cpp
     ZStream.cpp
     Utils.cpp Utils.h
     CDoc1Reader.cpp
@@ -65,7 +63,7 @@ set(CDOC_PRIV_SOURCES
     DDocReader.cpp
     DDocWriter.cpp
     XmlReader.cpp XmlReader.h
-    XMLWriter.cpp XmlWriter.h
+    XmlWriter.cpp XmlWriter.h
     CDocChipher.h CDocChipher.cpp
     RcptInfo.h
     ToolConf.h
@@ -94,7 +92,7 @@ target_link_libraries(cdoc_priv_obj
 
 add_library(cdoc_priv STATIC
     $<TARGET_OBJECTS:cdoc_priv_obj>
-    wrapper.h
+    Wrapper.h
 )
 
 set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
