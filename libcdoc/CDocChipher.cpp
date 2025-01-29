@@ -11,6 +11,9 @@
 #include "ILogger.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
+#ifdef _WIN32
+#include "WinBackend.h"
+#endif
 
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
@@ -38,15 +41,34 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
     }
 };
 
+#ifdef _WIN32
+struct ToolWin : public libcdoc::WinBackend {
+    const RecipientInfoVector& rcpts;
+
+    ToolWin(const std::string& provider, const RecipientInfoVector& vec) : libcdoc::WinBackend(provider), rcpts(vec) {}
+
+    int connectToKey(int idx, bool priv) {
+        return useKey(rcpts[idx].key_label, std::string(rcpts[idx].secret.cbegin(), rcpts[idx].secret.cend()));
+    }
+
+};
+#endif
+
 struct ToolCrypto : public libcdoc::CryptoBackend {
     const RecipientInfoVector& rcpts;
     std::unique_ptr<libcdoc::PKCS11Backend> p11;
+    std::unique_ptr<libcdoc::WinBackend> ncrypt;
 
     ToolCrypto(const RecipientInfoVector& recipients) : rcpts(recipients) {
     }
 
     bool connectLibrary(const std::string& library) {
         p11 = std::make_unique<ToolPKCS11>(library, rcpts);
+        return true;
+    }
+
+    bool connectNCrypt() {
+        ncrypt = std::make_unique<ToolWin>("", rcpts);
         return true;
     }
 
@@ -151,8 +173,14 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
     ToolNetwork network(&crypto);
     network.certs = certs;
 
-    if (!conf.library.empty())
+    if (!conf.library.empty()) {
         crypto.connectLibrary(conf.library);
+    }
+    for (const auto& rcpt : recipients) {
+        if (rcpt.type == RcptInfo::NCRYPT) {
+            crypto.connectNCrypt();
+        }
+    }
 
     vector<libcdoc::Recipient> rcpts;
     for (RecipientInfoVector::const_reference rcpt : recipients)

@@ -97,6 +97,12 @@ static std::wstring toWide(UINT codePage, const std::string &in)
 	return result;
 }
 
+static std::wstring
+toWide(const std::string& in)
+{
+	return toWide(CP_UTF8, in);
+}
+
 static std::string toMultiByte(UINT codePage, const std::wstring &in)
 {
 	std::string result;
@@ -107,6 +113,14 @@ static std::string toMultiByte(UINT codePage, const std::wstring &in)
 	len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), &result[0], len, nullptr, nullptr);
 	return result;
 }
+
+static std::string
+toUTF8(const std::wstring& in)
+{
+	return toMultiByte(CP_UTF8, in);
+}
+
+
 #endif
 
 static std::string toUTF8(const std::string &in)

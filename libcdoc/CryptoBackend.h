@@ -97,13 +97,13 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
+	virtual int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
                                  const std::vector<uint8_t> &party_vinfo, unsigned int idx);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from ECC key
 	 *
-	 * Calculates KEK (Key Encryption Key) pre-master from an ECC public key with given label.
+	 * Calculates KEK (Key Encryption Key) pre-master from an ECC public key.
 	 * The default implementation calls deriveECDH1 and performs local HMAC extract
 	 * @param dst the container for derived key
 	 * @param public_key
@@ -113,7 +113,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 */
     virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx);
 	/**
-	 * @brief Get secret value (either password or symmetric key) for a lock with given label
+	 * @brief Get secret value (either password or symmetric key) for a lock.
 	 * @param secret the destination container for secret
      * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
@@ -122,7 +122,7 @@ struct CDOC_EXPORT CryptoBackend {
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 *
-	 * Fetches key material for a symmetric key (either password or key-based) with given label.
+	 * Fetches key material for a symmetric key (either password or key-based).
 	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based.
 	 * @param key_material the destination container for key material
 	 * @param pw_salt the salt value for PBKDF
@@ -135,7 +135,7 @@ struct CDOC_EXPORT CryptoBackend {
 	/**
 	 * @brief Get CDoc2 KEK pre-master from symmetric key
 	 *
-	 * Calculates KEK (Key Encryption Key) pre-master from a symmetric key (either password or key-based) with given label.
+	 * Calculates KEK (Key Encryption Key) pre-master from a symmetric key (either password or key-based).
 	 * The default implementation calls getKeyMaterial and performs local HKDF extract.
 	 * @param dst the destination container for KEK pre-master
 	 * @param salt the salt value for HKDF extract

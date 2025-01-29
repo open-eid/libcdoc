@@ -33,6 +33,13 @@ set(CDOC_SOURCES
     LogEngine.cpp
 )
 
+if(WIN32)
+    add_definitions(-DUNICODE -DWIN32_LEAN_AND_MEAN)
+    list(APPEND LIBS Crypt32 NCrypt cryptui)
+    list(APPEND PUBLIC_HEADERS WinBackend.h)
+    list(APPEND CDOC_SOURCES WinBackend.cpp)
+endif()
+
 add_library(cdoc_obj OBJECT
     ${CDOC_SOURCES}
 )

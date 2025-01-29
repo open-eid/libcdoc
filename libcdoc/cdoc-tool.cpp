@@ -169,6 +169,31 @@ static int ParseAndEncrypt(int argc, char *argv[])
                 if (!rcpt.key_label.empty())
                     LOG_DBG(fmt::format("Key label: {}", rcpt.key_label));
 #endif
+            } else if (method == "ncrypt") {
+                rcpt.type = RcptInfo::NCRYPT;
+
+                if (parts.size() > 2) {
+                    if (!parts[2].empty()) {
+                        rcpt.key_label = parts[2];
+                    }
+                    if (parts.size() > 3) {
+                        if (!parts[3].empty()) {
+                            rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
+                        }
+                    }
+                }
+
+#ifndef NDEBUG
+                // For debugging
+                cout << "Method: " << method << endl;
+                cout << "Slot: " << rcpt.slot << endl;
+                if (!rcpt.secret.empty())
+                    cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
+                if (!rcpt.key_id.empty())
+                    cout << "Key ID: " << toHex(rcpt.key_id) << endl;
+                if (!rcpt.key_label.empty())
+                    cout << "Key label: " << rcpt.key_label << endl;
+#endif
             } else {
                 LOG_ERROR(fmt::format("Unknown method: {}", method));
                 return 2;
