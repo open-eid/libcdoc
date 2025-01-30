@@ -1,6 +1,7 @@
 #ifndef CDOCCHIPHER_H
 #define CDOCCHIPHER_H
 
+#include <cstdint>
 #include <map>
 #include "CDocReader.h"
 #include "CDocWriter.h"

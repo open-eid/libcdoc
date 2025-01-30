@@ -22,15 +22,15 @@ constexpr string SourceFile("test_data.txt");
 /**
  * @brief Encrypted file name.
  */
-constexpr string TargetFile("test_data.txt.cdoc");
+const string TargetFile("test_data.txt.cdoc");
 
-constexpr string Label("Proov");
+const string Label("Proov");
 
-constexpr string Password("Proov123");
+const string Password("Proov123");
 
-constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
+const string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
 
-constexpr string_view CDOC2HEADER = "CDOC\x02"sv;
+const string_view CDOC2HEADER = "CDOC\x02"sv;
 
 const map<string, string> ExpectedParsedLabel {
     {"v", "1"},

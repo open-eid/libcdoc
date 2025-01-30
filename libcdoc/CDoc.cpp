@@ -42,7 +42,7 @@ getErrorStr(int64_t code) {
     for (auto& r : results) {
         if (r.code == code) return std::string(r.message);
     }
-    return "Unknown result code " + code;
+    return "Unknown result code " + std::to_string(code);
 }
 
 }
