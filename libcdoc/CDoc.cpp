@@ -6,9 +6,6 @@
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 
-#define FMT_HEADER_ONLY
-#include "fmt/format.h"
-
 namespace libcdoc {
 
 struct Result {
@@ -45,7 +42,7 @@ getErrorStr(int64_t code) {
     for (auto& r : results) {
         if (r.code == code) return std::string(r.message);
     }
-    return fmt::format("Unknown result code {}", code);
+    return "Unknown result code " + code;
 }
 
 }
