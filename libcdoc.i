@@ -1,14 +1,14 @@
 %module(directors="1") CDoc
 
 %{
-#include "libcdoc/CDoc.h"
-#include "libcdoc/Io.h"
-#include "libcdoc/Configuration.h"
-#include "libcdoc/Lock.h"
-#include "libcdoc/CDocWriter.h"
-#include "libcdoc/CDocReader.h"
-#include "libcdoc/Utils.h"
-#include "libcdoc/Wrapper.h"
+#include "CDoc.h"
+#include "Io.h"
+#include "Configuration.h"
+#include "Lock.h"
+#include "CDocWriter.h"
+#include "CDocReader.h"
+#include "Utils.h"
+#include "Wrapper.h"
 #include <iostream>
 %}
 

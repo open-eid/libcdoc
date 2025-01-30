@@ -566,7 +566,7 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        Logger->LogMessage(LogLevelError, file, line, std::format("{} failed: {}", funcName, sslErrorStr));
+        Logger->LogMessage(LogLevelError, file, line, std::string(funcName) + " failed: " + sslErrorStr);
 
         // Get next error code
         errorCode = ERR_get_error();
