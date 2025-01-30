@@ -1,0 +1,8 @@
+#!/usr/bin/make -f
+DEB_MAKE_CHECK_TARGET = test
+
+%:
+	dh $@
+
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip
