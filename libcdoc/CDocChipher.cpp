@@ -348,7 +348,7 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
     LOG_INFO("Found matching label: {}", lock.label);
     network.rcpt_idx = lock_idx;
     rcpts.resize(locks.size());
-    rcpts[idx_base_1] = recipient;
+    //rcpts[idx_base_1] = recipient;
 
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);
