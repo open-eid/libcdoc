@@ -7,12 +7,8 @@
 #include "ConsoleLogger.h"
 #include "Utils.h"
 
-#define FMT_HEADER_ONLY
-#include "fmt/format.h"
-
 using namespace std;
 using namespace libcdoc;
-
 
 static void print_usage(ostream& ofs)
 {
@@ -158,19 +154,19 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
 #ifndef NDEBUG
                 // For debugging
-                LOG_DBG(fmt::format("Method: {}", method));
-                LOG_DBG(fmt::format("Slot: {}", rcpt.slot));
+                LOG_DBG("Method: {}", method);
+                LOG_DBG("Slot: {}", rcpt.slot);
                 if (!rcpt.secret.empty()) {
                     string str(rcpt.secret.cbegin(), rcpt.secret.cend());
-                    LOG_DBG(fmt::format("Pin: {}", str));
+                    LOG_DBG("Pin: {}", str);
                 }
                 if (!rcpt.key_id.empty())
-                    LOG_DBG(fmt::format("Key ID: {}", toHex(rcpt.key_id)));
+                    LOG_DBG("Key ID: {}", toHex(rcpt.key_id));
                 if (!rcpt.key_label.empty())
-                    LOG_DBG(fmt::format("Key label: {}", rcpt.key_label));
+                    LOG_DBG("Key label: {}", rcpt.key_label);
 #endif
             } else {
-                LOG_ERROR(fmt::format("Unknown method: {}", method));
+                LOG_ERROR("Unknown method: {}", method);
                 return 2;
             }
 
@@ -198,7 +194,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
         } else if (arg == "--genlabel") {
             conf.gen_label = true;
         } else if (arg[0] == '-') {
-            LOG_ERROR(fmt::format("Unknown argument: {}", arg));
+            LOG_ERROR("Unknown argument: {}", arg);
             return 2;
         } else {
             conf.input_files.push_back(argv[i]);
@@ -424,7 +420,7 @@ int main(int argc, char *argv[])
     int cookie = add_logger(&console_logger);
 
     string_view command(argv[1]);
-    LOG_INFO(fmt::format("Command: {}", command));
+    LOG_INFO("Command: {}", command);
 
     CDocChipher chipher;
     int retVal = 2;     // Output the help by default.
