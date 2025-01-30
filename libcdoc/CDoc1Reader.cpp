@@ -1,6 +1,5 @@
 #define __CDOC1_READER_CPP__
 
-#include <iostream>
 #include <map>
 #include <set>
 
@@ -11,10 +10,13 @@
 #include "CDoc.h"
 #include "Crypto.h"
 #include "DDocReader.h"
+#include "ILogger.h"
 #include "XmlReader.h"
 #include "ZStream.h"
 
 #include "CDoc1Reader.h"
+
+using namespace libcdoc;
 
 static const std::string MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignments/media-types/application/zip";
 static const std::string MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
@@ -98,6 +100,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     const libcdoc::Lock *lock = d->locks.at(lock_idx);
     if (lock->type != libcdoc::Lock::Type::CDOC1) {
 		setLastError("Not a CDoc1 key");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 	setLastError({});
@@ -106,6 +109,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         int result = crypto->decryptRSA(decrypted_key, lock->encrypted_fmk, false, lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
+            LOG_ERROR("{}", last_error);
 			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
@@ -117,11 +121,13 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                                              lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
+            LOG_ERROR("{}", last_error);
 			return libcdoc::CRYPTO_ERROR;
 		}
 	}
 	if(decrypted_key.empty()) {
 		setLastError("Failed to decrypt/derive key");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::CRYPTO_ERROR;
 	}
     if(lock->isRSA()) {
@@ -131,6 +137,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 	}
 	if (fmk.empty()) {
 		setLastError("Failed to decrypt/derive fmk");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::CRYPTO_ERROR;
 	}
 	setLastError({});
@@ -173,9 +180,10 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 	}
 	libcdoc::VectorSource vsrc(data);
 	if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
-		std::cerr << "Contains DDoc content" << mime;
+        LOG_DBG("Contains DDoc content {}", mime);
 		if (!DDOCReader::parse(&vsrc, dst)) {
 			setLastError("Failed to parse DDOC file");
+            LOG_ERROR("{}", last_error);
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
 		setLastError({});
@@ -194,6 +202,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
     if (!d->files.empty() || (d->f_pos != -1)) {
         setLastError("Container is already parsed");
+        LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
     std::vector<uint8_t> data = this->decryptData(fmk);
@@ -208,7 +217,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
         mime = d->properties["OriginalMimeType"];
     }
     if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
-        std::cerr << "Contains DDoc content" << mime;
+        LOG_DBG("Contains DDoc content {}", mime);
         d->files = DDOCReader::files(data);
     } else {
         d->files.push_back({
@@ -219,6 +228,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     }
     if (d->files.empty()) {
         setLastError("Cannot parse container");
+        LOG_ERROR("{}", last_error);
         return libcdoc::IO_ERROR;
     }
     setLastError({});
@@ -238,6 +248,7 @@ CDoc1Reader::nextFile(std::string& name, int64_t& size)
 {
     if (d->files.empty()) {
         setLastError("Cannot parse container");
+        LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
     d->f_pos += 1;
@@ -255,6 +266,7 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
 {
     if (!d->src) {
         setLastError("Cannot parse container");
+        LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
     return d->src->read(dst, size);

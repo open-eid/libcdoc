@@ -1,13 +1,12 @@
 #ifndef __IO_H__
 #define __IO_H__
 
-#include <libcdoc/Exports.h>
+#include "Exports.h"
 
-#include <libcdoc/CDoc.h>
+#include "CDoc.h"
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <vector>
 
 namespace libcdoc {

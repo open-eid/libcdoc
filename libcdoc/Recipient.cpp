@@ -4,6 +4,7 @@
 
 #include "Certificate.h"
 #include "Crypto.h"
+#include "ILogger.h"
 #include "Utils.h"
 
 using namespace std;
@@ -244,6 +245,7 @@ map<string, string> Recipient::parseLabel(const string& label)
         if (label_data_parts.size() != 2)
         {
             // Invalid label data. We just ignore them.
+            LOG_ERROR("The label '{}' is invalid", label);
         }
         else
         {

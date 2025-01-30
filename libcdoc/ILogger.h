@@ -4,6 +4,15 @@
 #include <string>
 #include "Exports.h"
 
+#ifdef __GNUC__
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
+#define FORMAT fmt::format
+#else
+#include <format>
+#define FORMAT std::format
+#endif
+
 namespace libcdoc
 {
 
@@ -111,16 +120,16 @@ CDOC_EXPORT int add_logger(ILogger* logger);
 CDOC_EXPORT ILogger* remove_logger(int cookie);
 
 
-#define LOG(l,m) Logger->LogMessage((l), __FILE__, __LINE__, (m))
-#define LOG_ERROR(m) Logger->LogMessage(libcdoc::LogLevelError, __FILE__, __LINE__, (m))
-#define LOG_WARN(m) Logger->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, (m))
-#define LOG_INFO(m) Logger->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, (m))
-#define LOG_DBG(m) Logger->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, (m))
+#define LOG(l,...) Logger->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_ERROR(...) Logger->LogMessage(libcdoc::LogLevelError, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_WARN(...) Logger->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_INFO(...) Logger->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_DBG(...) Logger->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 
 #ifdef NDEBUG
-#define LOG_TRACE(m)
+#define LOG_TRACE(...)
 #else
-#define LOG_TRACE(m) Logger->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, (m))
+#define LOG_TRACE(...) Logger->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 #endif
 
 }

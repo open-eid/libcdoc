@@ -20,8 +20,8 @@
  *
  */
 
-#include <libcdoc/Exports.h>
-#include <libcdoc/CDoc.h>
+#include "Exports.h"
+#include "CDoc.h"
 
 #include <string>
 #include <vector>

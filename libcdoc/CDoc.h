@@ -24,7 +24,6 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #ifndef LIBCDOC_TESTING
 // Remove this in production code
