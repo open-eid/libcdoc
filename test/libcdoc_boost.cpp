@@ -17,7 +17,7 @@ using namespace std;
 /**
  * @brief Unencrypted file name.
  */
-constexpr string SourceFile("test_data.txt");
+const string SourceFile("test_data.txt");
 
 /**
  * @brief Encrypted file name.
