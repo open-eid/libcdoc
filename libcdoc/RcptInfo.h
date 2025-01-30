@@ -21,7 +21,9 @@ struct RcptInfo {
         // Symetric key from PKCS11 device
         P11_SYMMETRIC,
         // Public key from PKC11 device
-        P11_PKI
+        P11_PKI,
+        // Windows 
+        NCRYPT
     };
 
     Type type;
