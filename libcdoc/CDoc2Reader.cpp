@@ -2,9 +2,7 @@
 
 #define NOMINMAX
 
-#include <limits>
 #include <fstream>
-#include <iostream>
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -17,6 +15,7 @@
 #include "Utils.h"
 #include "ZStream.h"
 #include "CDoc2.h"
+#include "ILogger.h"
 
 #include "header_generated.h"
 
@@ -25,21 +24,27 @@
 // fixme: Placeholder
 #define t_(t) t
 
+using namespace libcdoc;
+
 // Get salt bitstring for HKDF expand method
 
 std::string
 libcdoc::CDoc2::getSaltForExpand(const std::string& label)
 {
-	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
+    std::ostringstream oss;
+    oss << libcdoc::CDoc2::KEK.data() << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) << label;
+    return oss.str();
 }
 
 // Get salt bitstring for HKDF expand method
 std::string
 libcdoc::CDoc2::getSaltForExpand(const std::vector<uint8_t>& key_material, const std::vector<uint8_t>& rcpt_key)
 {
-	return std::string() + libcdoc::CDoc2::KEK.data() + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
-			std::string(rcpt_key.cbegin(), rcpt_key.cend()) +
-			std::string(key_material.cbegin(), key_material.cend());
+    std::ostringstream oss;
+    oss << libcdoc::CDoc2::KEK.data() << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) <<
+        std::string(rcpt_key.cbegin(), rcpt_key.cend()) <<
+        std::string(key_material.cbegin(), key_material.cend());
+    return oss.str();
 }
 
 struct CDoc2Reader::Private {
@@ -101,34 +106,34 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 int
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
-    std::cerr << "CDoc2Reader::getFMK: " << lock_idx << std::endl;
-    std::cerr << "CDoc2Reader::locks: " << priv->locks.size() << std::endl;
+    LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
+    LOG_DBG("CDoc2Reader::locks: {}", priv->locks.size());
     const libcdoc::Lock& lock = *priv->locks.at(lock_idx);
     std::vector<uint8_t> kek;
 	if (lock.type == libcdoc::Lock::Type::PASSWORD) {
 		// Password
-        std::cerr << "password" << std::endl;
+        LOG_DBG("password");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
 		std::vector<uint8_t> kek_pm;
         crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), lock.getBytes(libcdoc::Lock::PW_SALT), lock.getInt(libcdoc::Lock::KDF_ITER), lock_idx);
-        std::cerr << "password2" << std::endl;
+        LOG_DBG("password2");
         kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 		if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-        std::cerr << "password3" << std::endl;
+        LOG_DBG("password3");
     } else if (lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY) {
 		// Symmetric key
-        std::cerr << "symmetric" << std::endl;
+        LOG_DBG("symmetric");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
 		std::vector<uint8_t> kek_pm;
         crypto->extractHKDF(kek_pm, lock.getBytes(libcdoc::Lock::SALT), {}, 0, lock_idx);
 		kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-#ifndef NDEBUG
-        std::cerr << "Label: " << lock.label << std::endl;
-        std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-        std::cerr << "salt: " << libcdoc::toHex(lock.getBytes(libcdoc::Lock::SALT)) << std::endl;
-        std::cerr << "kek_pm: " << libcdoc::toHex(kek_pm) << std::endl;
-        std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
-#endif
+
+        LOG_DBG("Label: {}", lock.label);
+        LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+        LOG_DBG("salt: {}", toHex(lock.getBytes(libcdoc::Lock::SALT)));
+        LOG_DBG("kek_pm: {}", toHex(kek_pm));
+        LOG_DBG("kek: {}", toHex(kek));
+
         if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 	} else {
 		// Public/private key
@@ -138,6 +143,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
             if (fetch_url.empty()) {
                 setLastError("Missing keyserver URL");
+                LOG_ERROR("{}", last_error);
                 return libcdoc::CONFIGURATION_ERROR;
             }
             std::string transaction_id = lock.getString(libcdoc::Lock::Params::TRANSACTION_ID);
@@ -149,14 +155,15 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		} else if (lock.type == libcdoc::Lock::PUBLIC_KEY) {
 			key_material = lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
 		}
-#ifndef NDEBUG
-        std::cerr << "Public key: " << libcdoc::toHex(lock.getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
-        std::cerr << "Key material: " << libcdoc::toHex(key_material) << std::endl;
-#endif
+
+        LOG_DBG("Public key: {}", toHex(lock.getBytes(libcdoc::Lock::Params::RCPT_KEY)));
+        LOG_DBG("Key material: {}", toHex(key_material));
+
 		if (lock.isRSA()) {
             int result = crypto->decryptRSA(kek, key_material, true, lock_idx);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
+                LOG_ERROR("{}", last_error);
 				return result;
 			}
 		} else {
@@ -164,39 +171,43 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), lock_idx);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
+                LOG_ERROR("{}", last_error);
 				return result;
 			}
-#ifndef NDEBUG
-            std::cerr << "Key kekPm: " << libcdoc::toHex(kek_pm) << std::endl;
-#endif
+
+            LOG_DBG("Key kekPm: {}", toHex(kek_pm));
+
 			std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(libcdoc::Lock::Params::RCPT_KEY));
-#ifndef NDEBUG
-            std::cerr << "info" << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-#endif
+
+            LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+
 			kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
 		}
 	}
-#ifndef NDEBUG
-    std::cerr << "KEK: " << libcdoc::toHex(kek) << std::endl;
-#endif
+
+    LOG_DBG("KEK: {}", toHex(kek));
+
 
 	if(kek.empty()) {
 		setLastError(t_("Failed to derive key"));
+        LOG_ERROR("{}", last_error);
 		return false;
 	}
     if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
 		setLastError(t_("Failed to decrypt/derive fmk"));
+        LOG_ERROR("{}", last_error);
 		return libcdoc::CRYPTO_ERROR;
 	}
 	std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
-#ifndef NDEBUG
-    std::cerr << "xor: " << libcdoc::toHex(lock.encrypted_fmk) << std::endl;
-    std::cerr << "fmk: " << libcdoc::toHex(fmk) << std::endl;
-    std::cerr << "hhk: " << libcdoc::toHex(hhk) << std::endl;
-    std::cerr << "hmac: " << libcdoc::toHex(priv->headerHMAC) << std::endl;
-#endif
+
+    LOG_DBG("xor: {}", toHex(lock.encrypted_fmk));
+    LOG_DBG("fmk: {}", toHex(fmk));
+    LOG_DBG("hhk: {}", toHex(hhk));
+    LOG_DBG("hmac: {}", toHex(priv->headerHMAC));
+
 	if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
 		setLastError(t_("CDoc 2.0 hash mismatch"));
+        LOG_ERROR("{}", last_error);
 		return libcdoc::HASH_MISMATCH;
 	}
 	setLastError({});
@@ -219,6 +230,7 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 	}
 	if (result != libcdoc::END_OF_STREAM) {
 		setLastError(priv->tar->getLastErrorStr(result));
+        LOG_ERROR("{}", last_error);
 		return result;
 	}
 	return finishDecryption();
@@ -231,6 +243,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 		int result = priv->_src->seek(priv->_nonce_pos);
         if (result != libcdoc::OK) {
 			setLastError(priv->_src->getLastErrorStr(result));
+            LOG_ERROR("{}", last_error);
 			return libcdoc::IO_ERROR;
 		}
 	}
@@ -239,18 +252,20 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 	std::vector<uint8_t> nonce(libcdoc::CDoc2::NONCE_LEN);
 	if (priv->_src->read(nonce.data(), libcdoc::CDoc2::NONCE_LEN) != libcdoc::CDoc2::NONCE_LEN) {
 		setLastError("Error reading nonce");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::IO_ERROR;
 	}
-#ifndef NDEBUG
-    std::cerr << "cek: " << libcdoc::toHex(cek) << std::endl;
-    std::cerr << "nonce: " << libcdoc::toHex(nonce) << std::endl;
-#endif
+
+    LOG_DBG("cek: {}", toHex(cek));
+    LOG_DBG("nonce: {}", toHex(nonce));
+
 	priv->cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, false);
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
 	aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
 	aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
 	if(!priv->cipher->updateAAD(aad)) {
 		setLastError("OpenSSL error");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 
@@ -281,14 +296,15 @@ CDoc2Reader::finishDecryption()
 {
 	if (!priv->zsrc->isEof()) {
 		setLastError(t_("CDoc contains additional payload data that is not part of content"));
+        LOG_ERROR("{}", last_error);
 	}
 
-#ifndef NDEBUG
-    std::cerr << "tag: " << libcdoc::toHex(priv->tgs->tag) << std::endl;
-#endif
+    LOG_DBG("tag: {}", toHex(priv->tgs->tag));
+
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
 		setLastError("Stream tag does not match");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 	setLastError({});
@@ -307,42 +323,69 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 	setLastError(t_("Invalid CDoc 2.0 header"));
 
 	uint8_t in[libcdoc::CDoc2::LABEL.size()];
-	if (priv->_src->read(in, libcdoc::CDoc2::LABEL.size()) != libcdoc::CDoc2::LABEL.size()) return;
-	if (memcmp(libcdoc::CDoc2::LABEL.data(), in, libcdoc::CDoc2::LABEL.size())) return;
+    if (priv->_src->read(in, libcdoc::CDoc2::LABEL.size()) != libcdoc::CDoc2::LABEL.size()) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
+    if (memcmp(libcdoc::CDoc2::LABEL.data(), in, libcdoc::CDoc2::LABEL.size())) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 	//if (libcdoc::CDoc2::LABEL.compare(0, libcdoc::CDoc2::LABEL.size(), (const char *) in)) return;
 
 	// Read 32-bit header length in big endian order
 	uint8_t c[4];
-	if (priv->_src->read(c, 4) != 4) return;
+    if (priv->_src->read(c, 4) != 4) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 	uint32_t header_len = (c[0] << 24) | (c[1] << 16) | c[2] << 8 | c[3];
 	priv->header_data.resize(header_len);
-	if (priv->_src->read(priv->header_data.data(), header_len) != header_len) return;
+    if (priv->_src->read(priv->header_data.data(), header_len) != header_len) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 	priv->headerHMAC.resize(libcdoc::CDoc2::KEY_LEN);
-	if (priv->_src->read(priv->headerHMAC.data(), libcdoc::CDoc2::KEY_LEN) != libcdoc::CDoc2::KEY_LEN) return;
+    if (priv->_src->read(priv->headerHMAC.data(), libcdoc::CDoc2::KEY_LEN) != libcdoc::CDoc2::KEY_LEN) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 
 	priv->_nonce_pos = libcdoc::CDoc2::LABEL.size() + 4 + header_len + libcdoc::CDoc2::KEY_LEN;
 	priv->_at_nonce = true;
 
 	flatbuffers::Verifier verifier(priv->header_data.data(), priv->header_data.size());
-	if(!VerifyHeaderBuffer(verifier)) return;
+    if(!VerifyHeaderBuffer(verifier)) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 	const auto *header = GetHeader(priv->header_data.data());
-	if(!header) return;
-	if(header->payload_encryption_method() != PayloadEncryptionMethod::CHACHA20POLY1305) return;
+    if(!header) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
+    if(header->payload_encryption_method() != PayloadEncryptionMethod::CHACHA20POLY1305) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 	const auto *recipients = header->recipients();
-	if(!recipients) return;
+    if(!recipients) {
+        LOG_ERROR("{}", last_error);
+        return;
+    }
 
 	setLastError({});
 
 	for(const auto *recipient: *recipients){
 		if(recipient->fmk_encryption_method() != FMKEncryptionMethod::XOR)
 		{
-			std::cerr << "Unsupported FMK encryption method: skipping" << std::endl;
+            LOG_WARN("Unsupported FMK encryption method: skipping");
 			continue;
 		}
-		auto fillRecipientPK = [&] (libcdoc::Lock::PKType pk_type, auto key) {
-			libcdoc::Lock *k = new libcdoc::Lock(libcdoc::Lock::Type::PUBLIC_KEY);
+        auto fillRecipientPK = [&recipient] (Lock::PKType pk_type, auto key) -> Lock* {
+            Lock* k = new Lock(Lock::Type::PUBLIC_KEY);
 			k->pk_type = pk_type;
-			k->setBytes(libcdoc::Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
+            k->setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
 			k->label = recipient->key_label()->str();
 			k->encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
 			return k;
@@ -352,12 +395,12 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 		case Capsule::ECCPublicKeyCapsule:
 			if(const auto *key = recipient->capsule_as_ECCPublicKeyCapsule()) {
 				if(key->curve() != EllipticCurve::secp384r1) {
-					std::cerr << "Unsupported ECC curve: skipping" << std::endl;
+                    LOG_ERROR("Unsupported ECC curve: skipping");
 					continue;
 				}
 				libcdoc::Lock *k = fillRecipientPK(libcdoc::Lock::PKType::ECC, key);
 				k->setBytes(libcdoc::Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
-                std::cerr << "Load PK: " << libcdoc::toHex(k->getBytes(libcdoc::Lock::Params::RCPT_KEY)) << std::endl;
+                LOG_DBG("Load PK: {}", toHex(k->getBytes(libcdoc::Lock::Params::RCPT_KEY)));
 				priv->locks.push_back(k);
 			}
 			break;
@@ -381,10 +424,10 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 							ckey->pk_type = libcdoc::Lock::PKType::ECC;
 							ckey->setBytes(libcdoc::Lock::Params::RCPT_KEY, std::vector<uint8_t>(eccDetails->recipient_public_key()->cbegin(), eccDetails->recipient_public_key()->cend()));
 						} else {
-							std::cerr << "Unsupported elliptic curve key type" << std::endl;
+                            LOG_ERROR("Unsupported elliptic curve key type");
 						}
 					} else {
-						std::cerr << "Invalid file format" << std::endl;
+                        LOG_ERROR("Invalid file format");
 					}
 					break;
 				case KeyDetailsUnion::RsaKeyDetails:
@@ -393,11 +436,11 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 						ckey->pk_type = libcdoc::Lock::PKType::RSA;
 						ckey->setBytes(libcdoc::Lock::Params::RCPT_KEY, std::vector<uint8_t>(rsaDetails->recipient_public_key()->cbegin(), rsaDetails->recipient_public_key()->cend()));
 					} else {
-						std::cerr << "Invalid file format" << std::endl;
+                        LOG_ERROR("Invalid file format");
 					}
 					break;
 				default:
-					std::cerr << "Unsupported Key Server Details: skipping" << std::endl;
+                    LOG_ERROR("Unsupported Key Server Details: skipping");
 				}
 				if (ckey) {
 					ckey->label = recipient->key_label()->c_str();
@@ -407,7 +450,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 					priv->locks.push_back(ckey);
 				}
 			} else {
-				std::cerr << "Invalid file format" << std::endl;
+                LOG_ERROR("Invalid file format");
 			}
 			break;
 		case Capsule::SymmetricKeyCapsule:
@@ -424,7 +467,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 			if(const auto *capsule = recipient->capsule_as_PBKDF2Capsule()) {
 				KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
 				if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
-					std::cerr << "Unsupported KDF algorithm: skipping" << std::endl;
+                    LOG_ERROR("Unsupported KDF algorithm: skipping");
 					continue;
 				}
 				libcdoc::Lock *key = new libcdoc::Lock(libcdoc::Lock::PASSWORD);
@@ -437,7 +480,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 			}
 			break;
 		default:
-			std::cerr << "Unsupported Key Details: skipping" << std::endl;
+            LOG_ERROR("Unsupported Key Details: skipping");
 		}
 	}
 }
@@ -467,4 +510,3 @@ CDoc2Reader::isCDoc2File(const std::string& path)
     if (libcdoc::CDoc2::LABEL.compare(0, len, &in[0], len)) return false;
     return true;
 }
-

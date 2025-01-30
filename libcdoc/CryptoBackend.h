@@ -20,9 +20,9 @@
  *
  */
 
-#include <libcdoc/CDoc.h>
-#include <libcdoc/Exports.h>
-#include <libcdoc/Lock.h>
+#include "CDoc.h"
+#include "Exports.h"
+#include "Lock.h"
 
 #include <string>
 #include <vector>
@@ -59,7 +59,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @brief Fill vector with random bytes
 	 *
 	 * Trim vector to requested size and fill it with random bytes. The default implementation uses OpenSSL randomness generator.
-	 * @param dst the destination container for randomness
+     * @param dst the destination container for randomness§§
 	 * @param size the requested amount of random data
 	 * @return  error code or OK
 	 */

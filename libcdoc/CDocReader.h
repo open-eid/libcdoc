@@ -20,12 +20,12 @@
  *
  */
 
-#include <libcdoc/Configuration.h>
-#include <libcdoc/CryptoBackend.h>
-#include <libcdoc/Exports.h>
-#include <libcdoc/Io.h>
-#include <libcdoc/Lock.h>
-#include <libcdoc/NetworkBackend.h>
+#include "Configuration.h"
+#include "CryptoBackend.h"
+#include "Exports.h"
+#include "Io.h"
+#include "Lock.h"
+#include "NetworkBackend.h"
 
 namespace libcdoc {
 

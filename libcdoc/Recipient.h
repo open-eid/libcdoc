@@ -20,7 +20,7 @@
  *
  */
 
-#include <libcdoc/Exports.h>
+#include "Exports.h"
 
 #include <map>
 #include <string>

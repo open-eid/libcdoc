@@ -90,6 +90,10 @@ target_link_libraries(cdoc_priv_obj
     OpenSSL::SSL
 )
 
+if (WIN32)
+    target_link_libraries(cdoc_priv_obj Bcrypt.lib)
+endif()
+
 add_library(cdoc_priv STATIC
     $<TARGET_OBJECTS:cdoc_priv_obj>
     Wrapper.h
