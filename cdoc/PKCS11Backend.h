@@ -1,7 +1,7 @@
 #ifndef __PKCS11_BACKEND_H__
 #define __PKCS11_BACKEND_H__
 
-#include <libcdoc/CryptoBackend.h>
+#include <cdoc/CryptoBackend.h>
 
 #include <memory>
 

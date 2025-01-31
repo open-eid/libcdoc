@@ -1,7 +1,7 @@
 #ifndef TAR_H
 #define TAR_H
 
-#include <libcdoc/Io.h>
+#include <cdoc/Io.h>
 
 #include <cstring>
 #include <string>

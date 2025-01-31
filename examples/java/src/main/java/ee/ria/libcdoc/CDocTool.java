@@ -1,4 +1,4 @@
-package ee.ria.libcdoc;
+package ee.ria.cdoc;
 
 import java.io.File;
 import java.io.FileInputStream;

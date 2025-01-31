@@ -1,7 +1,7 @@
 #ifndef __LIBCDOC_WINBACKEND_H__
 #define __LIBCDOC_WINBACKEND_H__
 
-#include <libcdoc/CryptoBackend.h>
+#include <cdoc/CryptoBackend.h>
 
 #include <memory>
 

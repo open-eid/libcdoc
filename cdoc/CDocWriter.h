@@ -20,13 +20,13 @@
  *
  */
 
-#include <libcdoc/Recipient.h>
-#include <libcdoc/Io.h>
+#include <cdoc/Recipient.h>
+#include <cdoc/Io.h>
 
-#include <libcdoc/Configuration.h>
-#include <libcdoc/CryptoBackend.h>
-#include <libcdoc/Exports.h>
-#include <libcdoc/NetworkBackend.h>
+#include <cdoc/Configuration.h>
+#include <cdoc/CryptoBackend.h>
+#include <cdoc/Exports.h>
+#include <cdoc/NetworkBackend.h>
 
 namespace libcdoc {
 

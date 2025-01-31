@@ -20,9 +20,9 @@
  *
  */
 
-#include <libcdoc/CryptoBackend.h>
-#include <libcdoc/Exports.h>
-#include <libcdoc/Recipient.h>
+#include <cdoc/CryptoBackend.h>
+#include <cdoc/Exports.h>
+#include <cdoc/Recipient.h>
 
 #include <vector>
 
