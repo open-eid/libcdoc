@@ -5,6 +5,7 @@
 
 #include "CDoc.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <vector>

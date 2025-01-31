@@ -24,6 +24,7 @@
 #include "Exports.h"
 #include "Lock.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

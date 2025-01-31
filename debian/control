@@ -1,0 +1,47 @@
+Source: libcdoc
+Section: libs
+Priority: optional
+Maintainer: RIA <info@ria.ee>
+Build-Depends:
+ debhelper-compat (= 13),
+ pkg-config,
+ cmake,
+ libxml2-dev,
+ zlib1g-dev,
+ libssl-dev,
+ libflatbuffers-dev,
+ doxygen,
+ swig,
+ java17-sdk-headless,
+ libpython3-dev,
+ python3-setuptools
+Standards-Version: 4.6.1
+Rules-Requires-Root: no
+Homepage: https://github.com/open-eid/libcdoc
+
+Package: libcdoc1
+Replaces:
+Breaks:
+Architecture: any
+Multi-Arch: same
+Pre-Depends:
+ ${misc:Pre-Depends}
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends}
+Recommends:
+ opensc-pkcs11
+Conflicts:
+Description: A library to read and write CDoc2 encrypted containers
+ CDoc container format is specified at https://open-eid.github.io/CDOC2/1.1/
+
+Package: libcdoc-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends:
+ libcdoc1 (= ${binary:Version}),
+ ${misc:Depends}
+Suggests:
+Description: This package contains files necessary for developing applications
+ with the CDoc2 encrypted container format library.

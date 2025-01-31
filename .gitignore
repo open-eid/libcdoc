@@ -5,3 +5,6 @@ CMakeCache.txt
 CMakeLists.txt.user
 Makefile
 cmake_install.cmake
+debian/tmp/
+debian/source/
+obj-x86_64-linux-gnu/

@@ -23,6 +23,7 @@
 #include "Exports.h"
 #include "CDoc.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

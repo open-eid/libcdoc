@@ -135,7 +135,7 @@ add_library(cdoc SHARED
 set_target_properties(cdoc PROPERTIES
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
     SOVERSION 1
-    PUBLIC_HEADER "${PUBLIC_HEADER}"
+    PUBLIC_HEADER "${PUBLIC_HEADERS}"
     FRAMEWORK_VERSION 1
     FRAMEWORK "${FRAMEWORK}"
     MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.digidocpp"
@@ -144,7 +144,9 @@ set_target_properties(cdoc PROPERTIES
 )
 
 target_include_directories(cdoc PUBLIC
-    ${PROJECT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(cdoc PRIVATE
@@ -161,10 +163,10 @@ add_library(cdoc_static STATIC
 set_target_properties(cdoc_static PROPERTIES
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
     SOVERSION 1
-    PUBLIC_HEADER "${PUBLIC_HEADER}"
+    PUBLIC_HEADER "${PUBLIC_HEADERS}"
     FRAMEWORK_VERSION 1
     FRAMEWORK "${FRAMEWORK}"
-    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.digidocpp"
+    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.libcdoc"
     MACOSX_RPATH YES
     COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
@@ -205,7 +207,7 @@ endforeach()
 
 if(SWIG_FOUND)
     include(${SWIG_USE_FILE})
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+    include_directories(${CMAKE_PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
     set_property(SOURCE ../libcdoc.i PROPERTY CPLUSPLUS ON)
     if(JAVA_INCLUDE_PATH)
         file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/CDocException.java DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/java)
@@ -227,31 +229,7 @@ if(SWIG_FOUND)
         endif()
     endif()
     if(Python3_FOUND)
-        # -py3 option is removed starting from SWIG-4.1.0
-        set(CMAKE_SWIG_FLAGS -py3)
-        set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR})
-        swig_add_library(cdoc_python LANGUAGE python SOURCES ../libcdoc.i)
-        target_compile_definitions(cdoc_python PRIVATE TARGET_NAME="$<TARGET_NAME:cdoc_python>")
-        target_link_libraries(cdoc_python cdoc Python3::Module)
-        #configure_file(setup.py.cmake setup.py)
-        #install(CODE "execute_process(COMMAND python3 ${CMAKE_CURRENT_BINARY_DIR}/setup.py install)")
-        if(NOT Python3_SITELIB)
-            execute_process(COMMAND /usr/bin/python3 -c
-                "from distutils import sysconfig;print(sysconfig.get_python_lib(plat_specific=False,standard_lib=False))"
-                OUTPUT_VARIABLE Python3_SITELIB OUTPUT_STRIP_TRAILING_WHITESPACE)
-        endif()
-        if(WIN32)
-            set(Python3_SITELIB ${CMAKE_INSTALL_BINDIR})
-            install(FILES $<TARGET_PDB_FILE:cdoc_python> DESTINATION ${Python3_SITELIB} OPTIONAL)
-        else()
-            set_target_properties(cdoc_python PROPERTIES SUFFIX .so)
-        endif()
-        set_target_properties(cdoc_python PROPERTIES
-            INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
-            SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
-        )
-        install(TARGETS cdoc_python DESTINATION ${Python3_SITELIB})
-        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc.py DESTINATION ${Python3_SITELIB})
+	# TODO: Fix Python wrapping
     endif()
 
     set(CMAKE_SWIG_FLAGS -dllimport cdoc_csharp -namespace cdoc)
@@ -272,11 +250,37 @@ if(SWIG_FOUND)
 endif()
 
 install(TARGETS cdoc
+    EXPORT libcdocExport
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     RESOURCE DESTINATION ${CDOC_CONFIG_DIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdoc
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libcdoc
     FRAMEWORK DESTINATION /Library/Frameworks
 )
 
+install(TARGETS cdoc_static
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FRAMEWORK DESTINATION /Library/Frameworks
+)
+
+if(NOT ANDROID)
+    install(EXPORT libcdocExport
+        FILE libcdoc-config.cmake
+        NAMESPACE cdoc::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libcdoc
+    )
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/libcdoc-config-version.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY AnyNewerVersion
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libcdoc-config-version.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libcdoc
+    )
+endif()
+
+install( TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR} )
+#install( FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 )
+#install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libcdoc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )

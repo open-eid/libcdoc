@@ -63,7 +63,9 @@ struct ToolWin : public libcdoc::WinBackend {
 struct ToolCrypto : public libcdoc::CryptoBackend {
     const RecipientInfoVector& rcpts;
     std::unique_ptr<libcdoc::PKCS11Backend> p11;
+#ifdef _WIN32
     std::unique_ptr<libcdoc::WinBackend> ncrypt;
+#endif
 
     ToolCrypto(const RecipientInfoVector& recipients) : rcpts(recipients) {
     }
@@ -74,8 +76,12 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     }
 
     bool connectNCrypt() {
+#ifdef _WIN32
         ncrypt = std::make_unique<ToolWin>("", rcpts);
         return true;
+#else
+        return false;
+#endif
     }
 
     int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
@@ -351,7 +357,7 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
     LOG_INFO("Found matching label: {}", lock.label);
     network.rcpt_idx = lock_idx;
     rcpts.resize(locks.size());
-    rcpts[idx_base_1] = recipient;
+    //rcpts[idx_base_1] = recipient;
 
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);

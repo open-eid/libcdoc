@@ -2,7 +2,16 @@
 #define __ILOGGER_H__INCLUDED__
 
 #include <string>
-#include "Exports.h"
+
+#include <libcdoc/Exports.h>
+
+#ifdef __GNUC__
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
+#define FORMAT fmt::format
+#else
+#define FORMAT std::format
+#endif
 
 #ifdef __GNUC__
 #define FMT_HEADER_ONLY
@@ -103,7 +112,7 @@ protected:
 /**
  * @brief Global logger's instance.
  */
-extern ILogger* Logger;
+CDOC_EXPORT extern ILogger* Logger;
 
 /**
  * @brief Adds ILogger implementation to logging queue.

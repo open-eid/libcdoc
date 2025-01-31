@@ -10,7 +10,6 @@
 using namespace std;
 using namespace libcdoc;
 
-
 static void print_usage(ostream& ofs)
 {
     ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;

@@ -43,8 +43,6 @@ getErrorStr(int64_t code) {
     return FORMAT("Unknown result code {}", code);
 }
 
-}
-
 bool
 libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)
 {
@@ -219,3 +217,6 @@ libcdoc::CDocWriter::createWriter(int version, const std::string& path, Configur
 	libcdoc::DataConsumer *dst = new libcdoc::OStreamConsumer(path);
 	return createWriter(version, dst, true, conf, crypto, network);
 }
+
+}
+

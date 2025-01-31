@@ -22,6 +22,7 @@
 
 #include <libcdoc/Exports.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>

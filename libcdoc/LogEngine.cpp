@@ -1,3 +1,5 @@
+#define __LOGENGINE_CPP__
+
 #include <map>
 #include <mutex>
 #include "Exports.h"
@@ -61,12 +63,12 @@ static LogEngine logEngine;
 
 CDOC_EXPORT libcdoc::ILogger* libcdoc::Logger = &logEngine;
 
-CDOC_EXPORT int libcdoc::add_logger(ILogger* logger)
+int libcdoc::add_logger(ILogger* logger)
 {
     return logEngine.AddLogger(logger);
 }
 
-CDOC_EXPORT libcdoc::ILogger* libcdoc::remove_logger(int cookie)
+libcdoc::ILogger* libcdoc::remove_logger(int cookie)
 {
     return logEngine.RemoveLogger(cookie);
 }
