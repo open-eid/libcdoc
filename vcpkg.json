@@ -1,8 +1,14 @@
 {
   "dependencies": [
     "zlib",
-    "libxml2",
+    {
+      "name": "libxml2",
+      "default-features": false
+    },
     "flatbuffers",
     "openssl"
-  ]
+  ],
+  "features": {
+    "tests": { "description": "Build tests", "dependencies": ["boost-test"] }
+  }
 }

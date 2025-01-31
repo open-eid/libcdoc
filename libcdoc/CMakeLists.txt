@@ -1,6 +1,3 @@
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED YES)
-
 set(SCHEMAS
     schema/recipients.fbs
     schema/header.fbs
@@ -20,9 +17,10 @@ set(PUBLIC_HEADERS
     PKCS11Backend.h
     ILogger.h
     ConsoleLogger.h
+    $<$<PLATFORM_ID:Windows>:WinBackend.h>
 )
 
-set(CDOC_SOURCES
+add_library(cdoc_obj OBJECT
     CDoc.cpp
     Io.cpp
     Recipient.cpp
@@ -31,33 +29,19 @@ set(CDOC_SOURCES
     NetworkBackend.cpp
     PKCS11Backend.cpp
     LogEngine.cpp
+    $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
 )
 
 if(WIN32)
-    add_definitions(-DUNICODE -DWIN32_LEAN_AND_MEAN)
-    list(APPEND LIBS Crypt32 NCrypt cryptui)
-    list(APPEND PUBLIC_HEADERS WinBackend.h)
-    list(APPEND CDOC_SOURCES WinBackend.cpp)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN)
 endif()
 
-add_library(cdoc_obj OBJECT
-    ${CDOC_SOURCES}
-)
+set_target_properties(cdoc_obj PROPERTIES POSITION_INDEPENDENT_CODE YES)
+target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS)
+target_include_directories(cdoc_obj PUBLIC ${PROJECT_SOURCE_DIR})
+target_link_libraries(cdoc_obj OpenSSL::SSL)
 
-set_target_properties(cdoc_obj PROPERTIES
-    COMPILE_DEFINITIONS cdoc_EXPORTS
-    POSITION_INDEPENDENT_CODE YES
-)
-
-target_include_directories(cdoc_obj PUBLIC
-    ${LIBXML2_INCLUDE_DIR}
-    ${OPENSSL_INCLUDE_DIR}
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-set(CDOC_PRIV_SOURCES
+add_library(cdoc_priv OBJECT
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
     Tar.cpp
@@ -75,89 +59,26 @@ set(CDOC_PRIV_SOURCES
     RcptInfo.h
     ToolConf.h
     CDoc2.h
-)
-
-add_library(cdoc_priv_obj OBJECT
-    ${CDOC_PRIV_SOURCES}
-)
-
-set_property(TARGET cdoc_priv_obj PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-target_include_directories(cdoc_priv_obj PUBLIC
-    ${LIBXML2_INCLUDE_DIR}
-    ${OPENSSL_INCLUDE_DIR}
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-target_link_libraries(cdoc_priv_obj
-    $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
-    $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-    OpenSSL::SSL
-)
-
-add_library(cdoc_priv STATIC
-    $<TARGET_OBJECTS:cdoc_priv_obj>
     Wrapper.h
 )
 
 set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-target_include_directories(cdoc_priv PUBLIC
-    ${LIBXML2_INCLUDE_DIR}
-    ${OPENSSL_INCLUDE_DIR}
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}
+target_include_directories(cdoc_priv
+    PUBLIC ${PROJECT_SOURCE_DIR}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
-
 target_link_libraries(cdoc_priv
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
-    $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-    ZLIB::ZLIB
-#    {$ZLIB_LIBRARIES}
-    LibXml2::LibXml2
+    #$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
     OpenSSL::SSL
-    ${LIBS}
+    ZLIB::ZLIB
+    LibXml2::LibXml2
+    $<$<PLATFORM_ID:Windows>:Crypt32 NCrypt cryptui>
 )
 
-add_library(cdoc SHARED
-    ${PUBLIC_HEADERS}
-    ${CDOC_SOURCES}
-
-)
-
+add_library(cdoc SHARED ${PUBLIC_HEADERS})
 set_target_properties(cdoc PROPERTIES
-    VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
-    SOVERSION 1
-    PUBLIC_HEADER "${PUBLIC_HEADERS}"
-    FRAMEWORK_VERSION 1
-    FRAMEWORK "${FRAMEWORK}"
-    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.digidocpp"
-    MACOSX_RPATH YES
-    COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
-)
-
-target_include_directories(cdoc PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(cdoc PRIVATE
-    ${CMAKE_DL_LIBS}
-    cdoc_priv
-)
-
-add_library(cdoc_static STATIC
-    ${PUBLIC_HEADERS}
-    $<TARGET_OBJECTS:cdoc_priv_obj>
-    $<TARGET_OBJECTS:cdoc_obj>
-)
-
-set_target_properties(cdoc_static PROPERTIES
-    VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
+    VERSION ${PROJECT_VERSION}
     SOVERSION 1
     PUBLIC_HEADER "${PUBLIC_HEADERS}"
     FRAMEWORK_VERSION 1
@@ -166,39 +87,44 @@ set_target_properties(cdoc_static PROPERTIES
     MACOSX_RPATH YES
     COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
-
-target_include_directories(cdoc_static PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+target_link_libraries(cdoc PRIVATE ${CMAKE_DL_LIBS} cdoc_priv cdoc_obj)
+target_include_directories(cdoc PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
 )
-
-target_link_libraries(cdoc_static
-    ${ZLIB_LIBRARY}
-    ${LIBXML2_LIBRARIES}
-    ${OPENSSL_CRYPTO_LIBRARY}
-    ${LIBS}
+add_library(cdoc_static STATIC ${PUBLIC_HEADERS})
+set_target_properties(cdoc_static PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
+    PUBLIC_HEADER "${PUBLIC_HEADERS}"
+    FRAMEWORK_VERSION 1
+    FRAMEWORK "${FRAMEWORK}"
+    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.libcdoc"
+    MACOSX_RPATH YES
+    COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
+target_link_libraries(cdoc_static cdoc_priv cdoc_obj)
 
 add_executable(cdoc-tool cdoc-tool.cpp)
-
 target_link_libraries(cdoc-tool cdoc cdoc_priv)
 
 foreach(SCHEMA ${SCHEMAS})
-        get_filename_component(stem ${SCHEMA} NAME_WE)
-        get_filename_component(name ${SCHEMA} NAME)
-        set(GENERATED_INCLUDE ${CMAKE_CURRENT_BINARY_DIR}/${stem}_generated.h)
-        add_custom_command(
-                OUTPUT ${GENERATED_INCLUDE}
-                COMMENT "Compiling flatbuffer for ${name}"
-                COMMAND flatbuffers::flatc
-                        --cpp
-                        --scoped-enums
-                        -o ${CMAKE_CURRENT_BINARY_DIR}
-                        -I ${CMAKE_CURRENT_SOURCE_DIR}
-                        ${SCHEMA}
-                DEPENDS flatbuffers::flatc ${SCHEMA}
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        )
-        target_sources(cdoc_priv_obj PRIVATE ${SCHEMA} ${GENERATED_INCLUDE})
+    get_filename_component(stem ${SCHEMA} NAME_WE)
+    get_filename_component(name ${SCHEMA} NAME)
+    set(GENERATED_INCLUDE ${CMAKE_CURRENT_BINARY_DIR}/${stem}_generated.h)
+    add_custom_command(
+        OUTPUT ${GENERATED_INCLUDE}
+        COMMENT "Compiling flatbuffer for ${name}"
+        COMMAND flatbuffers::flatc
+                --cpp
+                --scoped-enums
+                -o ${CMAKE_CURRENT_BINARY_DIR}
+                -I ${CMAKE_CURRENT_SOURCE_DIR}
+                ${SCHEMA}
+        DEPENDS flatbuffers::flatc ${SCHEMA}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_sources(cdoc_priv PRIVATE ${SCHEMA} ${GENERATED_INCLUDE})
 endforeach()
 
 if(SWIG_FOUND)
@@ -245,6 +171,26 @@ if(SWIG_FOUND)
     endif()
 endif()
 
+if(APPLE)
+    set(MODULE_LIST ${PUBLIC_HEADERS})
+    list(TRANSFORM MODULE_LIST PREPEND "  header \"")
+    list(TRANSFORM MODULE_LIST APPEND "\"")
+    list(JOIN MODULE_LIST "\n" MODULE_LIST)
+    set(MODULE_MAP ${CMAKE_BINARY_DIR}/module.modulemap)
+    file(WRITE ${MODULE_MAP} "framework module cdoc {
+${MODULE_LIST}
+  export *
+  requires cplusplus
+}")
+    target_sources(cdoc PRIVATE ${MODULE_MAP})
+    set_source_files_properties(${MODULE_MAP} PROPERTIES MACOSX_PACKAGE_LOCATION Modules)
+    if(IOS)
+        add_custom_command(TARGET cdoc POST_BUILD
+            COMMAND /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string ${CMAKE_OSX_DEPLOYMENT_TARGET}" $<TARGET_FILE_DIR:cdoc>/Info.plist
+        )
+    endif()
+endif()
+
 install(TARGETS cdoc
     EXPORT libcdocExport
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -252,12 +198,12 @@ install(TARGETS cdoc
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     RESOURCE DESTINATION ${CDOC_CONFIG_DIR}
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libcdoc
-    FRAMEWORK DESTINATION /Library/Frameworks
+    FRAMEWORK DESTINATION ${FRAMEWORK_DESTINATION}
 )
 
 install(TARGETS cdoc_static
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    FRAMEWORK DESTINATION /Library/Frameworks
+    FRAMEWORK DESTINATION ${FRAMEWORK_DESTINATION}
 )
 
 if(NOT ANDROID)
