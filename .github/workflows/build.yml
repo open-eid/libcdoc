@@ -40,3 +40,48 @@ jobs:
       with:
         name: ubuntu_${{ matrix.container }}
         path: libcdoc*.*
+  macos:
+    name: Build on macOS for ${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [macos, iphoneos, iphonesimulator]
+        include:
+          - target: iphoneos
+            triplet: arm64-ios
+          - target: iphonesimulator
+            triplet: arm64-ios-simulator
+    env:
+      DEST: ${{ github.workspace }}/${{ matrix.target }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        brew update
+        brew install --formula ninja flatbuffers swig doxygen boost openssl@3.0
+        brew unlink python@3.12 || true
+        brew unlink python@3.13 || true
+    - name: Prepare vcpkg
+      if: matrix.target != 'macos'
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: e4644bd15436d406bba71928d086c809e5c9ca45
+        vcpkgJsonGlob: ./vcpkg.json
+        runVcpkgInstall: true
+      env:
+        VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+    - name: Build
+      run: |
+        cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${{ env.DEST }}
+        cmake --build --preset ${{ matrix.target }}
+    - name: Test
+      if: matrix.target == 'macos'
+      run: cmake --build --preset ${{ matrix.target }} --target test
+    - name: Install
+      run: cmake --build --preset ${{ matrix.target }} --target install/strip
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}
+        path: ${{ env.DEST }}/**
