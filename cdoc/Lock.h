@@ -104,7 +104,9 @@ struct CDOC_EXPORT Lock
 	void setString(Params key, const std::string& val) { params[key] = std::vector<uint8_t>(val.cbegin(), val.cend()); }
 	void setInt(Params key, int32_t val);
 
+#ifndef __swift__
 	bool operator== (const Lock& other) const = default;
+#endif
 
 	// Set certificate, rcpt_key and pk_type values
 	void setCertificate(const std::vector<uint8_t>& cert);

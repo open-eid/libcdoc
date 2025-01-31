@@ -171,6 +171,10 @@ public:
 #endif
 protected:
 	explicit CDocReader(int _version) : version(_version) {};
+	CDocReader (const CDocReader&) = delete;
+	CDocReader (CDocReader&&) noexcept;
+	CDocReader& operator= (const CDocReader&) = delete;
+	CDocReader& operator= (CDocReader&&) noexcept;
 
 	void setLastError(const std::string& message) { last_error = message; }
 

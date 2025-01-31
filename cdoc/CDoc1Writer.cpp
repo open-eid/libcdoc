@@ -270,7 +270,7 @@ int
 CDoc1Writer::addFile(const std::string& name, size_t size)
 {
 	d->files.push_back({name, size, {}});
-	return libcdoc::NOT_IMPLEMENTED;
+	return libcdoc::OK;
 }
 
 int64_t

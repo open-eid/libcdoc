@@ -151,7 +151,9 @@ struct CDOC_EXPORT CryptoBackend {
     virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
 
 	CryptoBackend (const CryptoBackend&) = delete;
+	CryptoBackend (CryptoBackend&&) noexcept = default;
 	CryptoBackend& operator= (const CryptoBackend&) = delete;
+	CryptoBackend& operator= (CryptoBackend&&) noexcept = default;
 };
 
 } // namespace libcdoc
