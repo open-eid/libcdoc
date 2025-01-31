@@ -34,8 +34,9 @@ set(CDOC_SOURCES
 )
 
 if(WIN32)
-    add_definitions(-DUNICODE -DWIN32_LEAN_AND_MEAN)
-    list(APPEND LIBS Crypt32 NCrypt cryptui)
+    add_definitions(-DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -DNOMINMAX)
+    add_compile_options(/JMC /GR)
+    list(APPEND LIBS Crypt32 NCrypt cryptui Bcrypt)
     list(APPEND PUBLIC_HEADERS WinBackend.h)
     list(APPEND CDOC_SOURCES WinBackend.cpp)
 endif()
@@ -86,6 +87,7 @@ set_property(TARGET cdoc_priv_obj PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(cdoc_priv_obj PUBLIC
     ${LIBXML2_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
+    ${ZLIB_INCLUDE_DIR}
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -96,10 +98,6 @@ target_link_libraries(cdoc_priv_obj
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
     OpenSSL::SSL
 )
-
-if (WIN32)
-    target_link_libraries(cdoc_priv_obj Bcrypt.lib)
-endif()
 
 add_library(cdoc_priv STATIC
     $<TARGET_OBJECTS:cdoc_priv_obj>

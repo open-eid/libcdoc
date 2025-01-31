@@ -1,7 +1,5 @@
 #define __CDOC2_READER_CPP__
 
-#define NOMINMAX
-
 #include <fstream>
 
 #define OPENSSL_SUPPRESS_DEPRECATED

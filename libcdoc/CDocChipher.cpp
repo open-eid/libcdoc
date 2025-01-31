@@ -9,18 +9,12 @@
 #include "ILogger.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
-#ifdef _WIN32
-#include "WinBackend.h"
-#endif
 
 #if defined(_WIN32) || defined(_WIN64)
 
 #include <Windows.h>
 #include <bcrypt.h>
-
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
-#endif
+#include "WinBackend.h"
 
 #endif
 
@@ -461,8 +455,8 @@ void CDocChipher::Locks(const char* file) const
 static uint32_t arc4random_uniform(uint32_t upperbound)
 {
     uint8_t result = 0;
-    NTSTATUS ntStatus = BCryptGenRandom(nullptr, &result, static_cast<uint32_t>(sizeof(result)), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    if (ntStatus == STATUS_SUCCESS) {
+    long ntStatus = BCryptGenRandom(nullptr, &result, static_cast<unsigned long>(sizeof(result)), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (BCRYPT_SUCCESS(ntStatus)) {
         return result % upperbound;
     }
     else {

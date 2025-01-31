@@ -10,14 +10,6 @@
 #include "fmt/format.h"
 #define FORMAT fmt::format
 #else
-#define FORMAT std::format
-#endif
-
-#ifdef __GNUC__
-#define FMT_HEADER_ONLY
-#include "fmt/format.h"
-#define FORMAT fmt::format
-#else
 #include <format>
 #define FORMAT std::format
 #endif

@@ -238,6 +238,7 @@ libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vec
 int
 libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
+    /*
 	if (salt.empty()) return INVALID_PARAMS;
 	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
 
@@ -269,7 +270,8 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
         std::cerr << "Extract: " << toHex(kek_pm) << std::endl;
 #endif
 	}
-
+    */
+    
     return OK;
 }
 
