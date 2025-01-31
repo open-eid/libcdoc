@@ -103,11 +103,11 @@ libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
 int
 libcdoc::CDocReader::getCDocFileVersion(DataSource *src)
 {
-    if (src->seek(0) != libcdoc::OK) return -1;
+    if (src->seek(0) != libcdoc::OK) return libcdoc::IO_ERROR;
     if (CDoc2Reader::isCDoc2File(src)) return 2;
     src->seek(0);
     if (CDoc1Reader::isCDoc1File(src)) return 1;
-    return -1;
+    return libcdoc::NOT_SUPPORTED;
 }
 
 int

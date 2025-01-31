@@ -247,6 +247,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 	d->_xml->writeEndElement(Private::DENC); // EncryptedData
 	d->_xml->close();
 	d->_xml.reset();
+    result = libcdoc::OK;
     if (owned) result = dst->close();
     return result;
 }

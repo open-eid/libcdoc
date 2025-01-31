@@ -1,4 +1,5 @@
 #include "DDocReader.h"
+#include "CDoc.h"
 
 #include "XmlReader.h"
 
@@ -12,11 +13,14 @@ DDOCReader::parse(libcdoc::DataSource *src, libcdoc::MultiDataConsumer *dst)
 		if(!reader.isElement("DataFile")) continue;
 		std::string name = reader.attribute("Filename");
 		std::vector<uint8_t> content = reader.readBase64();
-		dst->open(name, content.size());
-		dst->write(content.data(), content.size());
-		dst->close();
-	}
-	return !dst->isError();
+        int result = dst->open(name, content.size());
+        if (result != libcdoc::OK) return result;
+        int64_t n_written = dst->write(content.data(), content.size());
+        if (n_written < 0) return (int) n_written;
+        result = dst->close();
+        if (result != libcdoc::OK) return result;
+    }
+    return (dst->isError()) ? libcdoc::IO_ERROR : libcdoc::OK;
 }
 
 struct FileListConsumer : public libcdoc::MultiDataConsumer {

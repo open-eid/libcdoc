@@ -35,7 +35,10 @@ int
 XMLReader::Private::xmlInputReadCallback (void *context, char *buffer, int len)
 {
 	XMLReader *reader = reinterpret_cast<XMLReader *>(context);
-	return reader->d->_src->read((uint8_t *) buffer, len);
+    int64_t n_read = reader->d->_src->read((uint8_t *) buffer, len);
+    //std::string str(buffer, len);
+    //std::cerr << "XML read (" << n_read << "):" << str << std::endl;
+    return n_read;
 }
 
 int

@@ -70,7 +70,7 @@ CDoc1Reader::getLocks()
 int
 CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
 {
-	if (!SUPPORTED_METHODS.contains(d->method)) return false;
+    if (!SUPPORTED_METHODS.contains(d->method)) return libcdoc::NOT_SUPPORTED;
 	libcdoc::Certificate cc(cert);
     for (size_t i = 0; i < d->locks.size(); i++) {
         const libcdoc::Lock *ll = d->locks.at(i);
@@ -81,12 +81,14 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
 			if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
 			}
-		} else {
+        } else if(cc.getAlgorithm() == libcdoc::Certificate::ECC) {
 			std::vector<uint8_t> eph_key = ll->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
 			if(!eph_key.empty() && SUPPORTED_KWAES.contains(ll->getString(libcdoc::Lock::Params::METHOD))) {
                 return i;
 			}
-		}
+        } else {
+            return libcdoc::NOT_SUPPORTED;
+        }
 	}
     return libcdoc::NOT_FOUND;
 }
@@ -100,7 +102,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		setLastError("Not a CDoc1 key");
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
-	setLastError({});
+    setLastError({});
 	std::vector<uint8_t> decrypted_key;
     if (lock->isRSA()) {
         int result = crypto->decryptRSA(decrypted_key, lock->encrypted_fmk, false, lock_idx);
@@ -160,8 +162,25 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
     result = finishDecryption();
     return result;
 #else
+    if (fmk.empty()) {
+        setLastError("FMK is missing");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+    if (fmk.size() != 16 && fmk.size() != 24 && fmk.size() != 32) {
+        setLastError("FMK must be AES key with size 128, 192,2 56 bits");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+    if (!d->files.empty() || (d->f_pos != -1)) {
+        setLastError("Container is already parsed");
+        return libcdoc::WORKFLOW_ERROR;
+    }
     std::vector<uint8_t> data = this->decryptData(fmk);
-	std::string mime = d->mime;
+    if(data.empty()) {
+        setLastError("Failed to decrypt data, verify if FMK is correct");
+        return libcdoc::CRYPTO_ERROR;
+    }
+    setLastError({});
+    std::string mime = d->mime;
 	if (d->mime == MIME_ZLIB) {
 		libcdoc::VectorSource vsrc(data);
 		libcdoc::ZSource zsrc(&vsrc);
@@ -178,13 +197,11 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 			setLastError("Failed to parse DDOC file");
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
-		setLastError({});
         return libcdoc::OK;
 	}
 	dst->open(d->properties["Filename"], data.size());
 	dst->writeAll(vsrc);
 	dst->close();
-	setLastError({});
     return libcdoc::OK;
 #endif
 }
