@@ -93,7 +93,9 @@ struct CDOC_EXPORT Recipient {
 
     static std::map<std::string, std::string> parseLabel(const std::string& label);
 
+#ifndef __swift__
     bool operator== (const Recipient& other) const = default;
+#endif
 protected:
 	Recipient(Type _type) : type(_type) {};
 private:

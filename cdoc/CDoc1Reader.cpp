@@ -225,11 +225,24 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 int
 CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
+    if (fmk.empty()) {
+        setLastError("FMK is missing");
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    if (fmk.size() != 16 && fmk.size() != 24 && fmk.size() != 32) {
+        setLastError("FMK must be AES key with size 128, 192,2 56 bits");
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if (!d->files.empty() || (d->f_pos != -1)) {
         setLastError("Container is already parsed");
         return libcdoc::WORKFLOW_ERROR;
     }
     std::vector<uint8_t> data = this->decryptData(fmk);
+    if(data.empty()) {
+        setLastError("Failed to decrypt data, verify if FMK is correct");
+        return libcdoc::WORKFLOW_ERROR;
+    }
+
     std::string mime = d->mime;
     if (d->mime == MIME_ZLIB) {
         libcdoc::VectorSource vsrc(data);

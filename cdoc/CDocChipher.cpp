@@ -466,7 +466,7 @@ void CDocChipher::Locks(const char* file) const
     }
 }
 
-#if defined(_WIN32) || defined(_WIN64) || defined(__GNUC__)
+#if defined(_WIN32) || defined(_WIN64) || !defined(__APPLE__)
 uint32_t
 arc4random_uniform(uint32_t upperbound)
 {

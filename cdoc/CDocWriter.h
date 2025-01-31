@@ -27,9 +27,16 @@
 #include <cdoc/Exports.h>
 #include <cdoc/NetworkBackend.h>
 
+#if __has_include(<swift/bridging>)
+#include <swift/bridging>
+#endif
+#ifndef SWIFT_NONCOPYABLE
+#define SWIFT_NONCOPYABLE
+#endif
+
 namespace libcdoc {
 
-class CDOC_EXPORT CDocWriter {
+class CDOC_EXPORT SWIFT_NONCOPYABLE CDocWriter {
 public:
 	virtual ~CDocWriter();
 
@@ -105,6 +112,10 @@ public:
 	static CDocWriter *createWriter(int version, const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 protected:
 	explicit CDocWriter(int _version, DataConsumer *dst, bool take_ownership);
+	CDocWriter (const CDocWriter&) = delete;
+	CDocWriter (CDocWriter&&) noexcept;
+	CDocWriter& operator= (const CDocWriter&) = delete;
+	CDocWriter& operator= (CDocWriter&&) noexcept;
 
 	void setLastError(const std::string& message) { last_error = message; }
 
