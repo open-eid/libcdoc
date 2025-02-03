@@ -106,7 +106,7 @@ set_target_properties(cdoc_static PROPERTIES
 target_link_libraries(cdoc_static cdoc_priv cdoc_obj)
 
 add_executable(cdoc-tool cdoc-tool.cpp)
-target_link_libraries(cdoc-tool cdoc cdoc_priv)
+target_link_libraries(cdoc-tool $<IF:$<PLATFORM_ID:Darwin>,cdoc_static,cdoc> cdoc_priv)
 
 foreach(SCHEMA ${SCHEMAS})
     get_filename_component(stem ${SCHEMA} NAME_WE)
@@ -144,7 +144,8 @@ if(SWIG_FOUND)
             INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
             SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
         )
-        install(TARGETS cdoc_java DESTINATION $<IF:$<PLATFORM_ID:Darwin>,/Library/Java/Extensions,${CMAKE_INSTALL_LIBDIR}>)
+        #install(TARGETS cdoc_java DESTINATION $<IF:$<PLATFORM_ID:Darwin>,/Library/Java/Extensions,${CMAKE_INSTALL_LIBDIR}>) # FIXME: build mac packages
+        install(TARGETS cdoc_java DESTINATION ${CMAKE_INSTALL_LIBDIR})
         install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/java/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ee/ria/cdoc FILES_MATCHING PATTERN "*.java")
         if(WIN32)
             install(FILES $<TARGET_PDB_FILE:cdoc_java> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
