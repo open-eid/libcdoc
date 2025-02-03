@@ -1,5 +1,6 @@
-usr/include/libcdoc/
-usr/include/ee/ria/libcdoc/*
-usr/include/cdoc_csharp/*
+usr/include/cdoc
+usr/include/ee/ria/cdoc
+usr/include/cdoc_csharp
 usr/lib/*/libcdoc.so
 usr/lib/*/cmake
+usr/share/doc/libcdoc

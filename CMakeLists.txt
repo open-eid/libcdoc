@@ -52,17 +52,17 @@ endif()
 
 find_package(Doxygen)
 if( DOXYGEN_FOUND )
-    configure_file(${CMAKE_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY )
+    configure_file(${CMAKE_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY)
     add_custom_target(docs ALL
         Doxygen::doxygen Doxyfile
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Generating API documentation with Doxygen" VERBATIM
     )
-    install(DIRECTORY ${CMAKE_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR} )
-    install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR} )
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+    install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
 endif()
 
-add_subdirectory(libcdoc)
+add_subdirectory(cdoc)
 
 find_package(Boost COMPONENTS unit_test_framework QUIET)
 if (TARGET Boost::unit_test_framework)

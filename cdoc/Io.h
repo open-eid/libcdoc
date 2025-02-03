@@ -1,9 +1,9 @@
 #ifndef __IO_H__
 #define __IO_H__
 
-#include <libcdoc/Exports.h>
+#include <cdoc/Exports.h>
 
-#include <libcdoc/CDoc.h>
+#include <cdoc/CDoc.h>
 
 #include <cstdint>
 #include <filesystem>

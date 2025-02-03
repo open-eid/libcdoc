@@ -83,7 +83,7 @@ set_target_properties(cdoc PROPERTIES
     PUBLIC_HEADER "${PUBLIC_HEADERS}"
     FRAMEWORK_VERSION 1
     FRAMEWORK "${FRAMEWORK}"
-    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.libcdoc"
+    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.cdoc"
     MACOSX_RPATH YES
     COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
@@ -99,7 +99,7 @@ set_target_properties(cdoc_static PROPERTIES
     PUBLIC_HEADER "${PUBLIC_HEADERS}"
     FRAMEWORK_VERSION 1
     FRAMEWORK "${FRAMEWORK}"
-    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.libcdoc"
+    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.cdoc"
     MACOSX_RPATH YES
     COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
@@ -134,7 +134,7 @@ if(SWIG_FOUND)
     if(JAVA_INCLUDE_PATH)
         file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/CDocException.java DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/java)
         file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/IStreamSource.java DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/java)
-        set(CMAKE_SWIG_FLAGS -package ee.ria.libcdoc)
+        set(CMAKE_SWIG_FLAGS -package ee.ria.cdoc)
         set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/java)
         swig_add_library(cdoc_java LANGUAGE java SOURCES ../libcdoc.i)
         target_include_directories(cdoc_java PRIVATE ${JAVA_INCLUDE_PATH} $<$<BOOL:${JAVA_INCLUDE_PATH2}>:${JAVA_INCLUDE_PATH2}>)
@@ -145,7 +145,7 @@ if(SWIG_FOUND)
             SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
         )
         install(TARGETS cdoc_java DESTINATION $<IF:$<PLATFORM_ID:Darwin>,/Library/Java/Extensions,${CMAKE_INSTALL_LIBDIR}>)
-        install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/java/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ee/ria/libcdoc FILES_MATCHING PATTERN "*.java")
+        install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/java/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ee/ria/cdoc FILES_MATCHING PATTERN "*.java")
         if(WIN32)
             install(FILES $<TARGET_PDB_FILE:cdoc_java> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
         endif()
@@ -192,12 +192,12 @@ ${MODULE_LIST}
 endif()
 
 install(TARGETS cdoc
-    EXPORT libcdocExport
+    EXPORT cdocExport
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     RESOURCE DESTINATION ${CDOC_CONFIG_DIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libcdoc
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdoc
     FRAMEWORK DESTINATION ${FRAMEWORK_DESTINATION}
 )
 
@@ -207,19 +207,19 @@ install(TARGETS cdoc_static
 )
 
 if(NOT ANDROID)
-    install(EXPORT libcdocExport
-        FILE libcdoc-config.cmake
+    install(EXPORT cdocExport
+        FILE cdoc-config.cmake
         NAMESPACE cdoc::
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libcdoc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cdoc
     )
     include(CMakePackageConfigHelpers)
     write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/libcdoc-config-version.cmake"
+        ${CMAKE_CURRENT_BINARY_DIR}/cdoc-config-version.cmake
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY AnyNewerVersion
     )
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libcdoc-config-version.cmake"
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libcdoc
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc-config-version.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cdoc
     )
 endif()
 

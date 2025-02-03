@@ -62,7 +62,7 @@
     $action;
     if (result < 0) {
         std::string err_str = arg1->getLastErrorStr();
-        jclass clazz = jenv->FindClass("ee/ria/libcdoc/CDocException");
+        jclass clazz = jenv->FindClass("ee/ria/cdoc/CDocException");
         jenv->ThrowNew(clazz, err_str.c_str());
         return $null;
     }
@@ -188,8 +188,8 @@
 %}
 %typemap(in) std::vector<uint8_t>& dst %{
     // DataBuffer in
-    jclass $1_class = jenv->FindClass("ee/ria/libcdoc/DataBuffer");
-    jmethodID $1_mid = jenv->GetStaticMethodID($1_class, "getCPtr", "(Lee/ria/libcdoc/DataBuffer;)J");
+    jclass $1_class = jenv->FindClass("ee/ria/cdoc/DataBuffer");
+    jmethodID $1_mid = jenv->GetStaticMethodID($1_class, "getCPtr", "(Lee/ria/cdoc/DataBuffer;)J");
     jlong $1_cptr = jenv->CallStaticLongMethod($1_class, $1_mid, $input);
     libcdoc::DataBuffer *$1_db = (libcdoc::DataBuffer *) $1_cptr;
     $1 = $1_db->data;
@@ -199,7 +199,7 @@
 %typemap(jni) std::vector<uint8_t>& dst "jobject"
 %typemap(javaout) std::vector<uint8_t>& dst "$jnicall"
 %typemap(javain) std::vector<uint8_t>& dst "$javainput"
-%typemap(directorin,descriptor="Lee/ria/libcdoc/DataBuffer;") std::vector<uint8_t>& dst %{
+%typemap(directorin,descriptor="Lee/ria/cdoc/DataBuffer;") std::vector<uint8_t>& dst %{
     // DataBuffer directorin
 
     // Use scope guard to reset DataBuffer after Java call
@@ -209,7 +209,7 @@
     };
     std::unique_ptr<libcdoc::DataBuffer, decltype(del)> $1_db(new libcdoc::DataBuffer(&$1), del);
 
-    jclass buf_class = jenv->FindClass("ee/ria/libcdoc/DataBuffer");
+    jclass buf_class = jenv->FindClass("ee/ria/cdoc/DataBuffer");
     jmethodID mid = jenv->GetMethodID(buf_class, "<init>", "(JZ)V");
     jobject obj = jenv->NewObject(buf_class, mid, (jlong) $1_db.get(), JNI_FALSE);
     $input = obj;
@@ -278,8 +278,8 @@
 %typemap(in) std::vector<std::vector<uint8_t>>& %{
     // CertificateList in
     std::cerr << "%typemap(in) std::vector<std::vector<uint8_t>>&" << std::endl;
-    jclass $1_class = jenv->FindClass("ee/ria/libcdoc/CertificateList");
-    jmethodID $1_mid = jenv->GetStaticMethodID($1_class, "getCPtr", "(Lee/ria/libcdoc/CertificateList;)J");
+    jclass $1_class = jenv->FindClass("ee/ria/cdoc/CertificateList");
+    jmethodID $1_mid = jenv->GetStaticMethodID($1_class, "getCPtr", "(Lee/ria/cdoc/CertificateList;)J");
     jlong $1_cptr = jenv->CallStaticLongMethod($1_class, $1_mid, $input);
     libcdoc::CertificateList *$1_db = (libcdoc::CertificateList *) $1_cptr;
     $1 = $1_db->data;
@@ -292,7 +292,7 @@
 %typemap(jni) std::vector<std::vector<uint8_t>>& "jobject"
 %typemap(javain) std::vector<std::vector<uint8_t>>& "$javainput"
 
-%typemap(directorin,descriptor="Lee/ria/libcdoc/CertificateList;") std::vector<std::vector<uint8_t>>& %{
+%typemap(directorin,descriptor="Lee/ria/cdoc/CertificateList;") std::vector<std::vector<uint8_t>>& %{
     // CertificateList directorin
 
     // Use scope guard to reset CertificateList after Java call
@@ -302,7 +302,7 @@
     };
     std::unique_ptr<libcdoc::CertificateList, decltype(del)> $1_db(new libcdoc::CertificateList(&$1), del);
 
-    jclass buf_class = jenv->FindClass("ee/ria/libcdoc/CertificateList");
+    jclass buf_class = jenv->FindClass("ee/ria/cdoc/CertificateList");
     jmethodID mid = jenv->GetMethodID(buf_class, "<init>", "(JZ)V");
     jobject obj = jenv->NewObject(buf_class, mid, (jlong) $1_db.get(), JNI_FALSE);
     $input = obj;
