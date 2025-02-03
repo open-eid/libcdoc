@@ -1043,7 +1043,8 @@ EXCLUDE_PATTERNS       = */crypto/Connect.* \
                          */*jsonxx.* \
                          */*SiVa*.* \
                          */PDF.* \
-                         */libdigidocpp.i.h
+                         */libcdoc.i.h \
+                         */cdoc/fmt/*
 
 # The EXCLUDE_SYMBOLS tag can be used to specify one or more symbol names
 # (namespaces, classes, functions, etc.) that should be excluded from the

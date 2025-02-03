@@ -1,6 +1,7 @@
 #define __PKCS11_BACKEND_CPP__
 
 #include "PKCS11Backend.h"
+#include "Certificate.h"
 #include "Crypto.h"
 #include "Utils.h"
 
@@ -34,9 +35,10 @@ public:
     int login(int slot, const std::vector<uint8_t>& pin);
 	int logout();
 	std::vector<CK_BYTE> attribute(CK_SESSION_HANDLE session, CK_OBJECT_HANDLE obj, CK_ATTRIBUTE_TYPE type) const;
-	std::vector<CK_OBJECT_HANDLE> findObject(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id = {}, const std::string& label = {}) const;
-	std::vector<libcdoc::PKCS11Backend::Handle> findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label);
-	//int useKey(CK_OBJECT_CLASS klass, int idx, const std::vector<uint8_t>& id, const std::string& label);
+
+    std::vector<CK_OBJECT_HANDLE> findObjects(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate) const;
+    std::vector<libcdoc::PKCS11Backend::Handle> findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate = nullptr);
+
 
 #ifdef _WIN32
 	bool load(const std::string &driver)
@@ -136,7 +138,7 @@ libcdoc::PKCS11Backend::Private::attribute(CK_SESSION_HANDLE session, CK_OBJECT_
 }
 
 std::vector<CK_OBJECT_HANDLE>
-libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label) const
+libcdoc::PKCS11Backend::Private::findObjects(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate) const
 {
 	CK_BBOOL _true = CK_TRUE;
 	std::vector<CK_ATTRIBUTE> attrs {
@@ -164,11 +166,18 @@ libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT
 		result.resize(count);
 	}
     f->C_FindObjectsFinal(session);
+    if (validate) {
+        std::vector<CK_OBJECT_HANDLE> tmp;
+        for (auto obj : result) {
+            if (validate(session, obj)) tmp.push_back(obj);
+        }
+        result = std::move(tmp);
+    }
 	return result;
 }
 
 std::vector<libcdoc::PKCS11Backend::Handle>
-libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate)
 {
 	// Load all slots.
 	CK_ULONG size = 0;
@@ -182,19 +191,19 @@ libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std
 	for(const CK_SLOT_ID &slot: slots) {
 		if(session) f->C_CloseSession(session);
 		if(f->C_OpenSession(slot, CKF_SERIAL_SESSION, nullptr, nullptr, &session) != CKR_OK) continue;
-		for(CK_OBJECT_HANDLE obj: findObject(session, klass)) {
-			std::vector<CK_BYTE> v = attribute(session, obj, CKA_ID);
-			if (!id.empty()) {
-				std::vector<uint8_t> uv(v.cbegin(), v.cend());
-				if (uv != id) continue;
-			}
-			if (!label.empty()) {
-				std::vector<CK_BYTE> v = attribute(session, obj, CKA_LABEL);
-				if (label.compare(0, label.size(), (const char *) v.data(), v.size())) continue;
-			}
-			// Id and label match
-			if (v.empty()) continue;
-			objs.push_back({(uint32_t) slot, std::vector<uint8_t>(v.cbegin(), v.cend())});
+        for(CK_OBJECT_HANDLE obj: findObjects(session, klass, id, label, validate)) {
+            std::vector<CK_BYTE> v = attribute(session, obj, CKA_ID);
+            if (!id.empty()) {
+                std::vector<uint8_t> uv(v.cbegin(), v.cend());
+                if (uv != id) continue;
+            }
+            if (!label.empty()) {
+                std::vector<CK_BYTE> v = attribute(session, obj, CKA_LABEL);
+                if (label.compare(0, label.size(), (const char *) v.data(), v.size())) continue;
+            }
+            // Id and label match
+            if (v.empty()) continue;
+            objs.push_back({(uint32_t) slot, std::vector<uint8_t>(v.cbegin(), v.cend())});
 		}
 	}
 	if(session) f->C_CloseSession(session);
@@ -255,6 +264,19 @@ libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::stri
 	return d->findAllObjects(CKO_SECRET_KEY, {}, label);
 }
 
+std::vector<libcdoc::PKCS11Backend::Handle>
+libcdoc::PKCS11Backend::findCertificates(const std::vector<uint8_t>& public_key)
+{
+    if(!d) return {};
+    return d->findAllObjects(CKO_CERTIFICATE, {}, {}, [&](CK_SESSION_HANDLE session, CK_OBJECT_HANDLE object){
+        std::vector<uint8_t> val = d->attribute(session, object, CKA_VALUE);
+        if (val.empty()) return false;
+        Certificate cert(val);
+        std::vector<uint8_t> cert_key = cert.getPublicKey();
+        return cert_key == public_key;
+    });
+}
+
 int
 libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
@@ -263,9 +285,9 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_SECRET_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_SECRET_KEY, id, label, nullptr);
     if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey id=" << toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.size() != 1) return CRYPTO_ERROR;
     d->key = handles[0];
     if (P11_DEBUG) std::cerr << "PKCS11: useSecretKey Using key " << d->key << std::endl;
     return OK;
@@ -279,9 +301,9 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PRIVATE_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PRIVATE_KEY, id, label, nullptr);
     if (P11_DEBUG) std::cerr << "PKCS11: usePrivateKey id=" << toHex(id) << " label=" << label << " found " << handles.size() << " keys" << std::endl;
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.size() != 1) return CRYPTO_ERROR;
     d->key = handles[0];
     if (P11_DEBUG) std::cerr << "PKCS11: usePrivateKey Using key " << d->key << std::endl;
     return OK;
@@ -295,7 +317,7 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_CERTIFICATE, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_CERTIFICATE, id, label, nullptr);
     if (P11_DEBUG) std::cerr << "PKCS11: getCertificate id=" << toHex(id) << " label=" << label << " found " << handles.size() << " objects" << std::endl;
     if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
     CK_OBJECT_HANDLE handle = handles[0];
@@ -316,7 +338,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PUBLIC_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PUBLIC_KEY, id, label, nullptr);
     if (P11_DEBUG) std::cerr << "PKCS11: getPublicKey id=" << toHex(id) << " label=" << label << " found " << handles.size() << " objects" << std::endl;
 	if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
 	CK_OBJECT_HANDLE handle = handles[0];
