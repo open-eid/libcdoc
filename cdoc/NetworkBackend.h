@@ -49,17 +49,20 @@ struct CDOC_EXPORT NetworkBackend {
      *
      * The default implementation uses internal http client and peer TLS certificate list.
      * @param dst the transaction id and expiry date of the capsule on server
-     * @param recipient
-	 * @param key_material
+     * @param url server url
+     * @param rcpt_key recipient's public key
+     * @param key_material encrypted KEK or ECDH public Key used to derive shared secret
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
     virtual int sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type);
 	/**
 	 * @brief fetch key material from keyserver
+     *
+     * The default implementation uses internal http client, peer TLS list and client TLS certificate
      * @param dst a destination container for key material
-     * @param recipient_key
-	 * @param transaction_id
+     * @param url server url
+     * @param transaction_id transaction id of capsule
 	 * @return error code or OK
 	 */
     virtual int fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);

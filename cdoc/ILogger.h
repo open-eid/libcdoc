@@ -84,7 +84,7 @@ public:
 
     /**
      * @brief Sets minimum log level for the logger.
-     * @param minLogLevel minimum level to log.
+     * @param level minimum level to log.
      *
      * Sets minimum level of log messages to log. For example, if the minimum log level is set
      * to LogLevelInfo (default), then LogLevelFatal, LogLevelError, LogLevelWarning and LogLevelInfo

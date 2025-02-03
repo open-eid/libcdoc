@@ -30,7 +30,7 @@ const std::set<std::string_view> SUPPORTED_KWAES = {
 	libcdoc::Crypto::KWAES128_MTH, libcdoc::Crypto::KWAES192_MTH, libcdoc::Crypto::KWAES256_MTH
 };
 
-/**
+/*
  * @class CDoc1Reader
  * @brief CDoc1Reader is used for decrypt data.
  */
@@ -277,7 +277,7 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
     return d->src->read(dst, size);
 }
 
-/**
+/*
  * CDoc1Reader constructor.
  * @param file File to open reading
  */
@@ -387,7 +387,7 @@ CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
     return true;
 }
 
-/**
+/*
  * Returns decrypted data
  * @param key Transport key to used for decrypt data
  */

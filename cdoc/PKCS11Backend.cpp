@@ -201,7 +201,7 @@ libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std
 	return std::move(objs);
 }
 
-/**
+/*
  * Loads PKCS#11 token.
  *
  * @param path full path to the PKCS#11 driver (e.g. /usr/lib/opensc-pkcs11.so)

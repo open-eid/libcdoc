@@ -68,7 +68,7 @@ struct CDOC_EXPORT CryptoBackend {
     /**
 	 * @brief Derive shared secret
 	 *
-	 * Derive a shared secret from private key of given lock label and public key using ECDH1 algorithm.
+     * Derive a shared secret from private key of given lock and public key using ECDH1 algorithm.
 	 * @param dst the container for shared secret
 	 * @param public_key ECDH public key used to derive shared secret
      * @param idx lock index (0-based) in container
@@ -79,8 +79,8 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @brief decryptRSA
 	 * @param dst the destination container for decrypted data
 	 * @param data encrypted data
-	 * @param oaep
-	 * @param label Label of the lock
+     * @param oaep use OAEP padding
+     * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
     virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
@@ -107,15 +107,15 @@ struct CDOC_EXPORT CryptoBackend {
 	 * Calculates KEK (Key Encryption Key) pre-master from an ECC public key.
 	 * The default implementation calls deriveECDH1 and performs local HMAC extract
 	 * @param dst the container for derived key
-	 * @param public_key
-	 * @param salt
+     * @param public_key ECDH public Key used to derive shared secret
+     * @param salt salt for key derivation
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
     virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx);
 	/**
 	 * @brief Get secret value (either password or symmetric key) for a lock.
-	 * @param secret the destination container for secret
+     * @param dst the destination container for secret
      * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
@@ -125,7 +125,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 *
 	 * Fetches key material for a symmetric key (either password or key-based).
 	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based.
-	 * @param key_material the destination container for key material
+     * @param dst the destination container for key material
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
      * @param idx lock or recipient index (0-based) in container
@@ -147,6 +147,18 @@ struct CDOC_EXPORT CryptoBackend {
 	 */
     virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                             int32_t kdf_iter, unsigned int idx);
+
+    /**
+     * @brief sign Sign message with given algorithm
+     * @param dst the destination container for signed message
+     * @param algorithm hashing algorithm
+     * @param digest a message to sign
+     * @param idx lock or recipient index (0-based) in container
+     * @return error code or OK
+     */
+    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) {
+        return NOT_IMPLEMENTED;
+    }
 
     virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
 
