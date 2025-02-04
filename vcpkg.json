@@ -1,8 +1,24 @@
 {
   "dependencies": [
-    "zlib",
-    "libxml2",
-    "flatbuffers",
-    "openssl"
-  ]
+    {
+      "name": "zlib",
+      "platform": "!osx & !ios"
+    },
+    {
+      "name": "libxml2",
+      "default-features": false,
+      "platform": "!osx & !ios"
+    },
+    {
+      "name": "flatbuffers",
+      "platform": "!osx & !ios"
+    },
+    {
+      "name": "openssl",
+      "platform": "!osx"
+    }
+  ],
+  "features": {
+    "tests": { "description": "Build tests", "dependencies": ["boost-test"] }
+  }
 }

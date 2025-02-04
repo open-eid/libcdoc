@@ -3,7 +3,7 @@
 
 #include <string>
 
-#include <libcdoc/Exports.h>
+#include <cdoc/Exports.h>
 
 #ifdef __GNUC__
 #define FMT_HEADER_ONLY

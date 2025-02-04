@@ -241,7 +241,7 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
     /*
 	if (salt.empty()) return INVALID_PARAMS;
 	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
-
+#if 0
 	if (kdf_iter > 0) {
 		std::vector<uint8_t> secret;
         int result = getSecret(secret, idx);
@@ -273,6 +273,8 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
     */
     
     return OK;
+#endif
+    return NOT_IMPLEMENTED;
 }
 
 int

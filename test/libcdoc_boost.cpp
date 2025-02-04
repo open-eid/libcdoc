@@ -8,6 +8,10 @@
 #include <Recipient.h>
 #include <Utils.h>
 
+#ifndef DATA_DIR
+#define DATA_DIR "."
+#endif
+
 namespace btools = boost::test_tools;
 namespace utf = boost::unit_test;
 namespace fs = std::filesystem;
@@ -50,7 +54,7 @@ public:
         // Get path to test data, provided via argument to the unit tests application
         if (utf::framework::master_test_suite().argc <= 1)
         {
-            testDataPath = ".";
+            testDataPath = DATA_DIR;
         }
         else
         {

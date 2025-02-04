@@ -97,8 +97,9 @@ Crypto::Cipher::blockSize() const
 std::vector<uint8_t> Crypto::AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt)
 {
 	AES_KEY aes;
-    if (encrypt && SSL_FAILED(AES_set_encrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_encrypt_key") ||
-        !encrypt && SSL_FAILED(AES_set_decrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_decrypt_key"))
+    // fixme: Fix SSL_FAILED, current solution is idiotic
+    if (encrypt && !SSL_FAILED(AES_set_encrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_encrypt_key") ||
+        !encrypt && !SSL_FAILED(AES_set_decrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_decrypt_key"))
         return {};
 
 	std::vector<uint8_t> result(data.size() + 8);

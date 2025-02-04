@@ -12,6 +12,6 @@ base {
 }
 jar {
     manifest {
-        attributes 'Main-Class': 'ee.ria.libcdoc.CDocTool'
+        attributes 'Main-Class': 'ee.ria.cdoc.CDocTool'
     }
 }

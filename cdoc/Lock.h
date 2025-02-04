@@ -20,7 +20,7 @@
  *
  */
 
-#include <libcdoc/Exports.h>
+#include <cdoc/Exports.h>
 
 #include <cstdint>
 #include <string>

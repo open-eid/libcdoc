@@ -20,8 +20,8 @@
  *
  */
 
-#include "Exports.h"
-#include "CDoc.h"
+#include <cdoc/Exports.h>
+#include <cdoc/CDoc.h>
 
 #include <cstdint>
 #include <string>

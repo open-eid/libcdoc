@@ -20,9 +20,9 @@
  *
  */
 
-#include "CDoc.h"
-#include "Exports.h"
-#include "Lock.h"
+#include <cdoc/CDoc.h>
+#include <cdoc/Exports.h>
+#include <cdoc/Lock.h>
 
 #include <cstdint>
 #include <string>

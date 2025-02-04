@@ -20,12 +20,12 @@
  *
  */
 
-#include "Configuration.h"
-#include "CryptoBackend.h"
-#include "Exports.h"
-#include "Io.h"
-#include "Lock.h"
-#include "NetworkBackend.h"
+#include <cdoc/Configuration.h>
+#include <cdoc/CryptoBackend.h>
+#include <cdoc/Exports.h>
+#include <cdoc/Io.h>
+#include <cdoc/Lock.h>
+#include <cdoc/NetworkBackend.h>
 
 namespace libcdoc {
 
@@ -45,7 +45,7 @@ public:
 	 */
     virtual const std::vector<Lock> getLocks() = 0;
 	/**
-	 * @brief Fetches the lock for certificate
+     * @brief Finds the lock index for given certificate
 	 *
 	 * Returns the first lock that can be opened by the private key of the certificate holder.
 	 * @param cert a x509 certificate (der)
@@ -53,23 +53,62 @@ public:
 	 */
     virtual int getLockForCert(const std::vector<uint8_t>& cert) = 0;
 	/**
-	 * @brief Fetches FMK from provided lock
+     * @brief Fetches FMK from given lock
 	 *
-	 * Fetches FMK (File Master Key) from the provided decryption lock. Depending on the lock type it uses a relevant CryptoBackend and/or
+     * Fetches FMK (File Master Key) from the lock with given index. Depending on the lock type it uses a relevant CryptoBackend and/or
 	 * NetworkBackend method to either fetch secret and derive key or perform external decryption of encrypted KEK.
 	 * @param fmk The FMK of the document
-	 * @param lock a lock (from document lock list)
+     * @param lock_idx the index of a lock (in the document lock list)
 	 * @return error code or OK
 	 */
     virtual int getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) = 0;
 
 	// Pull interface
+    /**
+     * @brief beginDecryption start decrypting document
+     *
+     * Starts decryption of the document. This may involve parsing and decrypting headers, checking
+     * file and key integrity etc.
+     * @param fmk File Master Key of the document
+     * @return error code or OK
+     */
 	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
+    /**
+     * @brief nextFile start decrypting the next file
+     *
+     * Begins decrypting the next file in document. On success the file name and size are filled and the
+     * method returns OK. If there are no more file in the document, END_OF_STREAM is returned.
+     * It is OK to call nextFile before reading the whole data from the previous one.
+     * @param name the name of the next file
+     * @param size the size of the next file
+     * @return error code, OK or END_OF_STREAM
+     */
 	virtual int nextFile(std::string& name, int64_t& size) = 0;
-    int nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
+    /**
+     * @brief readData read data from the current file
+     *
+     * Read bytes from the current file into the buffer. The number of bytes read is always the
+     * requested number, unless end of file is reached or error occurs. Thus the end of file is marked
+     * by returning 0.
+     * @param dst destination byte buffer
+     * @param size the number of bytes to read
+     * @return the number of bytes actually read or error code
+     */
     virtual int64_t readData(uint8_t *dst, size_t size) = 0;
+    /**
+     * @brief finishDecryption finish decryption of file
+     *
+     * Finishes the decryption of file. This may onvolve releasing buffers, closing hardware keys etc.
+     * @return error code or OK
+     */
 	virtual int finishDecryption() = 0;
 
+    /**
+     * @brief nextFile start decrypting the next file
+     * @param info a FileInfo structure
+     * @return error code, OK or END_OF_STREAM
+     */
+    int nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
 
 	// Push interface
 	/**
@@ -90,12 +129,40 @@ public:
 	/**
 	 * @brief try to determine the cdoc file version
 	 * @param path a path to file
-	 * @return version, -1 if not a valid CDoc file
+     * @return version or error code if not a readable CDoc file
 	 */
 	static int getCDocFileVersion(const std::string& path);
+    /**
+     * @brief try to determine the cdoc file version
+     * @param src the container source
+     * @return version or error code if not a readable CDoc file
+     */
     static int getCDocFileVersion(DataSource *src);
 
+    /**
+     * @brief createReader create CDoc document reader
+     *
+     * Creates a new document reader if source is a valid CDoc container (either version 1 or 2).
+     * The network backend may be null if keyservers are not used.
+     * @param src the container source
+     * @param take_ownership if true the source is deleted in reader destructor
+     * @param conf a configuration object
+     * @param crypto a cryptographic backend implementation
+     * @param network a network backend implementation
+     * @return a new CDocReader or null
+     */
     static CDocReader *createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+    /**
+     * @brief createReader create CDoc document reader
+     *
+     * Creates a new document reader if file is a valid CDoc container (either version 1 or 2)
+     * The network backend may be null if keyservers are not used.
+     * @param path the path to file
+     * @param conf a configuration object
+     * @param crypto a cryptographic backend implementation
+     * @param network a network backend implementation
+     * @return a new CDocReader or null
+     */
     static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
 #if LIBCDOC_TESTING
