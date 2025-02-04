@@ -9,12 +9,13 @@ env:
   UBUNTU_DEPS: cmake libxml2-dev zlib1g-dev libssl-dev libflatbuffers-dev
 jobs:
   ubuntu:
-    name: Build on Ubuntu ${{ matrix.container }}
-    runs-on: ubuntu-latest
+    name: Build on Ubuntu ${{ matrix.container }} ${{ matrix.arch }}
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
     container: ubuntu:${{ matrix.container }}
     strategy:
       matrix:
         container: ['22.04', '24.04', '24.10']
+        arch: ['amd64', 'arm64']
     env:
       DEBIAN_FRONTEND: noninteractive
       DEBFULLNAME: github-actions
@@ -31,14 +32,14 @@ jobs:
         dch --distribution $(lsb_release -cs) -v ${VERSIONEX} "Release ${VERSIONEX}."
     - name: Build packages
       run: |
-        JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 dpkg-buildpackage -us -uc
+        JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${{ matrix.arch }} dpkg-buildpackage -us -uc
         mv ../libcdoc*.* .
     - name: Lintian
       run: lintian *.deb;
     - name: Archive artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ubuntu_${{ matrix.container }}
+        name: ubuntu_${{ matrix.container }}_${{ matrix.arch }}
         path: libcdoc*.*
   macos:
     name: Build on macOS for ${{ matrix.target }}
