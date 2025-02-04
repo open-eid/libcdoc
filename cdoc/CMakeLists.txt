@@ -33,8 +33,9 @@ add_library(cdoc_obj OBJECT
 )
 
 if(WIN32)
-    add_compile_definitions(UNICODE _UNICODE WIN32_LEAN_AND_MEAN DNOMINMAX)
-    add_compile_options(/JMC /GR)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN DNOMINMAX)
+    add_compile_options(/GR)
+    add_compile_options($<$<CONFIG:Debug>/JMC>)
 endif()
 
 set_target_properties(cdoc_obj PROPERTIES POSITION_INDEPENDENT_CODE YES)
