@@ -139,7 +139,7 @@ if(SWIG_FOUND)
         swig_add_library(cdoc_java LANGUAGE java SOURCES ../libcdoc.i)
         target_include_directories(cdoc_java PRIVATE ${JAVA_INCLUDE_PATH} $<$<BOOL:${JAVA_INCLUDE_PATH2}>:${JAVA_INCLUDE_PATH2}>)
         target_compile_definitions(cdoc_java PRIVATE TARGET_NAME="$<TARGET_NAME:cdoc_java>")
-        target_link_libraries(cdoc_java cdoc)
+        target_link_libraries(cdoc_java $<IF:$<PLATFORM_ID:Android>,cdoc_static,cdoc>)
         set_target_properties(cdoc_java PROPERTIES
             INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
             SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
@@ -149,6 +149,24 @@ if(SWIG_FOUND)
         install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/java/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ee/ria/cdoc FILES_MATCHING PATTERN "*.java")
         if(WIN32)
             install(FILES $<TARGET_PDB_FILE:cdoc_java> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
+        endif()
+        if(Java_Development_FOUND)
+            file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/glob_java_files.cmake "
+            file(GLOB_RECURSE JAVA_COMPILE_FILELISTS \${JAVA_DIR}/*.java)
+            file(WRITE \${CMAKE_CURRENT_BINARY_DIR}/java_file_list \"\")
+            foreach(JAVA_FILE \${JAVA_COMPILE_FILELISTS})
+                file(APPEND \${CMAKE_CURRENT_BINARY_DIR}/java_file_list \"\${JAVA_FILE}\n\")
+            endforeach()
+            ")
+            add_custom_command(TARGET cdoc_java POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -D JAVA_DIR=${CMAKE_CURRENT_BINARY_DIR}/java -P ${CMAKE_CURRENT_BINARY_DIR}/glob_java_files.cmake
+                BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/java_file_list
+            )
+            include(UseJava)
+            set(CMAKE_JAVA_COMPILE_FLAGS --release 11)
+            add_jar(cdoc_jar SOURCES @${CMAKE_CURRENT_BINARY_DIR}/java_file_list OUTPUT_NAME cdoc)
+            #install_jar(cdoc_jar DESTINATION $<IF:$<PLATFORM_ID:Darwin>,/Library/Java/Extensions,${CMAKE_INSTALL_DATADIR}/libcdoc>)
+            install_jar(cdoc_jar DESTINATION ${CMAKE_INSTALL_DATADIR}/libcdoc)
         endif()
     endif()
     if(Python3_FOUND)
