@@ -52,7 +52,7 @@ endif()
 
 find_package(Doxygen)
 if( DOXYGEN_FOUND )
-    configure_file(${CMAKE_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY)
+    configure_file(${PROJECT_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY)
     add_custom_target(docs ALL
         Doxygen::doxygen Doxyfile
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
