@@ -39,6 +39,9 @@
 %ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
 %ignore libcdoc::CDocReader::decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer);
 
+%ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
+%ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
+
 #ifdef SWIGJAVA
 %include "arrays_java.i"
 %include "enums.swg"
@@ -58,7 +61,7 @@
 }
 %}
 
-%javaexception("ee.ria.libcdoc.CDocException") libcdoc::CDocReader::beginDecryption {
+%javaexception("ee.ria.cdoc.CDocException") libcdoc::CDocReader::beginDecryption {
     $action;
     if (result < 0) {
         std::string err_str = arg1->getLastErrorStr();
