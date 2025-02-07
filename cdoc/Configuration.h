@@ -43,9 +43,9 @@ struct CDOC_EXPORT Configuration {
 	Configuration() = default;
 	virtual ~Configuration() = default;
 
-    virtual std::string getValue(const std::string_view& param) {return {};}
     virtual std::string getValue(const std::string_view& domain, const std::string_view& param) {return {};}
 
+    std::string getValue(const std::string_view& param) {return getValue({}, param);}
     bool getBoolean(const std::string_view& param, bool def_val = false);
     int getInt(const std::string_view& param, int def_val = 0);
 
