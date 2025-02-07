@@ -43,36 +43,35 @@
 %include "arrays_java.i"
 %include "enums.swg"
 %javaconst(1);
+
+
 %apply long long { result_t }
 %apply long long { int64_t }
 %apply long long { uint64_t }
 %apply int { int32_t }
 %apply int { unsigned int }
 
-%typemap(javaout) libcdoc::result_t %{
+%typemap(javaout, throws="CDocException") int64_t %{
 {
-    // javaout(result_t)
     long result = $jnicall;
-    if (result == CDoc.IO_ERROR) throw new IOException(this.getLastErrorStr());
+if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
     return result;
 }
 %}
 
-%javaexception("ee.ria.libcdoc.CDocException") libcdoc::CDocReader::beginDecryption {
-    $action;
-    if (result < 0) {
-        std::string err_str = arg1->getLastErrorStr();
-        jclass clazz = jenv->FindClass("ee/ria/cdoc/CDocException");
-        jenv->ThrowNew(clazz, err_str.c_str());
-        return $null;
-    }
+%typemap(javaout, throws="CDocException") int %{
+{
+    int result = $jnicall;
+if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
+    return result;
 }
+%}
 
 //
 // const uint8_t *src <- byte[]
 //
 
-%typemap(in) (const uint8_t *src) %{
+%typemap(in, throws="CDocException") (const uint8_t *src) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
 %}
 %typemap(javain) const uint8_t *src "$javainput"
@@ -84,7 +83,7 @@
 // const uint8_t *src, size_t len <- byte[]
 //
 
-%typemap(in) (const uint8_t *src, size_t size) %{
+%typemap(in, throws="CDocException") (const uint8_t *src, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
@@ -97,7 +96,7 @@
 // uint8_t *dst, size_t size <- byte[]
 //
 
-%typemap(in) (uint8_t *dst, size_t size) %{
+%typemap(in, throws="CDocException") (uint8_t *dst, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
@@ -530,6 +529,31 @@ import java.util.ArrayList;
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "Lock.h"
+
+#ifdef SWIGJAVA
+%typemap(javaout, throws="CDocException") int64_t %{
+                                                            {
+                                                             long result = $jnicall;
+if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
+return result;
+}
+%}
+
+%typemap(javaout, throws="CDocException") int %{
+                                                    {
+                                                     int result = $jnicall;
+if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
+return result;
+}
+%}
+
+%javaexception("CDocException") libcdoc::CDocCDocReader::getCDocFileVersion {
+    $action
+    // yadayada
+}
+
+#endif
+
 %include "CDocReader.h"
 %include "CDocWriter.h"
 
