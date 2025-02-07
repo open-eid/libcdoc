@@ -17,6 +17,7 @@
 #include <openssl/evp.h>
 #include <openssl/objects.h>
 
+#include <functional>
 #include <iostream>
 
 #ifdef _WIN32
@@ -76,8 +77,6 @@ public:
 	CK_FUNCTION_LIST *f {};
 	CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
 	CK_OBJECT_HANDLE key = CK_INVALID_HANDLE;
-    /* fixme: Put to proper place */
-    bool isPSS = true;
 };
 
 int
@@ -536,7 +535,7 @@ libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm,
         default:
             break;
         }
-        if(d->isPSS) {
+        if(usePSS(idx)) {
             mech = { CKM_RSA_PKCS_PSS, &pssParams, sizeof(CK_RSA_PKCS_PSS_PARAMS) };
             data.clear();
         }

@@ -64,6 +64,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * @return error code or OK
      */
     virtual int connectToKey(int idx, bool priv) = 0;
+    virtual int usePSS(int idx) {return true;}
 
     virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override;
     virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idxl) override;
