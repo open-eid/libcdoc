@@ -276,7 +276,7 @@ libcdoc::PKCS11Backend::findCertificates(const std::vector<uint8_t>& public_key)
     });
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -292,7 +292,7 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
@@ -308,7 +308,7 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
@@ -329,7 +329,7 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -382,7 +382,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -407,7 +407,7 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -445,7 +445,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
 	if (kdf_iter > 0) return libcdoc::NOT_IMPLEMENTED;
@@ -499,7 +499,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx)
 {
     if(!d) return CRYPTO_ERROR;

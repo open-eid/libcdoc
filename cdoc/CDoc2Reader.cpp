@@ -85,7 +85,7 @@ CDoc2Reader::getLocks()
 	return locks;
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 	libcdoc::Certificate cc(cert);
 	std::vector<uint8_t> other_key = cc.getPublicKey();
@@ -98,7 +98,7 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
     return libcdoc::NOT_FOUND;
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
     std::cerr << "CDoc2Reader::getFMK: " << lock_idx << std::endl;
@@ -203,7 +203,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
 {
 	int result = beginDecryption(fmk);
@@ -224,7 +224,7 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 	return finishDecryption();
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
 	if (!priv->_at_nonce) {
@@ -262,21 +262,21 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::nextFile(std::string& name, int64_t& size)
 {
 	if (!priv->tar) return libcdoc::WORKFLOW_ERROR;
 	return priv->tar->next(name, size);
 }
 
-int64_t
+libcdoc::result_t
 CDoc2Reader::readData(uint8_t *dst, size_t size)
 {
 	if (!priv->tar) return libcdoc::WORKFLOW_ERROR;
 	return priv->tar->read(dst, size);
 }
 
-int
+libcdoc::result_t
 CDoc2Reader::finishDecryption()
 {
 	if (!priv->zsrc->isEof()) {

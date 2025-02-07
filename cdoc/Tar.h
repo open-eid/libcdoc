@@ -22,10 +22,10 @@ public:
 	TarConsumer(DataConsumer *dst, bool take_ownership);
 	~TarConsumer();
 
-	int64_t write(const uint8_t *src, size_t size) override final;
-	int close() override final;
+    libcdoc::result_t write(const uint8_t *src, size_t size) override final;
+    libcdoc::result_t close() override final;
 	bool isError() override final;
-	int open(const std::string& name, int64_t size) override final;
+    libcdoc::result_t open(const std::string& name, int64_t size) override final;
 private:
 	DataConsumer *_dst;
 	bool _owned;
@@ -38,11 +38,11 @@ struct TarSource : public MultiDataSource
 public:
 	TarSource(DataSource *src, bool take_ownership);
 	~TarSource();
-	int64_t read(uint8_t *dst, size_t size) override final;
+    libcdoc::result_t read(uint8_t *dst, size_t size) override final;
 	bool isError() override final;
 	bool isEof() override final;
-	size_t getNumComponents() override final { return NOT_IMPLEMENTED; };
-	int next(std::string& name, int64_t& size) override final;
+    libcdoc::result_t getNumComponents() override final { return NOT_IMPLEMENTED; };
+    libcdoc::result_t next(std::string& name, int64_t& size) override final;
 private:
 	DataSource *_src;
 	bool _owned;

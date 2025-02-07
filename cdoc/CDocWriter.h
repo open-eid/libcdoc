@@ -44,13 +44,13 @@ public:
 	 * initial part of the stream
 	 * @return error code or OK
 	 */
-	virtual int beginEncryption() = 0;
+    virtual result_t beginEncryption() = 0;
 	/**
 	 * @brief add recipient to container
 	 * @param rcpt a Recipient structure
 	 * @return error code or OK
 	 */
-	virtual int addRecipient(const Recipient& rcpt) = 0;
+    virtual result_t addRecipient(const Recipient& rcpt) = 0;
 	/**
 	 * @brief start new file
 	 *
@@ -59,7 +59,7 @@ public:
 	 * @param size the size of the file
 	 * @return  error code or OK
 	 */
-	virtual int addFile(const std::string& name, size_t size) = 0;
+    virtual result_t addFile(const std::string& name, size_t size) = 0;
 	/**
 	 * @brief write the data of current file to encrypted stream
 	 *
@@ -68,14 +68,14 @@ public:
 	 * @param size the size of data in buffer
 	 * @return size or error code
 	 */
-	virtual int64_t writeData(const uint8_t *src, size_t size) = 0;
+    virtual result_t writeData(const uint8_t *src, size_t size) = 0;
 	/**
 	 * @brief finalizes the encryption stream
 	 *
 	 * This may involve flushing file, calculating checksum and closing the stream (if owned by CDocWriter)
 	 * @return error code or OK
 	 */
-	virtual int finishEncryption() = 0;
+    virtual result_t finishEncryption() = 0;
 
 	/* Pull interface */
 	/**
@@ -84,7 +84,7 @@ public:
 	 * @param recipients a list of recipients for whom locks will be encoded into file
 	 * @return error code or OK
 	 */
-    virtual int encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) { return NOT_IMPLEMENTED; }
+    virtual result_t encrypt(MultiDataSource& src, const std::vector<libcdoc::Recipient>& recipients) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief get the textual error of the last failed operation
 	 * @return error description, empty string of no errors

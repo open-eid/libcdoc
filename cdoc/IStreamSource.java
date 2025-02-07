@@ -17,7 +17,7 @@ public class IStreamSource extends DataSource {
     }
 
     @Override
-    public int seek(long pos) {
+    public long seek(long pos) {
         System.err.format("IStreamSource: seek(%d)\n", pos);
         try {
             ifs.reset();

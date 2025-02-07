@@ -64,7 +64,7 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @param size the requested amount of random data
 	 * @return  error code or OK
 	 */
-    virtual int random(std::vector<uint8_t>& dst, unsigned int size);
+    virtual result_t random(std::vector<uint8_t>& dst, unsigned int size);
     /**
 	 * @brief Derive shared secret
 	 *
@@ -74,7 +74,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) { return NOT_IMPLEMENTED; }
+    virtual result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief decryptRSA
 	 * @param dst the destination container for decrypted data
@@ -83,7 +83,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
+    virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *
@@ -98,7 +98,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-	virtual int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
+    virtual result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
                                  const std::vector<uint8_t> &party_vinfo, unsigned int idx);
 	/**
@@ -112,14 +112,14 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx);
+    virtual result_t deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx);
 	/**
 	 * @brief Get secret value (either password or symmetric key) for a lock.
      * @param dst the destination container for secret
      * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int getSecret(std::vector<uint8_t>& dst, unsigned int idx) { return NOT_IMPLEMENTED; };
+    virtual result_t getSecret(std::vector<uint8_t>& dst, unsigned int idx) { return NOT_IMPLEMENTED; };
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 *
@@ -131,7 +131,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int getKeyMaterial(std::vector<uint8_t>& dst, const std::vector<uint8_t>& pw_salt,
+    virtual result_t getKeyMaterial(std::vector<uint8_t>& dst, const std::vector<uint8_t>& pw_salt,
                                int32_t kdf_iter, unsigned int idx);
 	/**
 	 * @brief Get CDoc2 KEK pre-master from symmetric key
@@ -145,7 +145,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock or recipient index (0-based) in container
 	 * @return error code or OK
 	 */
-    virtual int extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
+    virtual result_t extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                             int32_t kdf_iter, unsigned int idx);
 
     /**
@@ -156,7 +156,7 @@ struct CDOC_EXPORT CryptoBackend {
      * @param idx lock or recipient index (0-based) in container
      * @return error code or OK
      */
-    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) {
+    virtual result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) {
         return NOT_IMPLEMENTED;
     }
 

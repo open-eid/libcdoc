@@ -51,7 +51,7 @@ public:
 	 * @param cert a x509 certificate (der)
      * @return lock index or error code
 	 */
-    virtual int getLockForCert(const std::vector<uint8_t>& cert) = 0;
+    virtual result_t getLockForCert(const std::vector<uint8_t>& cert) = 0;
 	/**
      * @brief Fetches FMK from given lock
 	 *
@@ -61,7 +61,7 @@ public:
      * @param lock_idx the index of a lock (in the document lock list)
 	 * @return error code or OK
 	 */
-    virtual int getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) = 0;
+    virtual result_t getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx) = 0;
 
 	// Pull interface
     /**
@@ -72,7 +72,7 @@ public:
      * @param fmk File Master Key of the document
      * @return error code or OK
      */
-	virtual int beginDecryption(const std::vector<uint8_t>& fmk) = 0;
+    virtual result_t beginDecryption(const std::vector<uint8_t>& fmk) = 0;
     /**
      * @brief nextFile start decrypting the next file
      *
@@ -83,7 +83,7 @@ public:
      * @param size the size of the next file
      * @return error code, OK or END_OF_STREAM
      */
-	virtual int nextFile(std::string& name, int64_t& size) = 0;
+    virtual result_t nextFile(std::string& name, int64_t& size) = 0;
     /**
      * @brief readData read data from the current file
      *
@@ -94,21 +94,21 @@ public:
      * @param size the number of bytes to read
      * @return the number of bytes actually read or error code
      */
-    virtual int64_t readData(uint8_t *dst, size_t size) = 0;
+    virtual result_t readData(uint8_t *dst, size_t size) = 0;
     /**
      * @brief finishDecryption finish decryption of file
      *
      * Finishes the decryption of file. This may onvolve releasing buffers, closing hardware keys etc.
      * @return error code or OK
      */
-	virtual int finishDecryption() = 0;
+    virtual result_t finishDecryption() = 0;
 
     /**
      * @brief nextFile start decrypting the next file
      * @param info a FileInfo structure
      * @return error code, OK or END_OF_STREAM
      */
-    int nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
+    result_t nextFile(FileInfo& info) { return nextFile(info.name, info.size); }
 
 	// Push interface
 	/**
@@ -118,7 +118,7 @@ public:
 	 * @param consumer a consumer of decrypted files
 	 * @return error code or OK
 	 */
-	virtual int decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer) = 0;
+    virtual result_t decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer) = 0;
 
 	/**
 	 * @brief get the error text of the last failed operation
@@ -131,7 +131,7 @@ public:
 	 * @param path a path to file
      * @return version or error code if not a readable CDoc file
 	 */
-	static int getCDocFileVersion(const std::string& path);
+    static int getCDocFileVersion(const std::string& path);
     /**
      * @brief try to determine the cdoc file version
      * @param src the container source

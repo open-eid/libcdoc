@@ -45,27 +45,21 @@
 %javaconst(1);
 
 
-%apply long long { result_t }
+%apply long long { libcdoc::result_t }
 %apply long long { int64_t }
 %apply long long { uint64_t }
 %apply int { int32_t }
 %apply int { unsigned int }
 
-%typemap(javaout, throws="CDocException") int64_t %{
+%typemap(javaout, throws="CDocException") libcdoc::result_t %{
 {
     long result = $jnicall;
-if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
+    if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
     return result;
 }
 %}
 
-%typemap(javaout, throws="CDocException") int %{
-{
-    int result = $jnicall;
-if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
-    return result;
-}
-%}
+%typemap(javadirectorout, throws="CDocException") libcdoc::result_t "$javacall"
 
 //
 // const uint8_t *src <- byte[]
@@ -371,11 +365,6 @@ if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getL
         std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
         return std::move(p);
     }
-    //libcdoc::Lock getLockForCert(const std::vector<uint8_t>& cert) {
-    //    libcdoc::Lock lock;
-    //    $self->getLockForCert(lock, cert);
-    //    return lock;
-    //}
     std::vector<uint8_t> getFMK(unsigned int lock_idx) {
         std::vector<uint8_t> fmk;
         $self->getFMK(fmk, lock_idx);
@@ -384,14 +373,8 @@ if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getL
 };
 %ignore libcdoc::CDocReader::getLocks();
 
-%typemap(javaimports) libcdoc::CDocReader %{
-    import java.io.IOException;
-    import java.io.OutputStream;
-    import java.util.ArrayList;
-%}
-
 %typemap(javacode) libcdoc::CDocReader %{
-    public void readFile(OutputStream ofs) throws IOException {
+    public void readFile(java.io.OutputStream ofs) throws CDocException, java.io.IOException {
         byte[] buf = new byte[1024];
         long result = readData(buf);
         while(result > 0) {
@@ -531,26 +514,13 @@ import java.util.ArrayList;
 %include "Lock.h"
 
 #ifdef SWIGJAVA
-%typemap(javaout, throws="CDocException") int64_t %{
+%typemap(javaout, throws="CDocException") libcdoc::result_t %{
                                                             {
                                                              long result = $jnicall;
 if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
 return result;
 }
 %}
-
-%typemap(javaout, throws="CDocException") int %{
-                                                    {
-                                                     int result = $jnicall;
-if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
-return result;
-}
-%}
-
-%javaexception("CDocException") libcdoc::CDocCDocReader::getCDocFileVersion {
-    $action
-    // yadayada
-}
 
 #endif
 

@@ -55,7 +55,7 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
 	 * @return error code or OK
 	 */
-    virtual int sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type);
+    virtual result_t sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type);
 	/**
 	 * @brief fetch key material from keyserver
      *
@@ -65,14 +65,14 @@ struct CDOC_EXPORT NetworkBackend {
      * @param transaction_id transaction id of capsule
 	 * @return error code or OK
 	 */
-    virtual int fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);
+    virtual result_t fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);
 
     /**
      * @brief get client TLS certificate in der format
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getClientTLSCertificate(std::vector<uint8_t>& dst) {
+    virtual result_t getClientTLSCertificate(std::vector<uint8_t>& dst) {
         return NOT_IMPLEMENTED;
     }
 
@@ -81,7 +81,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param dst a destination container for certificate
      * @return error code or OK
      */
-    virtual int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) {
+    virtual result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) {
         return NOT_IMPLEMENTED;
     }
 
@@ -92,7 +92,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param digest data to be signed
      * @return error code or OK
      */
-    virtual int signTLS(std::vector<uint8_t>& dst, CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) {
+    virtual result_t signTLS(std::vector<uint8_t>& dst, CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) {
         return NOT_IMPLEMENTED;
     }
 

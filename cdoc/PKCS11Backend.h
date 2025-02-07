@@ -37,7 +37,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * @param label the key label
      * @return error code or OK
      */
-    int useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
     /**
      * @brief loads private key
      *
@@ -49,10 +49,10 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * @param label the key label
      * @return error code or OK
      */
-    int usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 
-    int getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
-    int getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 
     /**
      * @brief loads key for encryption/decryption
@@ -63,13 +63,13 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * @param priv whether to connect to private or secret key
      * @return error code or OK
      */
-    virtual int connectToKey(int idx, bool priv) = 0;
-    virtual int usePSS(int idx) {return true;}
+    virtual result_t connectToKey(int idx, bool priv) = 0;
+    virtual result_t usePSS(int idx) {return true;}
 
-    virtual int deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override;
-    virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idxl) override;
-    virtual int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override;
-    virtual int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) override;
+    virtual result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override;
+    virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idxl) override;
+    virtual result_t extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override;
+    virtual result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) override;
 private:
 	struct Private;
 	std::unique_ptr<Private> d;

@@ -112,7 +112,7 @@ public class CDocTool {
                     System.out.format("Stored data is: %s\n", hex.formatHex(stored.getData()));
                     rdr.beginDecryption(fmk);
                     FileInfo fi = new FileInfo();
-                    int result = rdr.nextFile(fi);
+                    long result = rdr.nextFile(fi);
                     System.out.format("nextFile result: %d\n", result);
                     try {
                         while (result == CDoc.OK) {
@@ -143,12 +143,12 @@ public class CDocTool {
         ToolCrypto crypto = new ToolCrypto();
         crypto.setPassword(password);
         CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, crypto, null);
-        long result = wrtr.beginEncryption();
-        System.out.format("beginEncryption: %d\n", result);
-        Recipient rcpt = Recipient.makeSymmetric(label, 65535);
-        result = wrtr.addRecipient(rcpt);
-        System.out.format("addRecipient: %d\n", result);
         try {
+            long result = wrtr.beginEncryption();
+            System.out.format("beginEncryption: %d\n", result);
+            Recipient rcpt = Recipient.makeSymmetric(label, 65535);
+            result = wrtr.addRecipient(rcpt);
+            System.out.format("addRecipient: %d\n", result);
             for (String name : files) {
                 System.out.format("Adding file %s\n", name);
                 InputStream ifs = new FileInputStream(name);
@@ -158,11 +158,13 @@ public class CDocTool {
                 result = wrtr.writeData(bytes);
                 System.out.format("writeData: %d\n", result);
             }
+            result = wrtr.finishEncryption();
+            System.out.format("finishEncryption: %d\n", result);
         } catch (IOException exc) {
             System.err.println("IO Exception: " + exc.getMessage());
+        } catch (CDocException exc) {
+                System.err.format("CDoc Exception %d: %s\n", exc.code, exc.getMessage());
         }
-        result = wrtr.finishEncryption();
-        System.out.format("finishEncryption: %d\n", result);
     }
 
     static void locks(String path) {
@@ -244,7 +246,7 @@ public class CDocTool {
         }
     
         @Override
-        public int getSecret(DataBuffer dst, int idx) {
+        public long getSecret(DataBuffer dst, int idx) {
             stored = dst;
             dst.setData(secret);
             return CDoc.OK;

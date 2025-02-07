@@ -83,7 +83,7 @@ struct Private {
     }
 };
 
-int
+libcdoc::result_t
 libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
 {
     nlohmann::json req_json = {
@@ -156,7 +156,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
 {
     std::string host, path;

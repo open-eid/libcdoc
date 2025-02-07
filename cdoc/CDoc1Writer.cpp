@@ -177,7 +177,7 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 /**
  * Encrypt data
  */
-int
+libcdoc::result_t
 CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
@@ -252,28 +252,28 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
     return result;
 }
 
-int
+libcdoc::result_t
 CDoc1Writer::beginEncryption()
 {
 	d->_xml = std::make_unique<XMLWriter>(dst);
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
 	d->rcpts.push_back(rcpt);
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Writer::addFile(const std::string& name, size_t size)
 {
 	d->files.push_back({name, size, {}});
 	return libcdoc::NOT_IMPLEMENTED;
 }
 
-int64_t
+libcdoc::result_t
 CDoc1Writer::writeData(const uint8_t *src, size_t size)
 {
 	if (d->files.empty()) return libcdoc::WORKFLOW_ERROR;
@@ -281,7 +281,7 @@ CDoc1Writer::writeData(const uint8_t *src, size_t size)
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Writer::finishEncryption()
 {
 	if (!d->_xml) return libcdoc::WORKFLOW_ERROR;

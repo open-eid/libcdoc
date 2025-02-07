@@ -22,7 +22,7 @@ struct CipherConsumer : public ChainedConsumer {
 	~CipherConsumer() {
 	}
 
-	int64_t write(const uint8_t *src, size_t size) override final {
+    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
 		static constexpr uint64_t CHUNK_SIZE = 16LL * 1024LL;
 		if (_fail) return OUTPUT_ERROR;
 		if (size % _block_size) {
@@ -60,7 +60,7 @@ struct CipherSource : public ChainedSource {
 	CipherSource(DataSource *src, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
 		: ChainedSource(src, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
 
-	int64_t read(uint8_t *dst, size_t size) override final {
+    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
 		if (_fail) return INPUT_ERROR;
 		size_t n_read = _src->read(dst, _block_size * (size / _block_size));
 		if (n_read) {
@@ -90,7 +90,7 @@ struct ZConsumer : public ChainedConsumer {
 		if (!_fail) deflateEnd(&_s);
 	}
 
-	int64_t write(const uint8_t *src, size_t size) override final {
+    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
 		if (_fail) return OUTPUT_ERROR;
 		_s.next_in = (z_const Bytef *) src;
 		_s.avail_in = uInt(size);
@@ -117,7 +117,7 @@ struct ZConsumer : public ChainedConsumer {
 		return _fail || ChainedConsumer::isError();
 	};
 
-	int close() override final {
+    libcdoc::result_t close() override final {
 		flush = Z_FINISH;
 		write (nullptr, 0);
 		deflateEnd(&_s);
@@ -140,7 +140,7 @@ struct ZSource : public ChainedSource {
 		if (!_error) inflateEnd(&_s);
 	}
 
-	int64_t read(uint8_t *dst, size_t size) override final {
+    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
 		if (_error) return _error;
 		_s.next_out = (Bytef *) dst;
 		_s.avail_out = uInt (size);

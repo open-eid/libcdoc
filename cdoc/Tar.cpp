@@ -187,13 +187,13 @@ libcdoc::TarConsumer::~TarConsumer()
 	}
 }
 
-int64_t
+libcdoc::result_t
 libcdoc::TarConsumer::write(const uint8_t *src, size_t size)
 {
 	return _dst->write(src, size);
 }
 
-int
+libcdoc::result_t
 libcdoc::TarConsumer::close()
 {
 	if (_current_size) {
@@ -214,7 +214,7 @@ libcdoc::TarConsumer::isError()
 	return _dst->isError();
 }
 
-int
+libcdoc::result_t
 libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 {
 	if (_current_size) {
@@ -259,7 +259,7 @@ libcdoc::TarSource::~TarSource()
 	}
 }
 
-int64_t
+libcdoc::result_t
 libcdoc::TarSource::read(uint8_t *dst, size_t size)
 {
     if (_error != OK) return _error;
@@ -290,7 +290,7 @@ libcdoc::TarSource::isEof()
 	return _eof;
 }
 
-int
+libcdoc::result_t
 libcdoc::TarSource::next(std::string& name, int64_t& size)
 {
 	Header h;

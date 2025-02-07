@@ -1,6 +1,7 @@
 #ifndef __LIBCDOC_UTILS_H__
 #define __LIBCDOC_UTILS_H__
 
+#include "CDoc.h"
 #include "Io.h"
 
 #include <algorithm>
@@ -177,13 +178,13 @@ struct TaggedSource : public libcdoc::DataSource {
 		if (_owned) delete(_src);
 	}
 
-	int seek(size_t pos) override final {
+    libcdoc::result_t seek(size_t pos) override final {
         if (!_src->seek(pos)) return libcdoc::INPUT_STREAM_ERROR;
         if (_src->read(tag.data(), tag.size()) != tag.size()) return libcdoc::INPUT_STREAM_ERROR;
         return libcdoc::OK;
 	}
 
-	int64_t read(uint8_t *dst, size_t size) override final {
+    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
 		std::vector<uint8_t> t(tag.size());
 		uint8_t *tmp = t.data();
 		size_t nread = _src->read(dst, size);
