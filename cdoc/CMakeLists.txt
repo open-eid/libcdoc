@@ -1,3 +1,12 @@
+add_library(cdoc_ver INTERFACE)
+target_compile_definitions(cdoc_ver INTERFACE
+    VERSION_STR="${VERSION}"
+    $<$<PLATFORM_ID:Windows>:VERSION=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},${BUILD_NUMBER}>
+    $<$<PLATFORM_ID:Windows>:TARGET_NAME="$<TARGET_PROPERTY:NAME>">
+    $<$<PLATFORM_ID:Windows>:$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:APP>>
+)
+target_sources(cdoc_ver INTERFACE libcdoc.rc)
+
 set(SCHEMAS
     schema/recipients.fbs
     schema/header.fbs
@@ -44,18 +53,18 @@ target_link_libraries(cdoc_obj OpenSSL::SSL)
 add_library(cdoc_priv OBJECT
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
-    Tar.cpp
-    ZStream.cpp
+    Tar.cpp Tar.h
+    ZStream.cpp ZStream.h
     Utils.cpp Utils.h
-    CDoc1Reader.cpp
-    CDoc1Writer.cpp
-    CDoc2Reader.cpp
-    CDoc2Writer.cpp
-    DDocReader.cpp
-    DDocWriter.cpp
+    CDoc1Reader.cpp CDoc1Reader.h
+    CDoc1Writer.cpp CDoc1Writer.h
+    CDoc2Reader.cpp CDoc2Reader.h
+    CDoc2Writer.cpp CDoc2Writer.h
+    DDocReader.cpp DDocReader.h
+    DDocWriter.cpp DDocWriter.h
     XmlReader.cpp XmlReader.h
     XmlWriter.cpp XmlWriter.h
-    CDocChipher.h CDocChipher.cpp
+    CDocChipher.cpp CDocChipher.h
     RcptInfo.h
     ToolConf.h
     CDoc2.h
@@ -63,6 +72,7 @@ add_library(cdoc_priv OBJECT
 )
 
 set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_compile_options(cdoc_priv PRIVATE $<$<PLATFORM_ID:Windows>:/GR>)
 target_include_directories(cdoc_priv
     PUBLIC ${PROJECT_SOURCE_DIR}
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
@@ -87,7 +97,7 @@ set_target_properties(cdoc PROPERTIES
     MACOSX_RPATH YES
     COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
 )
-target_link_libraries(cdoc PRIVATE ${CMAKE_DL_LIBS} cdoc_priv cdoc_obj)
+target_link_libraries(cdoc PRIVATE cdoc_ver ${CMAKE_DL_LIBS} cdoc_priv cdoc_obj)
 target_include_directories(cdoc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
@@ -106,7 +116,7 @@ set_target_properties(cdoc_static PROPERTIES
 target_link_libraries(cdoc_static cdoc_priv cdoc_obj)
 
 add_executable(cdoc-tool cdoc-tool.cpp)
-target_link_libraries(cdoc-tool $<IF:$<PLATFORM_ID:Darwin>,cdoc_static,cdoc> cdoc_priv)
+target_link_libraries(cdoc-tool cdoc_ver $<IF:$<PLATFORM_ID:Darwin>,cdoc_static,cdoc> cdoc_priv)
 
 foreach(SCHEMA ${SCHEMAS})
     get_filename_component(stem ${SCHEMA} NAME_WE)
@@ -138,8 +148,7 @@ if(SWIG_FOUND)
         set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/java)
         swig_add_library(cdoc_java LANGUAGE java SOURCES ../libcdoc.i)
         target_include_directories(cdoc_java PRIVATE ${JAVA_INCLUDE_PATH} $<$<BOOL:${JAVA_INCLUDE_PATH2}>:${JAVA_INCLUDE_PATH2}>)
-        target_compile_definitions(cdoc_java PRIVATE TARGET_NAME="$<TARGET_NAME:cdoc_java>")
-        target_link_libraries(cdoc_java cdoc)
+        target_link_libraries(cdoc_java cdoc_ver cdoc)
         set_target_properties(cdoc_java PROPERTIES
             INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
             SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
@@ -155,11 +164,10 @@ if(SWIG_FOUND)
 	# TODO: Fix Python wrapping
     endif()
 
-    set(CMAKE_SWIG_FLAGS -dllimport cdoc_csharp -namespace cdoc)
+    set(CMAKE_SWIG_FLAGS -namespace cdoc)
     set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/csharp)
     swig_add_library(cdoc_csharp LANGUAGE csharp SOURCES ../libcdoc.i)
-    target_compile_definitions(cdoc_csharp PRIVATE TARGET_NAME="$<TARGET_NAME:cdoc_csharp>")
-    target_link_libraries(cdoc_csharp cdoc)
+    target_link_libraries(cdoc_csharp cdoc_ver cdoc)
     set_target_properties(cdoc_csharp PROPERTIES
         SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
         INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
