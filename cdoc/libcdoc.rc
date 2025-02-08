@@ -1,0 +1,43 @@
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+  FILEVERSION VERSION
+  PRODUCTVERSION VERSION
+  FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+  FILEFLAGS VS_FF_DEBUG
+#else
+  FILEFLAGS 0x0L
+#endif
+  FILEOS VOS_NT_WINDOWS32
+#ifdef APP
+  FILETYPE VFT_APP
+#else
+  FILETYPE VFT_DLL
+#endif
+  FILESUBTYPE VFT_UNKNOWN
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904B0"
+		BEGIN
+			VALUE "CompanyName", "RIA"
+			VALUE "FileDescription", TARGET_NAME
+			VALUE "FileVersion", VERSION_STR
+			VALUE "InternalName", TARGET_NAME
+			VALUE "LegalCopyright", "(C) 2025 Estonian Information System Authority"
+#ifdef APP
+			VALUE "OriginalFilename", TARGET_NAME ".exe"
+#else
+			VALUE "OriginalFilename", TARGET_NAME ".dll"
+#endif
+			VALUE "ProductName", TARGET_NAME
+			VALUE "ProductVersion", VERSION_STR
+		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
+	END
+END
+/* End of Version info */
