@@ -28,6 +28,7 @@ using namespace libcdoc;
 
 static void print_usage(ostream& ofs)
 {
+    ofs << "cdoc-tool version: " << VERSION_STR << endl;
     ofs << "cdoc-tool encrypt [--library PKCS11LIBRARY] --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;

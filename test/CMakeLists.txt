@@ -1,6 +1,3 @@
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED YES)
-
 add_executable(unittests libcdoc_boost.cpp)
 target_compile_definitions(unittests PRIVATE DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 target_link_libraries(unittests cdoc cdoc_priv Boost::unit_test_framework)

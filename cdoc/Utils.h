@@ -24,7 +24,10 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <vector>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 namespace libcdoc {
 
@@ -102,7 +105,6 @@ std::string urlEncode(const std::string_view &src);
 std::string urlDecode(std::string &src);
 
 #ifdef _WIN32
-#include <Windows.h>
 
 static std::wstring toWide(UINT codePage, const std::string &in)
 {
