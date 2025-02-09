@@ -18,13 +18,10 @@
 
 #pragma once
 
-#include <ostream>
+#include "Io.h"
+
 #include <functional>
 #include <map>
-#include <string>
-#include <vector>
-
-#include "Io.h"
 
 class XMLWriter
 {

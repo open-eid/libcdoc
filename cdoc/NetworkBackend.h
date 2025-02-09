@@ -20,10 +20,7 @@
 #define __NETWORKBACKEND_H__
 
 #include <cdoc/CryptoBackend.h>
-#include <cdoc/Exports.h>
 #include <cdoc/Recipient.h>
-
-#include <vector>
 
 namespace libcdoc {
 

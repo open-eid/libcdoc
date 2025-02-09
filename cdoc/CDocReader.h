@@ -21,9 +21,7 @@
  
 #include <cdoc/Configuration.h>
 #include <cdoc/CryptoBackend.h>
-#include <cdoc/Exports.h>
 #include <cdoc/Io.h>
-#include <cdoc/Lock.h>
 #include <cdoc/NetworkBackend.h>
 
 namespace libcdoc {

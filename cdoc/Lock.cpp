@@ -20,8 +20,6 @@
 
 #include "Certificate.h"
 
-#include <string_view>
-
 namespace libcdoc {
 
 std::string

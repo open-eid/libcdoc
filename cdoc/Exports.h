@@ -31,11 +31,6 @@
   #else
 	#define CDOC_DEPRECATED
   #endif
-  #if _MSC_VER >= 1900
-	#define CDOC_NOEXCEPT noexcept
-  #else
-	#define CDOC_NOEXCEPT
-  #endif
   #define CDOC_WARNING_PUSH __pragma(warning(push))
   #define CDOC_WARNING_POP __pragma(warning(pop))
   #define CDOC_WARNING_DISABLE_CLANG(text)
@@ -45,7 +40,6 @@
 #else
   #define CDOC_EXPORT __attribute__ ((visibility("default")))
   #define CDOC_DEPRECATED __attribute__ ((__deprecated__))
-  #define CDOC_NOEXCEPT noexcept
   #define CDOC_DO_PRAGMA(text) _Pragma(#text)
   #define CDOC_WARNING_PUSH CDOC_DO_PRAGMA(GCC diagnostic push)
   #define CDOC_WARNING_POP CDOC_DO_PRAGMA(GCC diagnostic pop)

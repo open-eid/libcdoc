@@ -19,15 +19,12 @@
 #ifndef __ZSTREAM_H__
 #define __ZSTREAM_H__
 
-#include <cstdint>
-#include <array>
-#include <ios>
-#include <vector>
+#include "Crypto.h"
+#include "Io.h"
 
 #include <zlib.h>
 
-#include "Crypto.h"
-#include "Io.h"
+#include <array>
 
 namespace libcdoc {
 
