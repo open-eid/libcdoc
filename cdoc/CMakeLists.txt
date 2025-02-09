@@ -45,7 +45,7 @@ add_library(cdoc_priv OBJECT
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
     Tar.cpp
-    ZStream.cpp
+    ZStream.h
     Utils.cpp Utils.h
     CDoc1Reader.cpp
     CDoc1Writer.cpp
