@@ -40,7 +40,7 @@ struct ToolPKCS11 : public libcdoc::PKCS11Backend {
 
     ToolPKCS11(const std::string& library, const RecipientInfoVector& vec) : libcdoc::PKCS11Backend(library), rcpts(vec) {}
 
-    int connectToKey(int idx, bool priv) override final {
+    libcdoc::result_t connectToKey(int idx, bool priv) override final {
         if ((idx < 0) || (idx >= rcpts.size())) return libcdoc::CRYPTO_ERROR;
         const RcptInfo& rcpt = rcpts.at(idx);
         int result = libcdoc::CRYPTO_ERROR;
@@ -60,7 +60,7 @@ struct ToolWin : public libcdoc::WinBackend {
 
     ToolWin(const std::string& provider, const RecipientInfoVector& vec) : libcdoc::WinBackend(provider), rcpts(vec) {}
 
-    int connectToKey(int idx, bool priv) {
+    result_t connectToKey(int idx, bool priv) {
         return useKey(rcpts[idx].key_label, std::string(rcpts[idx].secret.cbegin(), rcpts[idx].secret.cend()));
     }
 
@@ -91,30 +91,30 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 #endif
     }
 
-    int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
+    libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
         if (p11) return p11->decryptRSA(dst, data, oaep, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
+    libcdoc::result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
                         const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx) override final {
         if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final {
+    libcdoc::result_t deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final {
         if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
-    int extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override {
+    libcdoc::result_t extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override {
         if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
         return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
     }
-    int getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
+    libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
         const RcptInfo& rcpt = rcpts.at(idx);
         secret =rcpt.secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }
 
-    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, int idx) {
+    libcdoc::result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, int idx) {
         if (p11) return p11->sign(dst, algorithm, digest, idx);
         return libcdoc::NOT_IMPLEMENTED;
     }
@@ -130,19 +130,19 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     explicit ToolNetwork(ToolCrypto *_crypto) : crypto(_crypto) {
     }
 
-    int getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
+    libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
         if ((rcpt_idx < 0) || (rcpt_idx >= crypto->rcpts.size())) return libcdoc::CRYPTO_ERROR;
         const RcptInfo& rcpt = crypto->rcpts.at(rcpt_idx);
         bool rsa = false;
         return crypto->p11->getCertificate(dst, rsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
     }
 
-    int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
+    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
         dst = certs;
         return libcdoc::OK;
     }
 
-    int signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
+    libcdoc::result_t signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
         if ((rcpt_idx < 0) || (rcpt_idx >= crypto->rcpts.size())) return libcdoc::CRYPTO_ERROR;
         return crypto->p11->sign(dst, algorithm, digest, rcpt_idx);
     }

@@ -65,36 +65,29 @@
 %include "arrays_java.i"
 %include "enums.swg"
 %javaconst(1);
-%apply long long { result_t }
+
+
+%apply long long { libcdoc::result_t }
 %apply long long { int64_t }
 %apply long long { uint64_t }
 %apply int { int32_t }
 %apply int { unsigned int }
 
-%typemap(javaout) libcdoc::result_t %{
+%typemap(javaout, throws="CDocException") libcdoc::result_t %{
 {
-    // javaout(result_t)
     long result = $jnicall;
-    if (result == CDoc.IO_ERROR) throw new IOException(this.getLastErrorStr());
+    if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
     return result;
 }
 %}
 
-%javaexception("ee.ria.cdoc.CDocException") libcdoc::CDocReader::beginDecryption {
-    $action;
-    if (result < 0) {
-        std::string err_str = arg1->getLastErrorStr();
-        jclass clazz = jenv->FindClass("ee/ria/cdoc/CDocException");
-        jenv->ThrowNew(clazz, err_str.c_str());
-        return $null;
-    }
-}
+%typemap(javadirectorout, throws="CDocException") libcdoc::result_t "$javacall"
 
 //
 // const uint8_t *src <- byte[]
 //
 
-%typemap(in) (const uint8_t *src) %{
+%typemap(in, throws="CDocException") (const uint8_t *src) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
 %}
 %typemap(javain) const uint8_t *src "$javainput"
@@ -106,7 +99,7 @@
 // const uint8_t *src, size_t len <- byte[]
 //
 
-%typemap(in) (const uint8_t *src, size_t size) %{
+%typemap(in, throws="CDocException") (const uint8_t *src, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
@@ -119,7 +112,7 @@
 // uint8_t *dst, size_t size <- byte[]
 //
 
-%typemap(in) (uint8_t *dst, size_t size) %{
+%typemap(in, throws="CDocException") (uint8_t *dst, size_t size) %{
     $1 = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
     $2 = jenv->GetArrayLength($input);
 %}
@@ -394,11 +387,6 @@
         std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
         return std::move(p);
     }
-    //libcdoc::Lock getLockForCert(const std::vector<uint8_t>& cert) {
-    //    libcdoc::Lock lock;
-    //    $self->getLockForCert(lock, cert);
-    //    return lock;
-    //}
     std::vector<uint8_t> getFMK(unsigned int lock_idx) {
         std::vector<uint8_t> fmk;
         $self->getFMK(fmk, lock_idx);
@@ -407,14 +395,8 @@
 };
 %ignore libcdoc::CDocReader::getLocks();
 
-%typemap(javaimports) libcdoc::CDocReader %{
-    import java.io.IOException;
-    import java.io.OutputStream;
-    import java.util.ArrayList;
-%}
-
 %typemap(javacode) libcdoc::CDocReader %{
-    public void readFile(OutputStream ofs) throws IOException {
+    public void readFile(java.io.OutputStream ofs) throws CDocException, java.io.IOException {
         byte[] buf = new byte[1024];
         long result = readData(buf);
         while(result > 0) {
@@ -552,6 +534,18 @@ import java.util.ArrayList;
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "Lock.h"
+
+#ifdef SWIGJAVA
+%typemap(javaout, throws="CDocException") libcdoc::result_t %{
+                                                            {
+                                                             long result = $jnicall;
+if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
+return result;
+}
+%}
+
+#endif
+
 %include "CDocReader.h"
 %include "CDocWriter.h"
 

@@ -48,7 +48,7 @@ const std::set<std::string_view> SUPPORTED_KWAES = {
 	libcdoc::Crypto::KWAES128_MTH, libcdoc::Crypto::KWAES192_MTH, libcdoc::Crypto::KWAES256_MTH
 };
 
-/**
+/*
  * @class CDoc1Reader
  * @brief CDoc1Reader is used for decrypt data.
  */
@@ -85,7 +85,7 @@ CDoc1Reader::getLocks()
 	return locks;
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
 {
     if (!SUPPORTED_METHODS.contains(d->method)) return libcdoc::NOT_SUPPORTED;
@@ -111,7 +111,7 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
     return libcdoc::NOT_FOUND;
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
     if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
@@ -162,7 +162,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
 #ifdef USE_PULL
@@ -230,7 +230,7 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 #endif
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
     if (!d->files.empty() || (d->f_pos != -1)) {
@@ -268,7 +268,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::finishDecryption()
 {
     d->src.release();
@@ -276,7 +276,7 @@ CDoc1Reader::finishDecryption()
     return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc1Reader::nextFile(std::string& name, int64_t& size)
 {
     if (d->files.empty()) {
@@ -294,7 +294,7 @@ CDoc1Reader::nextFile(std::string& name, int64_t& size)
     return libcdoc::OK;
 }
 
-int64_t
+libcdoc::result_t
 CDoc1Reader::readData(uint8_t *dst, size_t size)
 {
     if (!d->src) {
@@ -305,7 +305,7 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
     return d->src->read(dst, size);
 }
 
-/**
+/*
  * CDoc1Reader constructor.
  * @param file File to open reading
  */
@@ -415,7 +415,7 @@ CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
     return true;
 }
 
-/**
+/*
  * Returns decrypted data
  * @param key Transport key to used for decrypt data
  */

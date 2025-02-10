@@ -17,6 +17,7 @@
  */
 
 #include "PKCS11Backend.h"
+#include "Certificate.h"
 #include "Crypto.h"
 #include "ILogger.h"
 #include "Utils.h"
@@ -47,9 +48,10 @@ public:
     int login(int slot, const std::vector<uint8_t>& pin);
 	int logout();
 	std::vector<CK_BYTE> attribute(CK_SESSION_HANDLE session, CK_OBJECT_HANDLE obj, CK_ATTRIBUTE_TYPE type) const;
-	std::vector<CK_OBJECT_HANDLE> findObject(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id = {}, const std::string& label = {}) const;
-	std::vector<libcdoc::PKCS11Backend::Handle> findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label);
-	//int useKey(CK_OBJECT_CLASS klass, int idx, const std::vector<uint8_t>& id, const std::string& label);
+
+    std::vector<CK_OBJECT_HANDLE> findObjects(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate) const;
+    std::vector<libcdoc::PKCS11Backend::Handle> findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate = nullptr);
+
 
 #ifdef _WIN32
 	bool load(const std::string &driver)
@@ -87,8 +89,6 @@ public:
 	CK_FUNCTION_LIST *f {};
 	CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
 	CK_OBJECT_HANDLE key = CK_INVALID_HANDLE;
-    /* fixme: Put to proper place */
-    bool isPSS = true;
 };
 
 int
@@ -149,7 +149,7 @@ libcdoc::PKCS11Backend::Private::attribute(CK_SESSION_HANDLE session, CK_OBJECT_
 }
 
 std::vector<CK_OBJECT_HANDLE>
-libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label) const
+libcdoc::PKCS11Backend::Private::findObjects(CK_SESSION_HANDLE session, CK_OBJECT_CLASS cls, const std::vector<CK_BYTE> &id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate) const
 {
 	CK_BBOOL _true = CK_TRUE;
 	std::vector<CK_ATTRIBUTE> attrs {
@@ -177,11 +177,18 @@ libcdoc::PKCS11Backend::Private::findObject(CK_SESSION_HANDLE session, CK_OBJECT
 		result.resize(count);
 	}
     f->C_FindObjectsFinal(session);
+    if (validate) {
+        std::vector<CK_OBJECT_HANDLE> tmp;
+        for (auto obj : result) {
+            if (validate(session, obj)) tmp.push_back(obj);
+        }
+        result = std::move(tmp);
+    }
 	return result;
 }
 
 std::vector<libcdoc::PKCS11Backend::Handle>
-libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std::vector<uint8_t>& id, const std::string& label, const std::function<bool(CK_SESSION_HANDLE, CK_OBJECT_HANDLE)> &validate)
 {
 	// Load all slots.
 	CK_ULONG size = 0;
@@ -195,26 +202,26 @@ libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std
 	for(const CK_SLOT_ID &slot: slots) {
 		if(session) f->C_CloseSession(session);
 		if(f->C_OpenSession(slot, CKF_SERIAL_SESSION, nullptr, nullptr, &session) != CKR_OK) continue;
-		for(CK_OBJECT_HANDLE obj: findObject(session, klass)) {
-			std::vector<CK_BYTE> v = attribute(session, obj, CKA_ID);
-			if (!id.empty()) {
-				std::vector<uint8_t> uv(v.cbegin(), v.cend());
-				if (uv != id) continue;
-			}
-			if (!label.empty()) {
-				std::vector<CK_BYTE> v = attribute(session, obj, CKA_LABEL);
-				if (label.compare(0, label.size(), (const char *) v.data(), v.size())) continue;
-			}
-			// Id and label match
-			if (v.empty()) continue;
-			objs.push_back({(uint32_t) slot, std::vector<uint8_t>(v.cbegin(), v.cend())});
+        for(CK_OBJECT_HANDLE obj: findObjects(session, klass, id, label, validate)) {
+            std::vector<CK_BYTE> v = attribute(session, obj, CKA_ID);
+            if (!id.empty()) {
+                std::vector<uint8_t> uv(v.cbegin(), v.cend());
+                if (uv != id) continue;
+            }
+            if (!label.empty()) {
+                std::vector<CK_BYTE> v = attribute(session, obj, CKA_LABEL);
+                if (label.compare(0, label.size(), (const char *) v.data(), v.size())) continue;
+            }
+            // Id and label match
+            if (v.empty()) continue;
+            objs.push_back({(uint32_t) slot, std::vector<uint8_t>(v.cbegin(), v.cend())});
 		}
 	}
 	if(session) f->C_CloseSession(session);
 	return std::move(objs);
 }
 
-/**
+/*
  * Loads PKCS#11 token.
  *
  * @param path full path to the PKCS#11 driver (e.g. /usr/lib/opensc-pkcs11.so)
@@ -268,7 +275,20 @@ libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::stri
 	return d->findAllObjects(CKO_SECRET_KEY, {}, label);
 }
 
-int
+std::vector<libcdoc::PKCS11Backend::Handle>
+libcdoc::PKCS11Backend::findCertificates(const std::vector<uint8_t>& public_key)
+{
+    if(!d) return {};
+    return d->findAllObjects(CKO_CERTIFICATE, {}, {}, [&](CK_SESSION_HANDLE session, CK_OBJECT_HANDLE object){
+        std::vector<uint8_t> val = d->attribute(session, object, CKA_VALUE);
+        if (val.empty()) return false;
+        Certificate cert(val);
+        std::vector<uint8_t> cert_key = cert.getPublicKey();
+        return cert_key == public_key;
+    });
+}
+
+libcdoc::result_t
 libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -276,7 +296,7 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_SECRET_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_SECRET_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: useSecretKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
     if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
     d->key = handles[0];
@@ -284,7 +304,7 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
@@ -292,15 +312,15 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PRIVATE_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PRIVATE_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePrivateKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.size() != 1) return CRYPTO_ERROR;
     d->key = handles[0];
     LOG_DBG("PKCS11: usePrivateKey Using key {}", d->key);
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
@@ -308,7 +328,7 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_CERTIFICATE, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_CERTIFICATE, id, label, nullptr);
     LOG_DBG("PKCS11: getCertificate id={}; label={}; found {} certificates", toHex(id), label, handles.size());
     if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
     CK_OBJECT_HANDLE handle = handles[0];
@@ -321,7 +341,7 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -329,7 +349,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
         int result = d->login(slot, pin);
         if (result != OK) return result;
     }
-    std::vector<CK_OBJECT_HANDLE> handles = d->findObject(d->session, CKO_PUBLIC_KEY, id, label);
+    std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PUBLIC_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePublicKey id={}; label={}; found {} objects", toHex(id), label, handles.size());
 	if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
 	CK_OBJECT_HANDLE handle = handles[0];
@@ -374,7 +394,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -399,7 +419,7 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx)
 {
 	if(!d) return CRYPTO_ERROR;
@@ -435,7 +455,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
 	if (kdf_iter > 0) return libcdoc::NOT_IMPLEMENTED;
@@ -487,7 +507,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx)
 {
     if(!d) return CRYPTO_ERROR;
@@ -523,7 +543,7 @@ libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm,
         default:
             break;
         }
-        if(d->isPSS) {
+        if(usePSS(idx)) {
             mech = { CKM_RSA_PKCS_PSS, &pssParams, sizeof(CK_RSA_PKCS_PSS_PARAMS) };
             data.clear();
         }

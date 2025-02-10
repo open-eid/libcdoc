@@ -110,7 +110,7 @@ libcdoc::WinBackend::~WinBackend()
 {
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::useKey(const std::string& name, const std::string& pin)
 {
     if (!d->prov) return CRYPTO_ERROR;
@@ -132,7 +132,7 @@ libcdoc::WinBackend::useKey(const std::string& name, const std::string& pin)
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx)
 {
 	if(!d->prov) return CRYPTO_ERROR;
@@ -151,7 +151,7 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
                                  const std::vector<uint8_t> &party_vinfo, unsigned int idx)
@@ -208,7 +208,7 @@ libcdoc::WinBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vecto
     return result;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx)
 {
 	if(!d->prov) return CRYPTO_ERROR;
@@ -251,48 +251,46 @@ libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vec
     return result;
 }
 
-int
-libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
-{
-	if (salt.empty()) return INVALID_PARAMS;
-	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
-#if 0
-	if (kdf_iter > 0) {
-		std::vector<uint8_t> secret;
-        int result = getSecret(secret, idx);
-		if (result < 0) return result;
-#ifdef LOCAL_DEBUG
-        LOG_DBG("Secret: {}", toHex(secret));
-#endif
-	    std::vector<uint8_t> key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
-		std::fill(secret.begin(), secret.end(), 0);
-		if (key_material.empty()) return OPENSSL_ERROR;
-	    dst = libcdoc::Crypto::extract(key_material, salt);
-	    std::fill(key_material.begin(), key_material.end(), 0);
-	    if (dst.empty()) return OPENSSL_ERROR;
-#ifdef LOCAL_DEBUG
-        LOG_DBG("Extract: {}", toHex(dst));
-#endif
-	} else {
-	    if(!d->prov) return CRYPTO_ERROR;
-        int result = connectToKey(idx, true);
-        if (result != OK) return result;
-
-	    kek_pm = libcdoc::Crypto::extract(key_material, salt);
-	    std::fill(key_material.begin(), key_material.end(), 0);
-	    if (kek_pm.empty()) return OPENSSL_ERROR;
-#ifdef LOCAL_DEBUG
-        LOG_DBG("Extract: {}", toHex(kek_pm));
-#endif
-	}
-    
-    return OK;
-#endif
-    return NOT_IMPLEMENTED;
-}
-
-int
+libcdoc::result_t
 libcdoc::WinBackend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx)
 {
-    return NOT_IMPLEMENTED;
+	if(!d->prov) return CRYPTO_ERROR;
+    int result = connectToKey(idx, true);
+    if (result != OK) return result;
+
+	BCRYPT_PSS_PADDING_INFO rsaPSS { NCRYPT_SHA256_ALGORITHM, 32 };
+	switch(algorithm) {
+		case libcdoc::CryptoBackend::HashAlgorithm::SHA_224:
+            rsaPSS = { L"SHA224", 24 }; break;
+		case libcdoc::CryptoBackend::HashAlgorithm::SHA_256:
+            rsaPSS = { NCRYPT_SHA256_ALGORITHM, 32 }; break;
+		case libcdoc::CryptoBackend::HashAlgorithm::SHA_384:
+            rsaPSS = { NCRYPT_SHA384_ALGORITHM, 48 }; break;
+		case libcdoc::CryptoBackend::HashAlgorithm::SHA_512:
+            rsaPSS = { NCRYPT_SHA256_ALGORITHM, 64 }; break;
+		default:
+            return INVALID_PARAMS;
+	}
+	BCRYPT_PKCS1_PADDING_INFO rsaPKCS1 { rsaPSS.pszAlgId };
+	DWORD size;
+	NCryptGetProperty(d->key, NCRYPT_ALGORITHM_GROUP_PROPERTY, nullptr, 0, &size, 0);
+    std::wstring algo(5, 0);
+	NCryptGetProperty(d->key, NCRYPT_ALGORITHM_GROUP_PROPERTY, PBYTE(algo.data()), DWORD((algo.size() + 1) * 2), &size, 0);
+	algo.resize(size/2 - 1);
+	bool isRSA = (algo == L"RSA");
+	DWORD padding {};
+	PVOID paddingInfo {};
+	if(isRSA && usePSS(idx)) {
+		padding = BCRYPT_PAD_PSS;
+		paddingInfo = &rsaPSS;
+	} else if(isRSA) {
+		padding = BCRYPT_PAD_PKCS1;
+		paddingInfo = &rsaPKCS1;
+	}
+	SECURITY_STATUS err = NCryptSignHash(d->key, paddingInfo, PBYTE(digest.data()), DWORD(digest.size()), nullptr, 0, &size, padding);
+    if (err != ERROR_SUCCESS) return CRYPTO_ERROR;
+	dst.resize(size);
+	err = NCryptSignHash(d->key, paddingInfo, PBYTE(digest.data()), DWORD(digest.size()), PBYTE(dst.data()), DWORD(dst.size()), &size, padding);
+    if (err != ERROR_SUCCESS) return CRYPTO_ERROR;
+    return OK;
 }

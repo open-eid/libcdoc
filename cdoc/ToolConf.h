@@ -67,10 +67,6 @@ struct ToolConf : public Configuration {
      */
     bool gen_label = false;
 
-    std::string getValue(const std::string_view& param) override final {
-        return {};
-    }
-
     std::string getValue(const std::string_view& domain, const std::string_view& param) override final {
         for (auto& sdata : servers) {
             if (sdata.ID == domain) {

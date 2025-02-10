@@ -49,7 +49,7 @@ CryptoBackend::getLastErrorStr(int code) const
 	return "Internal error";
 }
 
-int
+libcdoc::result_t
 CryptoBackend::random(std::vector<uint8_t>& dst, unsigned int size)
 {
 	dst.resize(size);
@@ -57,7 +57,7 @@ CryptoBackend::random(std::vector<uint8_t>& dst, unsigned int size)
     return (result < 0) ? OPENSSL_ERROR : OK;
 }
 
-int
+libcdoc::result_t
 CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
 							   const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
                                unsigned int idx)
@@ -69,7 +69,7 @@ CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint
     return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
-int
+libcdoc::result_t
 CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx)
 {
 	std::vector<uint8_t> shared_secret;
@@ -79,7 +79,7 @@ CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<ui
     return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
-int
+libcdoc::result_t
 CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
 	if (kdf_iter > 0) {
@@ -103,7 +103,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
     return OK;
 }
 
-int
+libcdoc::result_t
 CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                            int32_t kdf_iter, unsigned int idx)
 {
