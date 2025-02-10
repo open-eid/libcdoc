@@ -26,13 +26,13 @@ public:
 	explicit CDoc2Writer(libcdoc::DataConsumer *dst, bool take_ownership);
 	~CDoc2Writer();
 
-	int beginEncryption() override final;
-	int addRecipient(const libcdoc::Recipient& rcpt) override final;
-	int addFile(const std::string& name, size_t size) override final;
-	int64_t writeData(const uint8_t *src, size_t size) override final;
-	int finishEncryption() override final;
+    libcdoc::result_t beginEncryption() override final;
+    libcdoc::result_t addRecipient(const libcdoc::Recipient& rcpt) override final;
+    libcdoc::result_t addFile(const std::string& name, size_t size) override final;
+    libcdoc::result_t writeData(const uint8_t *src, size_t size) override final;
+    libcdoc::result_t finishEncryption() override final;
 
-	int encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) override final;
+    libcdoc::result_t encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) override final;
 private:
 	struct Private;
 

@@ -125,13 +125,13 @@ FileListSource::isEof()
 	return _ifs.eof();
 }
 
-size_t
+libcdoc::result_t
 FileListSource::getNumComponents()
 {
 	return _files.size();
 }
 
-int
+libcdoc::result_t
 FileListSource::next(std::string& name, int64_t& size)
 {
 	_ifs.close();

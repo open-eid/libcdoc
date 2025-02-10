@@ -80,7 +80,7 @@ CDoc2Writer::~CDoc2Writer()
 {
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	last_error.clear();
@@ -355,7 +355,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 	return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::beginEncryption()
 {
 	if (priv) {
@@ -367,7 +367,7 @@ CDoc2Writer::beginEncryption()
 	return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
 	if (!priv) {
@@ -378,7 +378,7 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 	return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::addFile(const std::string& name, size_t size)
 {
 	if (!priv) {
@@ -407,7 +407,7 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 	return libcdoc::OK;
 }
 
-int64_t
+libcdoc::result_t
 CDoc2Writer::writeData(const uint8_t *src, size_t size)
 {
 	if (!priv) {
@@ -428,7 +428,7 @@ CDoc2Writer::writeData(const uint8_t *src, size_t size)
 	return libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::finishEncryption()
 {
 	if (!priv) {

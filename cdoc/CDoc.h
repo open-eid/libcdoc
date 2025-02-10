@@ -32,6 +32,9 @@
 
 namespace libcdoc {
 
+/**
+ * @brief A typedef that indicates that integer value may contain libcdoc result code
+ */
 typedef int64_t result_t;
 
 enum {
