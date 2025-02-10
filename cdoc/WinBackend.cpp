@@ -110,7 +110,7 @@ libcdoc::WinBackend::~WinBackend()
 {
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::useKey(const std::string& name, const std::string& pin)
 {
     if (!d->prov) return CRYPTO_ERROR;
