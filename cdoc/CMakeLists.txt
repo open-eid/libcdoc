@@ -33,13 +33,12 @@ add_library(cdoc_obj OBJECT
 )
 
 if(WIN32)
-    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN DNOMINMAX)
-    add_compile_options(/GR)
-    add_compile_options($<$<CONFIG:Debug>/JMC>)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_compile_options(/GR $<$<CONFIG:Debug>:/JMC>)
 endif()
 
 set_target_properties(cdoc_obj PROPERTIES POSITION_INDEPENDENT_CODE YES)
-target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS)
+target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS CDOC_DYNAMIC_LINK)
 target_include_directories(cdoc_obj PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(cdoc_obj OpenSSL::SSL)
 
@@ -94,6 +93,9 @@ target_include_directories(cdoc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
 )
+
+target_link_options(cdoc PRIVATE $<$<PLATFORM_ID:Windows>:/SUBSYSTEM:WINDOWS>)
+
 add_library(cdoc_static STATIC ${PUBLIC_HEADERS})
 set_target_properties(cdoc_static PROPERTIES
     VERSION ${PROJECT_VERSION}

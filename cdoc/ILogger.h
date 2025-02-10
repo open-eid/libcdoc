@@ -100,37 +100,36 @@ protected:
     LogLevel minLogLevel;
 };
 
-
-/**
- * @brief Global logger's instance.
- */
-CDOC_EXPORT extern ILogger* Logger;
-
 /**
  * @brief Adds ILogger implementation to logging queue.
  * @param logger Logger's instance to be added.
  * @return Unique cookie identifying the logger's instance in the logging queue.
  */
-CDOC_EXPORT int add_logger(ILogger* logger);
+CDOC_EXPORT int STDCALL add_logger(ILogger* logger);
 
 /**
  * @brief Removes logger's instance from the logging queue.
  * @param cookie Unique cookie returned by the add_logger function when the logger was added.
  * @return Pointer to ILogger object that is removed. It's up to user to free the resources.
  */
-CDOC_EXPORT ILogger* remove_logger(int cookie);
+CDOC_EXPORT ILogger* STDCALL remove_logger(int cookie);
 
+/**
+ * @brief Returns global logger's instance.
+ * @return Global logger's instance.
+ */
+CDOC_EXPORT ILogger* STDCALL get_logger();
 
-#define LOG(l,...) Logger->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_ERROR(...) Logger->LogMessage(libcdoc::LogLevelError, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_WARN(...) Logger->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_INFO(...) Logger->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_DBG(...) Logger->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG(l,...) get_logger()->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_ERROR(...) get_logger()->LogMessage(libcdoc::LogLevelError, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_WARN(...) get_logger()->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_INFO(...) get_logger()->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_DBG(...) get_logger()->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
 #else
-#define LOG_TRACE(...) Logger->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_TRACE(...) get_logger()->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 #endif
 
 }

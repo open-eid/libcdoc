@@ -22,7 +22,7 @@
 
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
-namespace libcdoc {
+using namespace libcdoc;
 
 const std::string Crypto::SHA256_MTH = "http://www.w3.org/2001/04/xmlenc#sha256";
 const std::string Crypto::SHA384_MTH = "http://www.w3.org/2001/04/xmlenc#sha384";
@@ -567,11 +567,9 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        Logger->LogMessage(LogLevelError, file, line, FORMAT("{} failed: {}", funcName, sslErrorStr));
+        get_logger()->LogMessage(LogLevelError, file, line, FORMAT("{} failed: {}", funcName, sslErrorStr));
 
         // Get next error code
         errorCode = ERR_get_error();
     }
 }
-
-}; // namespace libcdoc

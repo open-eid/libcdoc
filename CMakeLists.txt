@@ -40,6 +40,8 @@ endif()
 include(CPack)
 include(GNUInstallDirs)
 
+option(LIBCDOC_WITH_DOCS "Generate documentation with Doxygen" ON)
+
 find_package(OpenSSL 3.0.0 REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(LibXml2 REQUIRED)
@@ -50,16 +52,18 @@ if(SWIG_FOUND)
     find_package(Python3 COMPONENTS Interpreter Development)
 endif()
 
-find_package(Doxygen)
-if( DOXYGEN_FOUND )
-    configure_file(${PROJECT_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY)
-    add_custom_target(docs ALL
-        Doxygen::doxygen Doxyfile
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Generating API documentation with Doxygen" VERBATIM
-    )
-    install(DIRECTORY ${CMAKE_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
-    install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+if(LIBCDOC_WITH_DOCS)
+    find_package(Doxygen)
+    if( DOXYGEN_FOUND )
+        configure_file(${PROJECT_SOURCE_DIR}/etc/Doxyfile.in Doxyfile @ONLY)
+        add_custom_target(docs ALL
+            Doxygen::doxygen Doxyfile
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            COMMENT "Generating API documentation with Doxygen" VERBATIM
+        )
+        install(DIRECTORY ${CMAKE_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+        install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+    endif()
 endif()
 
 add_subdirectory(cdoc)

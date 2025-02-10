@@ -1,12 +1,12 @@
 #define __LIBCDOC_WINBACKEND_CPP__
 
-#include "WinBackend.h"
-#include "CDoc2.h"
-
 #include <Windows.h>
 #include <wincrypt.h>
 
+#include "WinBackend.h"
+#include "CDoc2.h"
 #include "Crypto.h"
+#include "ILogger.h"
 #include "Utils.h"
 
 struct libcdoc::WinBackend::Private {
@@ -28,7 +28,7 @@ struct libcdoc::WinBackend::Private {
             while (result == ERROR_SUCCESS) {
                 std::string name = toUTF8(wkeyname->pszName);
                 std::string algo = toUTF8(wkeyname->pszAlgid);
-                std::cerr << "Name: " << name << " Algo: " << algo << std::endl;
+                LOG_DBG("Name: {} Algo: {}", name, algo);
                 NCryptFreeBuffer(wkeyname);
                 result = NCryptEnumKeys(prov, NULL, &wkeyname, &state, NCRYPT_SILENT_FLAG);
             }
@@ -238,7 +238,6 @@ libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vec
 int
 libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx)
 {
-    /*
 	if (salt.empty()) return INVALID_PARAMS;
 	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
 #if 0
@@ -247,7 +246,7 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
         int result = getSecret(secret, idx);
 		if (result < 0) return result;
 #ifdef LOCAL_DEBUG
-        std::cerr << "Secret: " << toHex(secret) << std::endl;
+        LOG_DBG("Secret: {}", toHex(secret));
 #endif
 	    std::vector<uint8_t> key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 		std::fill(secret.begin(), secret.end(), 0);
@@ -256,7 +255,7 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
 	    std::fill(key_material.begin(), key_material.end(), 0);
 	    if (dst.empty()) return OPENSSL_ERROR;
 #ifdef LOCAL_DEBUG
-        std::cerr << "Extract: " << toHex(dst) << std::endl;
+        LOG_DBG("Extract: {}", toHex(dst));
 #endif
 	} else {
 	    if(!d->prov) return CRYPTO_ERROR;
@@ -267,10 +266,9 @@ libcdoc::WinBackend::extractHKDF(std::vector<uint8_t>& dst, const std::vector<ui
 	    std::fill(key_material.begin(), key_material.end(), 0);
 	    if (kek_pm.empty()) return OPENSSL_ERROR;
 #ifdef LOCAL_DEBUG
-        std::cerr << "Extract: " << toHex(kek_pm) << std::endl;
+        LOG_DBG("Extract: {}", toHex(kek_pm));
 #endif
 	}
-    */
     
     return OK;
 #endif

@@ -1,3 +1,12 @@
+// Windows.h and bcrypt.h have to be included before anything else. Otherwise, it won't compile.
+#ifdef _WIN32
+
+#include <Windows.h>
+#include <bcrypt.h>
+#include "WinBackend.h"
+
+#endif
+
 #include <sstream>
 #include <map>
 
@@ -10,13 +19,6 @@
 #include "PKCS11Backend.h"
 #include "Utils.h"
 
-#if defined(_WIN32) || defined(_WIN64)
-
-#include <Windows.h>
-#include <bcrypt.h>
-#include "WinBackend.h"
-
-#endif
 
 using namespace std;
 using namespace libcdoc;
@@ -451,11 +453,11 @@ void CDocChipher::Locks(const char* file) const
     }
 }
 
-#if defined(_WIN32) || defined(_WIN64)
+#ifdef _WIN32
 static uint32_t arc4random_uniform(uint32_t upperbound)
 {
     uint8_t result = 0;
-    long ntStatus = BCryptGenRandom(nullptr, &result, static_cast<unsigned long>(sizeof(result)), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    NTSTATUS ntStatus = BCryptGenRandom(nullptr, &result, static_cast<ULONG>(sizeof(result)), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     if (BCRYPT_SUCCESS(ntStatus)) {
         return result % upperbound;
     }
