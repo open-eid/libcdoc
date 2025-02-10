@@ -41,6 +41,40 @@ jobs:
       with:
         name: ubuntu_${{ matrix.container }}_${{ matrix.arch }}
         path: libcdoc*.*
+  android:
+    name: Build on Ubuntu for ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+        - target: androidarm
+          triplet: arm-neon-android
+        - target: androidarm64
+          triplet: arm64-android
+        - target: androidx86_64
+          triplet: x64-android
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Prepare vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: e4644bd15436d406bba71928d086c809e5c9ca45
+        vcpkgJsonGlob: ./vcpkg.json
+        runVcpkgInstall: true
+      env:
+        VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+    - name: Build
+      run: |
+        cmake --preset ${{ matrix.target }} "-GUnix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=libcdoc.${{ matrix.target }}
+        cmake --build --preset ${{ matrix.target }}
+        cmake --build --preset ${{ matrix.target }} --target install/strip
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}
+        path: |
+          libcdoc.${{ matrix.target }}
   macos:
     name: Build on macOS for ${{ matrix.target }}
     runs-on: macos-latest
