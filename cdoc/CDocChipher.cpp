@@ -16,24 +16,16 @@
  *
  */
 
-// Windows.h and bcrypt.h have to be included before anything else. Otherwise, it won't compile.
-#ifdef _WIN32
-
-#include <Windows.h>
-#include <bcrypt.h>
-#include "WinBackend.h"
-
-#endif
-
-
 #include <sstream>
 #include <map>
+#include <openssl/rand.h>
 
 #include "CDocChipher.h"
 #include "CDocReader.h"
 #include "CDoc.h"
 #include "CDoc2.h"
 #include "Certificate.h"
+#include "Crypto.h"
 #include "ILogger.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
@@ -472,31 +464,28 @@ void CDocChipher::Locks(const char* file) const
     }
 }
 
-#ifdef _WIN32
-static uint32_t arc4random_uniform(uint32_t upperbound)
-{
-    uint8_t result = 0;
-    NTSTATUS ntStatus = BCryptGenRandom(nullptr, &result, static_cast<ULONG>(sizeof(result)), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    if (BCRYPT_SUCCESS(ntStatus)) {
-        return result % upperbound;
-    }
-    else {
-        LOG_ERROR("BCryptGenRandom failed, error {0:X}", static_cast<uint32_t>(ntStatus));
-        return rand() % upperbound;
-    }
-}
-#endif
-
 string CDocChipher::GenerateRandomSequence() const
 {
     constexpr uint32_t upperbound = 'z' - '0' + 1;
     constexpr int MaxSequenceLength = 11;
 
     uint32_t rnd;
+    uint8_t rndByte;
     ostringstream sequence;
     for (int cnt = 0; cnt < MaxSequenceLength;)
     {
-        rnd = arc4random_uniform(upperbound) + '0';
+        if (SSL_FAILED(RAND_bytes(&rndByte, 1), "RAND_bytes"))
+        {
+            rnd = rand() % upperbound + '0';
+        }
+        else
+        {
+            rnd = rndByte % upperbound + '0';
+        }
+
+        // arc4random_uniform tends to be not available on all platforms.
+        // rnd = arc4random_uniform(upperbound) + '0';
+
         if (isalnum(rnd))
         {
             sequence << static_cast<char>(rnd);
