@@ -132,7 +132,7 @@ libcdoc::WinBackend::useKey(const std::string& name, const std::string& pin)
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx)
 {
 	if(!d->prov) return CRYPTO_ERROR;
@@ -151,7 +151,7 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
     return OK;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
                                  const std::vector<uint8_t> &party_vinfo, unsigned int idx)
@@ -208,7 +208,7 @@ libcdoc::WinBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vecto
     return result;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx)
 {
 	if(!d->prov) return CRYPTO_ERROR;
@@ -251,7 +251,7 @@ libcdoc::WinBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vec
     return result;
 }
 
-int
+libcdoc::result_t
 libcdoc::WinBackend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx)
 {
 	if(!d->prov) return CRYPTO_ERROR;

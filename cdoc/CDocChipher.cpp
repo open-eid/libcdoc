@@ -62,7 +62,7 @@ struct ToolWin : public libcdoc::WinBackend {
 
     ToolWin(const std::string& provider, const RecipientInfoVector& vec) : libcdoc::WinBackend(provider), rcpts(vec) {}
 
-    int connectToKey(int idx, bool priv) {
+    result_t connectToKey(int idx, bool priv) {
         return useKey(rcpts[idx].key_label, std::string(rcpts[idx].secret.cbegin(), rcpts[idx].secret.cend()));
     }
 
