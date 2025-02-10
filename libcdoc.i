@@ -1,3 +1,22 @@
+/*
+ * libcdoc
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 %module(directors="1") CDoc
 
 %{
@@ -38,6 +57,9 @@
 %ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
 %ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
 %ignore libcdoc::CDocReader::decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer);
+
+%ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
+%ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
 
 #ifdef SWIGJAVA
 %include "arrays_java.i"
