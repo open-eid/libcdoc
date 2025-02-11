@@ -21,6 +21,8 @@
 #include "Utils.h"
 #include "CDoc.h"
 #include "XmlWriter.h"
+#include "CDoc1Writer.h"
+#include "ILogger.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <IntSafe.h>
@@ -30,9 +32,10 @@
 
 #include <openssl/x509.h>
 
-#include "CDoc1Writer.h"
 
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
+
+using namespace libcdoc;
 
 struct FileEntry {
 	std::string name;
@@ -145,13 +148,11 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 				AlgorithmID, SsDer, recipient);
 			encryptedData = libcdoc::Crypto::AESWrap(encryptionKey, transportKey.key, true);
 
-#ifndef NDEBUG
-            printf("Ss %s\n", libcdoc::toHex(SsDer).c_str());
-            printf("Ksr %s\n", libcdoc::toHex(sharedSecret).c_str());
-            printf("ConcatKDF %s\n", libcdoc::toHex(encryptionKey).c_str());
-            printf("iv %s\n", libcdoc::toHex(transportKey.iv).c_str());
-            printf("transport %s\n", libcdoc::toHex(transportKey.key).c_str());
-#endif
+            LOG_DBG("Ss {}", toHex(SsDer));
+            LOG_DBG("Ksr {}", toHex(sharedSecret));
+            LOG_DBG("ConcatKDF {}", toHex(encryptionKey));
+            LOG_DBG("iv {}", libcdoc::toHex(transportKey.iv));
+            LOG_DBG("transport {}", toHex(transportKey.key));
 
 			xmlw->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", encryptionMethod}});
 			xmlw->writeElement(Private::DS, "KeyInfo", [&]{
@@ -208,10 +209,12 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 	for (const libcdoc::Recipient& key : keys) {
 		if (!key.isCertificate()) {
 			d->lastError = "Invalid recipient type";
+            LOG_ERROR("{}", d->lastError);
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
 		if(!d->writeRecipient(d->_xml.get(), key.cert, transportKey)) {
 			d->lastError = "Failed to write Recipient info";
+            LOG_ERROR("{}", d->lastError);
 			return libcdoc::IO_ERROR;
 		}
 	}
@@ -313,10 +316,12 @@ CDoc1Writer::finishEncryption()
 	for (const libcdoc::Recipient& key : d->rcpts) {
 		if (!key.isCertificate()) {
 			d->lastError = "Invalid recipient type";
+            LOG_ERROR("{}", d->lastError);
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
 		if(!d->writeRecipient(d->_xml.get(), key.cert, transportKey)) {
 			d->lastError = "Failed to write Recipient info";
+            LOG_ERROR("{}", d->lastError);
 			return libcdoc::IO_ERROR;
 		}
 	}

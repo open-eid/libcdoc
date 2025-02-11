@@ -23,6 +23,7 @@
 #include "CDoc1Reader.h"
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
+#include "ILogger.h"
 
 namespace libcdoc {
 
@@ -60,9 +61,7 @@ getErrorStr(int64_t code) {
     for (auto& r : results) {
         if (r.code == code) return std::string(r.message);
     }
-    return "Unknown result code " + std::to_string(code);
-}
-
+    return FORMAT("Unknown result code {}", code);
 }
 
 bool
@@ -85,7 +84,7 @@ libcdoc::Configuration::getInt(const std::string_view& param, int def_val)
 int64_t
 libcdoc::Configuration::test(std::vector<uint8_t>& dst)
 {
-    std::cerr << "Configuration::test::Native superclass" << std::endl;
+    LOG_TRACE("Configuration::test::Native superclass");
     return OK;
 }
 #endif
@@ -112,7 +111,7 @@ libcdoc::NetworkBackend::getLastErrorStr(int code) const
 int64_t
 libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
 {
-    std::cerr << "NetworkBackend::test::Native superclass" << std::endl;
+    LOG_TRACE("NetworkBackend::test::Native superclass");
     return OK;
 }
 #endif
@@ -139,7 +138,7 @@ libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
     int version = getCDocFileVersion(src);
-    std::cerr << "CDocReader::createReader: version " << version << std::endl;
+    LOG_DBG("CDocReader::createReader: version ", version);
     if (src->seek(0) != libcdoc::OK) return nullptr;
     CDocReader *reader;
 	if (version == 1) {
@@ -177,24 +176,24 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
 int64_t
 libcdoc::CDocReader::testConfig(std::vector<uint8_t>& dst)
 {
-    std::cerr << "CDocReader::testConfig::Native superclass" << std::endl;
+    LOG_TRACE("CDocReader::testConfig::Native superclass");
     if (conf) {
-        std::cerr << "CDocReader::testConfig this=" << this << " conf=" << conf << std::endl;
+        LOG_DBG("CDocReader::testConfig this={} conf={}", reinterpret_cast<void*>(this), reinterpret_cast<void*>(conf));
         return conf->test(dst);
     }
-    std::cerr << "CDocReader::testConfig::conf is null" << std::endl;
+    LOG_ERROR("CDocReader::testConfig::conf is null");
     return WORKFLOW_ERROR;
 }
 
 int64_t
 libcdoc::CDocReader::testNetwork(std::vector<std::vector<uint8_t>>& dst)
 {
-    std::cerr << "CDocReader::testNetwork::Native superclass" << std::endl;
+    LOG_TRACE("CDocReader::testNetwork::Native superclass");
     if (network) {
-        std::cerr << "CDocReader::testNetwork this=" << this << " network=" << network << std::endl;
+        LOG_DBG("CDocReader::testNetwork this={} network={}", reinterpret_cast<void*>(this), reinterpret_cast<void*>(network));
         return network->test(dst);
     }
-    std::cerr << "CDocReader::testNetwork::network is null" << std::endl;
+    LOG_ERROR("CDocReader::testNetwork::network is null");
     return WORKFLOW_ERROR;
 }
 #endif
@@ -239,3 +238,6 @@ libcdoc::CDocWriter::createWriter(int version, const std::string& path, Configur
 	libcdoc::DataConsumer *dst = new libcdoc::OStreamConsumer(path);
 	return createWriter(version, dst, true, conf, crypto, network);
 }
+
+}
+

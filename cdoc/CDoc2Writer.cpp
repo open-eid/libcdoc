@@ -25,6 +25,7 @@
 #include "ZStream.h"
 #include "Tar.h"
 #include "Utils.h"
+#include "ILogger.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <IntSafe.h>
@@ -35,7 +36,7 @@
 #include "openssl/evp.h"
 #include <openssl/x509.h>
 
-#include <iostream>
+using namespace libcdoc;
 
 struct CDoc2Writer::Private {
 	Private(libcdoc::DataConsumer *dst) {
@@ -47,13 +48,13 @@ struct CDoc2Writer::Private {
 		libcdoc::CipherConsumer *ccons = new libcdoc::CipherConsumer(dst, false, cipher.get());
 		libcdoc::ZConsumer *zcons = new libcdoc::ZConsumer(ccons, true);
 		tar = std::make_unique<libcdoc::TarConsumer>(zcons, true);
-#ifndef NDEBUG
-        std::cerr << "fmk: " << libcdoc::toHex(fmk) << std::endl;
-        std::cerr << "cek: " << libcdoc::toHex(cek) << std::endl;
-        std::cerr << "hhk: " << libcdoc::toHex(hhk) << std::endl;
-        std::cerr << "nonce: " << libcdoc::toHex(hhk) << std::endl;
-#endif
+
+        LOG_DBG("fmk: {}", toHex(fmk));
+        LOG_DBG("cek: {}", toHex(cek));
+        LOG_DBG("hhk: {}", toHex(hhk));
+        LOG_DBG("nonce: {}", toHex(hhk));
     }
+
 	~Private() {
 		std::fill(fmk.begin(), fmk.end(), 0);
 		std::fill(cek.begin(), cek.end(), 0);
@@ -115,12 +116,13 @@ CDoc2Writer::encryptInternal(libcdoc::MultiDataSource& src, const std::vector<li
 //	}
 	if(!priv->cipher->result()) {
 		setLastError("Encryption error");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::CRYPTO_ERROR;
 	}
 	std::vector<uint8_t> tag = priv->cipher->tag();
-#ifndef NDEBUG
-    std::cerr << "tag" << libcdoc::toHex(tag) << std::endl;
-#endif
+
+    LOG_DBG("tag: {}", toHex(tag));
+
 	dst->write(tag.data(), tag.size());
 	return libcdoc::OK;
 }
@@ -129,10 +131,9 @@ int
 CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<uint8_t>& hhk)
 {
 	std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
-#ifndef NDEBUG
-    std::cerr << "hmac" << libcdoc::toHex(headerHMAC) << std::endl;
-    std::cerr << "nonce" << libcdoc::toHex(priv->nonce) << std::endl;
-#endif
+
+    LOG_DBG("hmac: {}", toHex(headerHMAC));
+    LOG_DBG("nonce: {}", toHex(priv->nonce));
 
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
 	aad.insert(aad.end(), header.cbegin(), header.cend());
@@ -164,36 +165,40 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
 				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 					setLastError("Internal error");
+                    LOG_ERROR("{}", last_error);
 					return libcdoc::CRYPTO_ERROR;
 				}
                 auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt.rcpt_key);
 				if(!publicKey) {
 					setLastError("Invalid RSA key");
+                    LOG_ERROR("{}", last_error);
 					return libcdoc::CRYPTO_ERROR;
 				}
 				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
-#ifndef NDEBUG
-                std::cerr << "publicKeyDer: " << libcdoc::toHex(rcpt.rcpt_key) << std::endl;
-                std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
-                std::cerr << "fmk_xor_kek: " << libcdoc::toHex(xor_key) << std::endl;
-                std::cerr << "enc_kek: " << libcdoc::toHex(encrytpedKek) << std::endl;
-#endif
+
+                LOG_DBG("publicKeyDer: {}", toHex(rcpt.rcpt_key));
+                LOG_DBG("kek: {}", toHex(kek));
+                LOG_DBG("fmk_xor_kek: {}", toHex(xor_key));
+                LOG_DBG("enc_kek: {}", toHex(encrytpedKek));
+
                 if(rcpt.isKeyServer()) {
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
                         setLastError("Missing keyserver URL");
+                        LOG_ERROR("{}", last_error);
                         return libcdoc::CONFIGURATION_ERROR;
                     }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
                     int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, encrytpedKek, "RSA");
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
+                        LOG_ERROR("{}", last_error);
                         return libcdoc::IO_ERROR;
                     }
-#ifndef NDEBUG
-                    std::cerr << "Keyserver Id:" << rcpt.server_id << std::endl;
-                    std::cerr << "Transaction Id: " << cinfo.transaction_id << std::endl;
-#endif
+
+                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
+                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
+
                     auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
                                                                                 builder.CreateVector(rcpt.rcpt_key));
                     auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
@@ -224,6 +229,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
 				if(!publicKey) {
 					setLastError("Invalid ECC key");
+                    LOG_ERROR("{}", last_error);
 					return libcdoc::CRYPTO_ERROR;
 				}
 				auto ephKey = libcdoc::Crypto::genECKey(publicKey.get());
@@ -238,33 +244,36 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				std::vector<uint8_t> kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
 				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 					setLastError("Internal error");
+                    LOG_ERROR("{}", last_error);
 					return libcdoc::CRYPTO_ERROR;
 				}
-	#ifndef NDEBUG
-                std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-                std::cerr << "publicKeyDer: " << libcdoc::toHex(rcpt.rcpt_key) << std::endl;
-                std::cerr << "ephPublicKeyDer: " << libcdoc::toHex(ephPublicKeyDer) << std::endl;
-                std::cerr << "sharedSecret: " << libcdoc::toHex(sharedSecret) << std::endl;
-                std::cerr << "kekPm: " << libcdoc::toHex(kekPm) << std::endl;
-                std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
-                std::cerr << "xor: " << libcdoc::toHex(xor_key) << std::endl;
-	#endif
+
+                LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+                LOG_DBG("publicKeyDer: {}", toHex(rcpt.rcpt_key));
+                LOG_DBG("ephPublicKeyDer: {}", toHex(ephPublicKeyDer));
+                LOG_DBG("sharedSecret: {}", toHex(sharedSecret));
+                LOG_DBG("kekPm: {}", toHex(kekPm));
+                LOG_DBG("kek: {}", toHex(kek));
+                LOG_DBG("xor: {}", toHex(xor_key));
+
                 if(rcpt.isKeyServer()) {
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
                         setLastError("Missing keyserver URL");
+                        LOG_ERROR("{}", last_error);
                         return libcdoc::CONFIGURATION_ERROR;
                     }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
                     int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, ephPublicKeyDer, "ecc_secp384r1");
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
+                        LOG_ERROR("{}", last_error);
                         return libcdoc::IO_ERROR;
                     }
-#ifndef NDEBUG
-                    std::cerr << "Keyserver Id:" << rcpt.server_id << std::endl;
-                    std::cerr << "Transaction Id: " << cinfo.transaction_id << std::endl;
-#endif
+
+                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
+                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
+
                     auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
                                                                                 cdoc20::recipients::EllipticCurve::secp384r1,
                                                                                 builder.CreateVector(rcpt.rcpt_key));
@@ -303,18 +312,19 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			crypto->random(pw_salt, 32);
             crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt_idx);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-#ifndef NDEBUG
-            std::cerr << "Label: " << rcpt.label << std::endl;
-            std::cerr << "KDF iter: " << rcpt.kdf_iter << std::endl;
-            std::cerr << "info: " << libcdoc::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
-            std::cerr << "salt: " << libcdoc::toHex(salt) << std::endl;
-            std::cerr << "pw_salt: " << libcdoc::toHex(pw_salt) << std::endl;
-            std::cerr << "kek_pm: " << libcdoc::toHex(kek_pm) << std::endl;
-            std::cerr << "kek: " << libcdoc::toHex(kek) << std::endl;
-#endif
+
+            LOG_DBG("Label: {}", rcpt.label);
+            LOG_DBG("KDF iter: {}", rcpt.kdf_iter);
+            LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+            LOG_DBG("salt: {}", toHex(salt));
+            LOG_DBG("pw_salt: {}", toHex(pw_salt));
+            LOG_DBG("kek_pm: {}", toHex(kek_pm));
+            LOG_DBG("kek: {}", toHex(kek));
+
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 				setLastError("Internal error");
+                LOG_ERROR("{}", last_error);
 				return libcdoc::CRYPTO_ERROR;
 			}
             if (rcpt.kdf_iter > 0) {
@@ -343,6 +353,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			}
 		} else {
 			setLastError("Invalid recipient type");
+            LOG_ERROR("{}", last_error);
 			return libcdoc::UNSPECIFIED_ERROR;
 		}
 	}
@@ -360,6 +371,7 @@ CDoc2Writer::beginEncryption()
 {
 	if (priv) {
 		setLastError("Encryption workflow already started");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	last_error.clear();
@@ -372,6 +384,7 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
 	if (!priv) {
 		setLastError("Encryption workflow not started");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	priv->recipients.push_back(rcpt);
@@ -383,10 +396,12 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 {
 	if (!priv) {
 		setLastError("Encryption workflow not started");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	if (priv->recipients.empty()) {
 		setLastError("No recipients specified");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WRONG_ARGUMENTS;
 	}
 	if (!priv->header_written) {
@@ -402,6 +417,7 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 	int result = priv->tar->open(name, size);
 	if (result < 0) {
 		setLastError(priv->tar->getLastErrorStr(result));
+        LOG_ERROR("{}", last_error);
 		return result;
 	}
 	return libcdoc::OK;
@@ -412,10 +428,12 @@ CDoc2Writer::writeData(const uint8_t *src, size_t size)
 {
 	if (!priv) {
 		setLastError("Encryption workflow not started");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	if (!priv->header_written) {
 		setLastError("No file added");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 
@@ -433,10 +451,12 @@ CDoc2Writer::finishEncryption()
 {
 	if (!priv) {
 		setLastError("Encryption workflow not started");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	if (!priv->header_written) {
 		setLastError("No file added");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	int result = priv->tar->close();
@@ -447,12 +467,13 @@ CDoc2Writer::finishEncryption()
 	priv->tar.reset();
 	if(!priv->cipher->result()) {
 		setLastError("Encryption error");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::CRYPTO_ERROR;
 	}
 	std::vector<uint8_t> tag = priv->cipher->tag();
-#ifndef NDEBUG
-    std::cerr << "tag" << libcdoc::toHex(tag) << std::endl;
-#endif
+
+    LOG_DBG("tag: {}", toHex(tag));
+
 	dst->write(tag.data(), tag.size());
 	if (owned) dst->close();
 

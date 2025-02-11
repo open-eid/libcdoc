@@ -21,11 +21,19 @@
 
 #ifdef WIN32
   #include <winapifamily.h>
-  #ifdef cdoc_EXPORTS
-	#define CDOC_EXPORT __declspec(dllexport)
+  
+  #ifdef CDOC_DYNAMIC_LINK
+    // Create or use dynamic link library
+    #ifdef cdoc_EXPORTS
+	  #define CDOC_EXPORT __declspec(dllexport)
+    #else
+	  #define CDOC_EXPORT __declspec(dllimport)
+    #endif
   #else
-	#define CDOC_EXPORT __declspec(dllimport)
+    // Create or use static link library
+    #define CDOC_EXPORT
   #endif
+  
   #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 	#define CDOC_DEPRECATED __declspec(deprecated)
   #else
@@ -41,6 +49,7 @@
   #define CDOC_WARNING_DISABLE_CLANG(text)
   #define CDOC_WARNING_DISABLE_GCC(text)
   #define CDOC_WARNING_DISABLE_MSVC(number) __pragma(warning(disable: number))
+  #define STDCALL __stdcall
   #pragma warning( disable: 4251 ) // shut up std::vector warnings
 #else
   #define CDOC_EXPORT __attribute__ ((visibility("default")))
@@ -56,6 +65,7 @@
   #endif
   #define CDOC_WARNING_DISABLE_GCC(text) CDOC_DO_PRAGMA(GCC diagnostic ignored text)
   #define CDOC_WARNING_DISABLE_MSVC(text)
+  #define STDCALL
 #endif
 
 #endif // EXPOORTS_H

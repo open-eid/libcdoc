@@ -44,8 +44,14 @@ add_library(cdoc_obj OBJECT
     LogEngine.cpp
     $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
 )
+
+if(WIN32)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_compile_options(/GR $<$<CONFIG:Debug>:/JMC>)
+endif()
+
 set_target_properties(cdoc_obj PROPERTIES POSITION_INDEPENDENT_CODE YES)
-target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS)
+target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS CDOC_DYNAMIC_LINK)
 target_include_directories(cdoc_obj PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(cdoc_obj OpenSSL::SSL)
 
@@ -81,7 +87,7 @@ target_link_libraries(cdoc_priv
     OpenSSL::SSL
     ZLIB::ZLIB
     LibXml2::LibXml2
-    $<$<PLATFORM_ID:Windows>:Crypt32 NCrypt cryptui>
+    $<$<PLATFORM_ID:Windows>:Crypt32 NCrypt cryptui Bcrypt>
 )
 
 add_library(cdoc SHARED ${PUBLIC_HEADERS})
@@ -100,6 +106,9 @@ target_include_directories(cdoc PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
 )
+
+target_link_options(cdoc PRIVATE $<$<PLATFORM_ID:Windows>:/SUBSYSTEM:WINDOWS>)
+
 add_library(cdoc_static STATIC ${PUBLIC_HEADERS})
 set_target_properties(cdoc_static PROPERTIES
     VERSION ${PROJECT_VERSION}
