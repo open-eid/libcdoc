@@ -16,19 +16,17 @@
  *
  */
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#endif
+#include "Crypto.h"
+#include "CryptoBackend.h"
+#include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/rand.h>
 
-#include "Crypto.h"
-#include "CryptoBackend.h"
-#include "Utils.h"
-
-#include <iostream>
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#endif
 
 #define LOCAL_DEBUG
 

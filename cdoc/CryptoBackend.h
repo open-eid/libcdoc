@@ -20,12 +20,7 @@
 #define __CRYPTOBACKEND_H__
 
 #include <cdoc/CDoc.h>
-#include <cdoc/Exports.h>
 #include <cdoc/Lock.h>
-
-#include <cstdint>
-#include <string>
-#include <vector>
 
 namespace libcdoc {
 

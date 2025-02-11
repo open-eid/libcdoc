@@ -18,10 +18,6 @@
 
 #include "Utils.h"
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <IntSafe.h>
-#endif
-
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/evp.h>

@@ -22,9 +22,6 @@
 #include <cdoc/Io.h>
 
 #include <cstring>
-#include <string>
-#include <cstdio>
-
 namespace libcdoc {
 
 struct TAR {

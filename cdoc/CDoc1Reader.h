@@ -18,9 +18,6 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "CDocReader.h"
 
 class Token;

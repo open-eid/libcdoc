@@ -16,13 +16,12 @@
  *
  */
 
-#include <fstream>
-#include <iostream>
-
 #include "CDoc1Writer.h"
 #include "CDoc1Reader.h"
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
+
+#include <iostream>
 
 namespace libcdoc {
 

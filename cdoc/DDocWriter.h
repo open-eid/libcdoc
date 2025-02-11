@@ -20,8 +20,6 @@
 
 #include "XmlWriter.h"
 
-#include <string>
-
 class DDOCWriter: public XMLWriter
 {
 public:

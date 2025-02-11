@@ -16,10 +16,11 @@
  *
  */
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <Windows.h>
-#include <IntSafe.h>
-#endif
+#include "NetworkBackend.h"
+
+#include "Crypto.h"
+#include "CryptoBackend.h"
+#include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -27,18 +28,16 @@
 #include <openssl/http.h>
 #include "openssl/ssl.h"
 
-#include <chrono>
-
-#include "NetworkBackend.h"
-
-#include "CDoc.h"
-#include "Crypto.h"
-#include "CryptoBackend.h"
 #include "json.hpp"
-#include "Utils.h"
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
+
+#include <chrono>
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <Windows.h>
+#endif
 
 #define keyserver_id "00000000-0000-0000-0000-000000000000";
 #define GET_HOST "cdoc2-keyserver.test.riaint.ee"

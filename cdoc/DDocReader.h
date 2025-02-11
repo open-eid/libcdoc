@@ -18,9 +18,6 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "Io.h"
 
 class DDOCReader
