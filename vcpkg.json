@@ -21,6 +21,7 @@
   "features": {
     "tests": { "description": "Build tests", "dependencies": ["boost-test"] }
   },
+  "builtin-baseline": "e4644bd15436d406bba71928d086c809e5c9ca45",
   "vcpkg-configuration": {
     "overlay-triplets": ["./vcpkg-triplets"]
   }
