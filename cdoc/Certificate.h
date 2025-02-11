@@ -19,7 +19,6 @@
 #ifndef SSLCERTIFICATE_H
 #define SSLCERTIFICATE_H
 
-#include <cstdint>
 #include <string>
 #include <vector>
 

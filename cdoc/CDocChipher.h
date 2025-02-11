@@ -19,12 +19,12 @@
 #ifndef CDOCCHIPHER_H
 #define CDOCCHIPHER_H
 
-#include <cstdint>
-#include <map>
 #include "CDocReader.h"
 #include "CDocWriter.h"
 #include "RcptInfo.h"
 #include "ToolConf.h"
+
+#include <map>
 
 namespace libcdoc
 {

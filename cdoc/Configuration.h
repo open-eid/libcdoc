@@ -19,13 +19,9 @@
 #ifndef __CONFIGURATION_H__
 #define __CONFIGURATION_H__
 
-#include <cdoc/Exports.h>
 #include <cdoc/CDoc.h>
 
 #include <cstdint>
-#include <string>
-#include <vector>
-
 namespace libcdoc {
 
 /**

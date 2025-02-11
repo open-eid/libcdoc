@@ -18,11 +18,9 @@
 
 #pragma once
 
-#include <istream>
-#include <string>
-#include <vector>
-
 #include "Io.h"
+
+#include <istream>
 
 class XMLReader
 {

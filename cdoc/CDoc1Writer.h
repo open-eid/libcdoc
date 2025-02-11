@@ -18,9 +18,6 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "CDocWriter.h"
 
 class CDoc1Writer : public libcdoc::CDocWriter

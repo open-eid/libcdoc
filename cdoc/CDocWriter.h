@@ -19,12 +19,9 @@
 #ifndef __CDOCWRITER_H__
 #define __CDOCWRITER_H__
  
-#include <cdoc/Recipient.h>
 #include <cdoc/Io.h>
-
 #include <cdoc/Configuration.h>
 #include <cdoc/CryptoBackend.h>
-#include <cdoc/Exports.h>
 #include <cdoc/NetworkBackend.h>
 
 namespace libcdoc {
