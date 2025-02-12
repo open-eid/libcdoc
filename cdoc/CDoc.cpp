@@ -16,14 +16,13 @@
  *
  */
 
-#include <fstream>
-#include <iostream>
-
 #include "CDoc1Writer.h"
 #include "CDoc1Reader.h"
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 #include "ILogger.h"
+
+#include <iostream>
 
 namespace libcdoc {
 
@@ -164,6 +163,26 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
     } else if (version == 2) {
         reader = new CDoc2Reader(path);
     } else {
+        return nullptr;
+    }
+    reader->conf = conf;
+    reader->crypto = crypto;
+    reader->network = network;
+    return reader;
+}
+
+libcdoc::CDocReader *
+libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+{
+    libcdoc::IStreamSource *isrc = new libcdoc::IStreamSource(&ifs, false);
+    int version = getCDocFileVersion(isrc);
+    CDocReader *reader;
+    if (version == 1) {
+        reader = new CDoc1Reader(isrc, true);
+    } else if (version == 2) {
+        reader = new CDoc2Reader(isrc, true);
+    } else {
+        delete isrc;
         return nullptr;
     }
     reader->conf = conf;

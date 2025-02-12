@@ -19,13 +19,14 @@
 #ifndef SSLCERTIFICATE_H
 #define SSLCERTIFICATE_H
 
-#include <cstdint>
+#include "Exports.h"
+
 #include <string>
 #include <vector>
 
 namespace libcdoc {
 
-class Certificate {
+class CDOC_EXPORT Certificate {
 public:
 	enum Algorithm {
 		RSA,

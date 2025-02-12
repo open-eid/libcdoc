@@ -16,8 +16,6 @@
  *
  */
 
-#include <fstream>
-
 #include "Io.h"
 
 namespace libcdoc {

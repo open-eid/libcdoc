@@ -19,7 +19,6 @@
 #ifndef TOOLCONF_H
 #define TOOLCONF_H
 
-#include <vector>
 #include "Configuration.h"
 
 namespace libcdoc {

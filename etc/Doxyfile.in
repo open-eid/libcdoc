@@ -943,9 +943,21 @@ WARN_LOGFILE           =
 # spaces. See also FILE_PATTERNS and EXTENSION_MAPPING
 # Note: If this tag is empty the current directory is searched.
 
-#INPUT                  = @CMAKE_SOURCE_DIR@/cdoc \
-#                         @CMAKE_SOURCE_DIR@/cdoc.dox
-INPUT                  = @CMAKE_SOURCE_DIR@/cdoc
+INPUT = @CMAKE_SOURCE_DIR@/cdoc/CDoc.h \
+    @CMAKE_SOURCE_DIR@/cdoc/CDocReader.h \
+    @CMAKE_SOURCE_DIR@/cdoc/CDocWriter.h \
+    @CMAKE_SOURCE_DIR@/cdoc/Configuration.h \
+    @CMAKE_SOURCE_DIR@/cdoc/Exports.h \
+    @CMAKE_SOURCE_DIR@/cdoc/Io.h \
+    @CMAKE_SOURCE_DIR@/cdoc/Recipient.h \
+    @CMAKE_SOURCE_DIR@/cdoc/Lock.h \
+    @CMAKE_SOURCE_DIR@/cdoc/CryptoBackend.h \
+    @CMAKE_SOURCE_DIR@/cdoc/NetworkBackend.h \
+    @CMAKE_SOURCE_DIR@/cdoc/PKCS11Backend.h \
+    @CMAKE_SOURCE_DIR@/cdoc/WinBackend.h \
+    @CMAKE_SOURCE_DIR@/cdoc/ILogger.h \
+    @CMAKE_SOURCE_DIR@/cdoc/ConsoleLogger.h \
+    @CMAKE_SOURCE_DIR@/doc/usage.md
 
 # This tag can be used to specify the character encoding of the source files
 # that doxygen parses. Internally doxygen uses the UTF-8 encoding. Doxygen uses
@@ -1019,32 +1031,18 @@ EXCLUDE_SYMLINKS       = NO
 # Note that the wildcards are matched against the file with absolute path, so to
 # exclude all test directories for example use the pattern */test/*
 
-EXCLUDE_PATTERNS       = */crypto/Connect.* \
-                         */crypto/Digest.* \
-                         */crypto/OpenSSLHelpers.h \
-                         */crypto/X509CertStore* \
-                         */crypto/X509Crypto.* \
-                         */crypto/OCSP.* \
-                         */crypto/TS.* \
-                         */crypto/TSL.* \
-                         */crypto/pkcs11.* \
-                         */minizip/* \
-                         */openssl/* \
-                         */util/* \
-                         */xml/* \
-                         */DDoc_p.h \
-                         */digidoc-tool.cpp \
-                         */log.* \
+EXCLUDE_PATTERNS       = */log.* \
                          */SignatureCAdES_*.* \
                          */SignatureXAdES*.* \
                          */SignatureTST.* \
                          */*ASiC*.* \
                          */*Doc.* \
                          */*jsonxx.* \
-                         */*SiVa*.* \
                          */PDF.* \
                          */libcdoc.i.h \
-                         */cdoc/fmt/*
+                         */cdoc/fmt/* \
+                         */httplib*.* \
+                         */CDocChipher*.*
 
 # The EXCLUDE_SYMBOLS tag can be used to specify one or more symbol names
 # (namespaces, classes, functions, etc.) that should be excluded from the

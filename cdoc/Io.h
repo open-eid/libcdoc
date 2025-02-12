@@ -19,14 +19,10 @@
 #ifndef __IO_H__
 #define __IO_H__
 
-#include <cdoc/Exports.h>
-
 #include <cdoc/CDoc.h>
 
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <vector>
 
 namespace libcdoc {
 

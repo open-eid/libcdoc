@@ -16,10 +16,10 @@
  *
  */
 
+#include "ILogger.h"
+
 #include <map>
 #include <mutex>
-#include "Exports.h"
-#include "ILogger.h"
 
 using namespace  std;
 

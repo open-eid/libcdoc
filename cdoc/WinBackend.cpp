@@ -17,14 +17,14 @@
  */
 
 #include "WinBackend.h"
+
 #include "CDoc2.h"
-
-#include <Windows.h>
-#include <wincrypt.h>
-
 #include "Crypto.h"
 #include "ILogger.h"
 #include "Utils.h"
+
+#include <Windows.h>
+#include <wincrypt.h>
 
 struct libcdoc::WinBackend::Private {
     NCRYPT_PROV_HANDLE  prov = 0;

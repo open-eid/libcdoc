@@ -16,18 +16,18 @@
  *
  */
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#endif
+#include "Crypto.h"
+#include "CryptoBackend.h"
+#include "ILogger.h"
+#include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/rand.h>
 
-#include "Crypto.h"
-#include "CryptoBackend.h"
-#include "ILogger.h"
-#include "Utils.h"
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#endif
 
 namespace libcdoc {
 

@@ -19,11 +19,6 @@ set(PUBLIC_HEADERS
     ConsoleLogger.h
 )
 
-if(WIN32)
-    list(APPEND PUBLIC_HEADERS WinBackend.h)
-    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN)
-endif()
-
 add_library(cdoc_ver INTERFACE)
 target_compile_definitions(cdoc_ver INTERFACE
     VERSION_STR="${VERSION}"
@@ -33,7 +28,8 @@ target_compile_definitions(cdoc_ver INTERFACE
 )
 target_sources(cdoc_ver INTERFACE libcdoc.rc)
 
-add_library(cdoc_obj OBJECT
+add_library(cdoc
+    ${PUBLIC_HEADERS}
     CDoc.cpp
     Io.cpp
     Recipient.cpp
@@ -43,23 +39,11 @@ add_library(cdoc_obj OBJECT
     PKCS11Backend.cpp
     LogEngine.cpp
     $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
-)
-
-if(WIN32)
-    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    add_compile_options(/GR $<$<CONFIG:Debug>:/JMC>)
-endif()
-
-set_target_properties(cdoc_obj PROPERTIES POSITION_INDEPENDENT_CODE YES)
-target_compile_definitions(cdoc_obj PRIVATE cdoc_EXPORTS CDOC_DYNAMIC_LINK)
-target_include_directories(cdoc_obj PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(cdoc_obj OpenSSL::SSL)
-
-add_library(cdoc_priv OBJECT
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
     Tar.cpp Tar.h
     ZStream.h
+    # Internal
     Utils.cpp Utils.h
     CDoc1Reader.cpp CDoc1Reader.h
     CDoc1Writer.cpp CDoc1Writer.h
@@ -69,28 +53,11 @@ add_library(cdoc_priv OBJECT
     DDocWriter.cpp DDocWriter.h
     XmlReader.cpp XmlReader.h
     XmlWriter.cpp XmlWriter.h
-    CDocChipher.cpp CDocChipher.h
     RcptInfo.h
     ToolConf.h
     CDoc2.h
     Wrapper.h
 )
-
-set_property(TARGET cdoc_priv PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_include_directories(cdoc_priv
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
-    PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
-)
-target_link_libraries(cdoc_priv
-    $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
-    #$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-    OpenSSL::SSL
-    ZLIB::ZLIB
-    LibXml2::LibXml2
-    $<$<PLATFORM_ID:Windows>:Crypt32 NCrypt cryptui Bcrypt>
-)
-
-add_library(cdoc SHARED ${PUBLIC_HEADERS})
 set_target_properties(cdoc PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
@@ -99,31 +66,38 @@ set_target_properties(cdoc PROPERTIES
     FRAMEWORK "${FRAMEWORK}"
     MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.cdoc"
     MACOSX_RPATH YES
-    COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
+    POSITION_INDEPENDENT_CODE YES
 )
-target_link_libraries(cdoc PRIVATE cdoc_ver ${CMAKE_DL_LIBS} cdoc_priv cdoc_obj)
 target_include_directories(cdoc PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-target_link_options(cdoc PRIVATE $<$<PLATFORM_ID:Windows>:/SUBSYSTEM:WINDOWS>)
-
-add_library(cdoc_static STATIC ${PUBLIC_HEADERS})
-set_target_properties(cdoc_static PROPERTIES
-    VERSION ${PROJECT_VERSION}
-    SOVERSION 1
-    PUBLIC_HEADER "${PUBLIC_HEADERS}"
-    FRAMEWORK_VERSION 1
-    FRAMEWORK "${FRAMEWORK}"
-    MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.cdoc"
-    MACOSX_RPATH YES
-    COMPILE_DEFINITIONS TARGET_NAME="$<TARGET_NAME:cdoc>"
+if(NOT BUILD_SHARED_LIBS)
+    target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
+endif()
+target_link_libraries(cdoc PRIVATE
+    OpenSSL::SSL
+    LibXml2::LibXml2
+    ZLIB::ZLIB
+    #cdoc_ver
+    $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
+    #$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
 )
-target_link_libraries(cdoc_static cdoc_priv cdoc_obj)
 
-add_executable(cdoc-tool cdoc-tool.cpp)
-target_link_libraries(cdoc-tool cdoc_ver $<IF:$<PLATFORM_ID:Darwin>,cdoc_static,cdoc> cdoc_priv)
+add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
+target_link_libraries(cdoc-tool cdoc_ver cdoc)
+set_target_properties(cdoc-tool PROPERTIES
+    INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
+)
+
+if(WIN32)
+    list(APPEND PUBLIC_HEADERS WinBackend.h)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(cdoc PRIVATE Crypt32 NCrypt cryptui)
+endif()
 
 foreach(SCHEMA ${SCHEMAS})
     get_filename_component(stem ${SCHEMA} NAME_WE)
@@ -141,7 +115,7 @@ foreach(SCHEMA ${SCHEMAS})
         DEPENDS flatbuffers::flatc ${SCHEMA}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
-    target_sources(cdoc_priv PRIVATE ${SCHEMA} ${GENERATED_INCLUDE})
+    target_sources(cdoc PRIVATE ${SCHEMA} ${GENERATED_INCLUDE})
 endforeach()
 
 if(SWIG_FOUND)
@@ -154,7 +128,7 @@ if(SWIG_FOUND)
         set(CMAKE_SWIG_FLAGS -package ee.ria.cdoc)
         swig_add_library(cdoc_java LANGUAGE java SOURCES ../libcdoc.i OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
         target_include_directories(cdoc_java PRIVATE ${JAVA_INCLUDE_PATH} $<$<BOOL:${JAVA_INCLUDE_PATH2}>:${JAVA_INCLUDE_PATH2}>)
-        target_link_libraries(cdoc_java cdoc_ver $<IF:$<PLATFORM_ID:Android>,cdoc_static,cdoc>)
+        target_link_libraries(cdoc_java cdoc_ver cdoc)
         set_target_properties(cdoc_java PROPERTIES
             INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:/Library/Frameworks>
             SWIG_COMPILE_DEFINITIONS $<$<PLATFORM_ID:Windows>:SWIGWIN>
@@ -232,14 +206,9 @@ install(TARGETS cdoc
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdoc
     FRAMEWORK DESTINATION ${FRAMEWORK_DESTINATION}
 )
-if(WIN32)
+if(WIN32 AND BUILD_SHARED_LIBS)
     install(FILES $<TARGET_PDB_FILE:cdoc> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
 endif()
-
-install(TARGETS cdoc_static
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    FRAMEWORK DESTINATION ${FRAMEWORK_DESTINATION}
-)
 
 if(NOT ANDROID)
     install(EXPORT cdocExport

@@ -383,9 +383,9 @@ libcdoc::result_t
 CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
 	if (!priv) {
-		setLastError("Encryption workflow not started");
-        LOG_ERROR("{}", last_error);
-		return libcdoc::WORKFLOW_ERROR;
+        LOG_ERROR("Encryption workflow not started");
+        last_error.clear();
+        priv = std::make_unique<Private>(dst);
 	}
 	priv->recipients.push_back(rcpt);
 	return libcdoc::OK;

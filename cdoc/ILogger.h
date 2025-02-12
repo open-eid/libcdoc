@@ -19,9 +19,9 @@
 #ifndef __ILOGGER_H__INCLUDED__
 #define __ILOGGER_H__INCLUDED__
 
-#include <string>
-
 #include <cdoc/Exports.h>
+
+#include <string>
 
 #ifdef __GNUC__
 #define FMT_HEADER_ONLY
