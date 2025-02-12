@@ -88,6 +88,7 @@ target_link_libraries(cdoc PRIVATE
 )
 
 add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
+target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
 target_link_libraries(cdoc-tool cdoc_ver cdoc)
 set_target_properties(cdoc-tool PROPERTIES
     INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
