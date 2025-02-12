@@ -188,3 +188,82 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./build/doc
         force_orphan: true
+  coverity:
+    name: Run Coverity tests
+    if: github.repository == 'open-eid/libcdoc' && contains(github.ref, 'coverity_scan')
+    runs-on: ubuntu-24.04
+    env:
+      TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+      PROJECTNAME: ${{ github.repository }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: sudo apt update -qq && sudo apt install --no-install-recommends -y curl ca-certificates ${UBUNTU_DEPS}
+    - name: Download Coverity Build Tool
+      run: |
+        curl --silent --data "token=$TOKEN&project=$PROJECTNAME" -o cov-analysis-linux64.tar.gz https://scan.coverity.com/download/cxx/linux64
+        mkdir cov-analysis-linux64
+        tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
+    - name: Build
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_DISABLE_FIND_PACKAGE_SWIG=YES \
+          -DCMAKE_DISABLE_FIND_PACKAGE_Boost=YES \
+          -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=YES
+        export PATH=$PWD/cov-analysis-linux64/bin:$PATH
+        cov-build --dir cov-int cmake --build build
+    - name: Submit the result to Coverity Scan
+      run: |
+        tar czvf upload.tgz cov-int
+        curl --silent \
+          --form project=$PROJECTNAME \
+          --form token=$TOKEN \
+          --form email=eid-teenusehaldus@ria.ee \
+          --form file=@upload.tgz \
+          --form version=master \
+          --form description="Github Actions CI build" \
+          https://scan.coverity.com/builds?project=$PROJECTNAME
+  codeql:
+    name: Run CodeQL tests
+    if: github.repository == 'open-eid/libcdoc'
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: sudo apt update -qq && sudo apt install --no-install-recommends -y ${UBUNTU_DEPS}
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
+        queries: +security-and-quality
+    - name: Build
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_DISABLE_FIND_PACKAGE_SWIG=YES \
+          -DCMAKE_DISABLE_FIND_PACKAGE_Boost=YES \
+          -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=YES \
+          -DBUILD_TOOLS=NO
+        cmake --build build
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        upload: False
+        output: sarif-results
+    - name: Filter results
+      uses: advanced-security/filter-sarif@develop
+      with:
+        patterns: |
+          -src/json.hpp
+          -src/minizip/*
+          -**:cpp/poorly-documented-function
+          -**:cpp/loop-variable-changed
+        input: sarif-results/cpp.sarif
+        output: sarif-results/cpp.sarif
+    - name: Upload results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: sarif-results/cpp.sarif
