@@ -25,7 +25,6 @@
 #include "CDoc.h"
 #include "CDoc2.h"
 #include "Certificate.h"
-#include "Crypto.h"
 #include "ILogger.h"
 #include "PKCS11Backend.h"
 #include "Utils.h"
@@ -476,7 +475,7 @@ string CDocChipher::GenerateRandomSequence() const
     ostringstream sequence;
     for (int cnt = 0; cnt < MaxSequenceLength;)
     {
-        if (SSL_FAILED(RAND_bytes(&rndByte, 1), "RAND_bytes"))
+        if (RAND_bytes(&rndByte, 1) < 1)
         {
             rnd = rand() % upperbound + '0';
         }
