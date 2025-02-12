@@ -116,8 +116,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
             LOG_DBG("PKCS11:C_Login CANCELED");
 			break;
 		default:
-            LOG_DBG("PKCS11:C_Login {}", result);
-			break;
+      LOG_DBG("PKCS11:C_Login {}", result);
 			f->C_CloseSession(session);
 			session = CK_INVALID_HANDLE;
 			return PKCS11_ERROR;
@@ -205,9 +204,9 @@ libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std
 		if(session) f->C_CloseSession(session);
 		if(f->C_OpenSession(slot, CKF_SERIAL_SESSION, nullptr, nullptr, &session) != CKR_OK) continue;
         for(CK_OBJECT_HANDLE obj: findObjects(session, klass, id, label, validate)) {
-            std::vector<CK_BYTE> v = attribute(session, obj, CKA_ID);
+            std::vector<CK_BYTE> obj_id = attribute(session, obj, CKA_ID);
             if (!id.empty()) {
-                std::vector<uint8_t> uv(v.cbegin(), v.cend());
+                std::vector<uint8_t> uv(obj_id.cbegin(), obj_id.cend());
                 if (uv != id) continue;
             }
             if (!label.empty()) {
@@ -215,8 +214,8 @@ libcdoc::PKCS11Backend::Private::findAllObjects(CK_OBJECT_CLASS klass, const std
                 if (label.compare(0, label.size(), (const char *) v.data(), v.size())) continue;
             }
             // Id and label match
-            if (v.empty()) continue;
-            objs.push_back({(uint32_t) slot, std::vector<uint8_t>(v.cbegin(), v.cend())});
+            if (obj_id.empty()) continue;
+            objs.push_back({(uint32_t) slot, std::vector<uint8_t>(obj_id.cbegin(), obj_id.cend())});
 		}
 	}
 	if(session) f->C_CloseSession(session);

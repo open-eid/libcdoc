@@ -153,12 +153,12 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
 int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, const vector<string>& files)
 {
-    int result = writer.beginEncryption();
-    if (result != libcdoc::OK) return result;
     for (const libcdoc::Recipient& rcpt : keys) {
-        result = writer.addRecipient(rcpt);
+        int64_t result = writer.addRecipient(rcpt);
         if (result != libcdoc::OK) return result;
     }
+    int64_t result = writer.beginEncryption();
+    if (result != libcdoc::OK) return result;
     for (const std::string& file : files) {
         std::filesystem::path path(file);
         if (!std::filesystem::exists(path)) {

@@ -93,8 +93,8 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
     for (size_t i = 0; i < d->locks.size(); i++) {
         const libcdoc::Lock *ll = d->locks.at(i);
 		if (!ll->isCDoc1()) continue;
-		std::vector<uint8_t> cert = ll->getBytes(libcdoc::Lock::Params::CERT);
-		if(cert != cc.cert || ll->encrypted_fmk.empty()) continue;
+		std::vector<uint8_t> l_cert = ll->getBytes(libcdoc::Lock::Params::CERT);
+		if(l_cert != cc.cert || ll->encrypted_fmk.empty()) continue;
 		if(cc.getAlgorithm() == libcdoc::Certificate::RSA) {
 			if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
