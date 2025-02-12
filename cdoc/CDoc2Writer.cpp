@@ -358,12 +358,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 libcdoc::result_t
 CDoc2Writer::beginEncryption()
 {
-	if (priv) {
-		setLastError("Encryption workflow already started");
-		return libcdoc::WORKFLOW_ERROR;
+	if (!priv) {
+        last_error.clear();
+        priv = std::make_unique<Private>(dst);
 	}
-	last_error.clear();
-	priv = std::make_unique<Private>(dst);
 	return libcdoc::OK;
 }
 
