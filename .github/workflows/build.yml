@@ -169,7 +169,7 @@ jobs:
         path: ${{ env.DEST }}
   pages:
     name: Deploy pages
-    if: github.repository == 'lauris71/libcdoc' && contains(github.ref, 'master')
+    if: github.repository == 'open-eid/libcdoc' && contains(github.ref, 'master')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
