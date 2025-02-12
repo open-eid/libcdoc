@@ -177,7 +177,7 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 		size_t total_written = 0;
 		while (!src.isEof()) {
 			uint8_t buf[256];
-			size_t n_read = src.read(buf, 256);
+			uint64_t n_read = src.read(buf, 256);
 			if (n_read < 0) return false;
 			dst.write(buf, n_read);
 			total_written += n_read;
@@ -363,7 +363,6 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			}
 			h_size = fromOctal(h.size);
 			std::stringstream ss(paxData);
-			std::string data;
 			for(const std::string &data: split(paxData, '\n')) {
 				if(data.empty()) break;
 				const auto &headerValue = split(data, '=');

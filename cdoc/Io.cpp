@@ -78,7 +78,7 @@ DataSource::skip(size_t size) {
 	size_t total_read = 0;
 	while (total_read < size) {
 		size_t to_read = std::min<size_t>(size - total_read, BLOCK_SIZE);
-		size_t n_read = read(b, to_read);
+		int64_t n_read = read(b, to_read);
 		if (n_read < 0) return n_read;
 		total_read += n_read;
 	}

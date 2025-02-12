@@ -86,11 +86,13 @@ target_link_libraries(cdoc PRIVATE
     #$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
 )
 
-add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
-target_link_libraries(cdoc-tool cdoc_ver cdoc)
-set_target_properties(cdoc-tool PROPERTIES
-    INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
-)
+if(BUILD_TOOLS)
+    add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
+    target_link_libraries(cdoc-tool cdoc_ver cdoc)
+    set_target_properties(cdoc-tool PROPERTIES
+        INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
+    )
+endif()
 
 if(WIN32)
     list(APPEND PUBLIC_HEADERS WinBackend.h)
@@ -226,6 +228,8 @@ if(NOT ANDROID)
     )
 endif()
 
-install(TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(BUILD_TOOLS)
+    install(TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 #install( FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 )
 #install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libcdoc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
