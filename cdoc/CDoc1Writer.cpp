@@ -148,11 +148,11 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 				AlgorithmID, SsDer, recipient);
 			encryptedData = libcdoc::Crypto::AESWrap(encryptionKey, transportKey.key, true);
 
-            LOG_DBG("Ss {}", toHex(SsDer));
-            LOG_DBG("Ksr {}", toHex(sharedSecret));
-            LOG_DBG("ConcatKDF {}", toHex(encryptionKey));
-            LOG_DBG("iv {}", libcdoc::toHex(transportKey.iv));
-            LOG_DBG("transport {}", toHex(transportKey.key));
+            LOG_TRACE("Ss {}", toHex(SsDer));
+            LOG_TRACE("Ksr {}", toHex(sharedSecret));
+            LOG_TRACE("ConcatKDF {}", toHex(encryptionKey));
+            LOG_TRACE("iv {}", libcdoc::toHex(transportKey.iv));
+            LOG_TRACE("transport {}", toHex(transportKey.key));
 
 			xmlw->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", encryptionMethod}});
 			xmlw->writeElement(Private::DS, "KeyInfo", [&]{
