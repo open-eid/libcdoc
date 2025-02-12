@@ -257,8 +257,8 @@ jobs:
       uses: advanced-security/filter-sarif@develop
       with:
         patterns: |
-          -src/json.hpp
-          -src/minizip/*
+          -cdoc/httplib.h
+          -cdoc/fmt/*
           -**:cpp/poorly-documented-function
           -**:cpp/loop-variable-changed
         input: sarif-results/cpp.sarif
