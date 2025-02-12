@@ -21,7 +21,9 @@
 
 #ifdef WIN32
   #include <winapifamily.h>
-  #ifdef cdoc_EXPORTS
+  #ifdef cdoc_STATIC
+	#define CDOC_EXPORT
+  #elif defined(cdoc_EXPORTS)
 	#define CDOC_EXPORT __declspec(dllexport)
   #else
 	#define CDOC_EXPORT __declspec(dllimport)
@@ -36,7 +38,6 @@
   #define CDOC_WARNING_DISABLE_CLANG(text)
   #define CDOC_WARNING_DISABLE_GCC(text)
   #define CDOC_WARNING_DISABLE_MSVC(number) __pragma(warning(disable: number))
-  #pragma warning( disable: 4251 ) // shut up std::vector warnings
 #else
   #define CDOC_EXPORT __attribute__ ((visibility("default")))
   #define CDOC_DEPRECATED __attribute__ ((__deprecated__))
