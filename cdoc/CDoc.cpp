@@ -172,6 +172,26 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
     return reader;
 }
 
+libcdoc::CDocReader *
+libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
+{
+    libcdoc::IStreamSource *isrc = new libcdoc::IStreamSource(&ifs, false);
+    int version = getCDocFileVersion(isrc);
+    CDocReader *reader;
+    if (version == 1) {
+        reader = new CDoc1Reader(isrc, true);
+    } else if (version == 2) {
+        reader = new CDoc2Reader(isrc, true);
+    } else {
+        delete isrc;
+        return nullptr;
+    }
+    reader->conf = conf;
+    reader->crypto = crypto;
+    reader->network = network;
+    return reader;
+}
+
 #if LIBCDOC_TESTING
 int64_t
 libcdoc::CDocReader::testConfig(std::vector<uint8_t>& dst)

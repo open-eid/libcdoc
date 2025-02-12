@@ -167,3 +167,24 @@ jobs:
       with:
         name: ${{ matrix.image }}_${{ matrix.platform }}
         path: ${{ env.DEST }}
+  pages:
+    name: Deploy pages
+    if: github.repository == 'lauris71/libcdoc' && contains(github.ref, 'master')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install dependencies
+      run: sudo apt update -qq && sudo apt install --no-install-recommends -y doxygen ${UBUNTU_DEPS}
+    - name: Build docs
+      run: |
+        cmake -B build -S .
+        cmake --build build --target docs
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./build/doc
+        force_orphan: true

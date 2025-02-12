@@ -161,6 +161,7 @@ public:
      * @return a new CDocReader or null
      */
     static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+    static CDocReader *createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
 #if LIBCDOC_TESTING
     virtual int64_t testConfig(std::vector<uint8_t>& dst);
