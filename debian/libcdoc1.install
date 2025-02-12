@@ -1,5 +1,4 @@
 usr/lib/*/libcdoc.so.*
-usr/lib/*/libcdoc_static.a
 usr/lib/*/libcdoc_java.so
 usr/lib/*/libcdoc_csharp.so
 usr/bin/cdoc-tool
