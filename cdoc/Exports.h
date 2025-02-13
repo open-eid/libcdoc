@@ -22,11 +22,11 @@
 #ifdef WIN32
   #include <winapifamily.h>
   #ifdef cdoc_STATIC
-	#define CDOC_EXPORT
+	    #define CDOC_EXPORT
   #elif defined(cdoc_EXPORTS)
-	#define CDOC_EXPORT __declspec(dllexport)
+	    #define CDOC_EXPORT __declspec(dllexport)
   #else
-	#define CDOC_EXPORT __declspec(dllimport)
+      #define CDOC_EXPORT __declspec(dllimport)
   #endif
   #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 	#define CDOC_DEPRECATED __declspec(deprecated)
@@ -38,6 +38,7 @@
   #define CDOC_WARNING_DISABLE_CLANG(text)
   #define CDOC_WARNING_DISABLE_GCC(text)
   #define CDOC_WARNING_DISABLE_MSVC(number) __pragma(warning(disable: number))
+  #define STDCALL __stdcall
 #else
   #define CDOC_EXPORT __attribute__ ((visibility("default")))
   #define CDOC_DEPRECATED __attribute__ ((__deprecated__))
@@ -51,6 +52,7 @@
   #endif
   #define CDOC_WARNING_DISABLE_GCC(text) CDOC_DO_PRAGMA(GCC diagnostic ignored text)
   #define CDOC_WARNING_DISABLE_MSVC(text)
+  #define STDCALL
 #endif
 
 #endif // EXPOORTS_H

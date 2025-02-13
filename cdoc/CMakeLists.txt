@@ -74,6 +74,7 @@ target_include_directories(cdoc PUBLIC
     $<INSTALL_INTERFACE:include>
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
+
 if(NOT BUILD_SHARED_LIBS)
     target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
 endif()
@@ -88,7 +89,8 @@ target_link_libraries(cdoc PRIVATE
 
 if(BUILD_TOOLS)
     add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
-    target_link_libraries(cdoc-tool cdoc_ver cdoc)
+    target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
     set_target_properties(cdoc-tool PROPERTIES
         INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
     )
@@ -96,7 +98,7 @@ endif()
 
 if(WIN32)
     list(APPEND PUBLIC_HEADERS WinBackend.h)
-    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN)
+    add_compile_definitions(UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(cdoc PRIVATE Crypt32 NCrypt cryptui)
 endif()
 

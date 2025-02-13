@@ -16,10 +16,9 @@
  *
  */
 
-#include <cstring>
-#include <iostream>
 #include <sstream>
 #include <map>
+#include <openssl/rand.h>
 
 #include "CDocChipher.h"
 #include "CDocReader.h"
@@ -466,24 +465,28 @@ void CDocChipher::Locks(const char* file) const
     }
 }
 
-#if defined(_WIN32) || defined(_WIN64) || defined(__GNUC__)
-uint32_t
-arc4random_uniform(uint32_t upperbound)
-{
-    return rand() % upperbound;
-}
-#endif
-
 string CDocChipher::GenerateRandomSequence() const
 {
     constexpr uint32_t upperbound = 'z' - '0' + 1;
     constexpr int MaxSequenceLength = 11;
 
     uint32_t rnd;
+    uint8_t rndByte;
     ostringstream sequence;
     for (int cnt = 0; cnt < MaxSequenceLength;)
     {
-        rnd = arc4random_uniform(upperbound) + '0';
+        if (RAND_bytes(&rndByte, 1) < 1)
+        {
+            rnd = rand() % upperbound + '0';
+        }
+        else
+        {
+            rnd = rndByte % upperbound + '0';
+        }
+
+        // arc4random_uniform tends to be not available on all platforms.
+        // rnd = arc4random_uniform(upperbound) + '0';
+
         if (isalnum(rnd))
         {
             sequence << static_cast<char>(rnd);

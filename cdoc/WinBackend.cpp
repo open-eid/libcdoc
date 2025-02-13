@@ -20,6 +20,7 @@
 
 #include "CDoc2.h"
 #include "Crypto.h"
+#include "ILogger.h"
 #include "Utils.h"
 
 #include <Windows.h>
@@ -44,7 +45,7 @@ struct libcdoc::WinBackend::Private {
             while (result == ERROR_SUCCESS) {
                 std::string name = toUTF8(wkeyname->pszName);
                 std::string algo = toUTF8(wkeyname->pszAlgid);
-                std::cerr << "Name: " << name << " Algo: " << algo << std::endl;
+                LOG_DBG("Name: {} Algo: {}", name, algo);
                 NCryptFreeBuffer(wkeyname);
                 result = NCryptEnumKeys(prov, NULL, &wkeyname, &state, NCRYPT_SILENT_FLAG);
             }

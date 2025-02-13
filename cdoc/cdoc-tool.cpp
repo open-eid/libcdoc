@@ -16,11 +16,11 @@
  *
  */
 
-#include <chrono>
 #include <iostream>
 
 #include "CDocChipher.h"
 #include "ConsoleLogger.h"
+#include "ILogger.h"
 #include "Utils.h"
 
 using namespace std;
@@ -452,9 +452,6 @@ int main(int argc, char *argv[])
         print_usage(cerr);
         return 1;
     }
-
-    chrono::time_point<chrono::system_clock> epoch;
-    auto now = chrono::system_clock::now();
 
     // Add console logger by default
     ConsoleLogger console_logger;
