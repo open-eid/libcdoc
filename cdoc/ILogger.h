@@ -64,12 +64,10 @@ enum LogLevel
      */
     LogLevelDebug,
 
-#ifndef NDEBUG
     /**
-     * @brief Most verbose level. Used for development and seldom enabled in production.
+     * @brief Most verbose level. Used for development, NOP in production code.
      */
     LogLevelTrace
-#endif
 };
 
 
