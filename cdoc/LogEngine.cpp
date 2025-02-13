@@ -23,13 +23,15 @@
 
 using namespace  std;
 
+namespace libcdoc
+{
 /**
  * @brief Logging Engine implementation.
  *
  * The Logging Engine holds all instances of registered loggers and
  * logs a log message to all the instances.
  */
-class LogEngine final : public libcdoc::ILogger
+class LogEngine final : public ILogger
 {
 public:
     LogEngine() : currentLoggerCookie(0) {}
@@ -72,19 +74,27 @@ private:
     mutex loggers_protector;
 };
 
-// Global Logging Engine instance.
-static LogEngine logEngine;
+// Default logger's instance - Logging Engine instance.
+static LogEngine defaultLogEngine;
+
+// Currentlty used logger's instance.
+static ILogger* cdoc_logger = &defaultLogEngine;
 
 // It is essential to define shared functions and variables with namespace. Otherwise, the linker won't find them.
 
-CDOC_EXPORT libcdoc::ILogger* libcdoc::Logger = &logEngine;
-
-int libcdoc::add_logger(ILogger* logger)
+int STDCALL add_logger(ILogger* logger)
 {
-    return logEngine.AddLogger(logger);
+    return defaultLogEngine.AddLogger(logger);
 }
 
-libcdoc::ILogger* libcdoc::remove_logger(int cookie)
+ILogger* STDCALL remove_logger(int cookie)
 {
-    return logEngine.RemoveLogger(cookie);
+    return defaultLogEngine.RemoveLogger(cookie);
+}
+
+ILogger* STDCALL get_logger()
+{
+    return cdoc_logger;
+}
+
 }

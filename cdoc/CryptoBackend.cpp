@@ -18,6 +18,7 @@
 
 #include "Crypto.h"
 #include "CryptoBackend.h"
+#include "ILogger.h"
 #include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
@@ -27,8 +28,6 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #endif
-
-#define LOCAL_DEBUG
 
 namespace libcdoc {
 
@@ -88,9 +87,9 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 		std::vector<uint8_t> secret;
         int result = getSecret(secret, idx);
 		if (result < 0) return result;
-#ifdef LOCAL_DEBUG
-        std::cerr << "Secret: " << toHex(secret) << std::endl;
-#endif
+
+        LOG_DBG("Secret: {}", toHex(secret));
+
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 		std::fill(secret.begin(), secret.end(), 0);
 		if (key_material.empty()) return OPENSSL_ERROR;
@@ -98,9 +97,9 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
         int result = getSecret(key_material, idx);
 		if (result < 0) return result;
 	}
-#ifdef LOCAL_DEBUG
-    std::cerr << "Key material: " << toHex(key_material) << std::endl;
-#endif
+
+    LOG_DBG("Key material: {}", toHex(key_material));
+
     return OK;
 }
 
@@ -116,11 +115,10 @@ CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8
 	kek_pm = libcdoc::Crypto::extract(key_material, salt);
 	std::fill(key_material.begin(), key_material.end(), 0);
 	if (kek_pm.empty()) return OPENSSL_ERROR;
-#ifdef LOCAL_DEBUG
-    std::cerr << "Extract: " << toHex(kek_pm) << std::endl;
-#endif
+
+    LOG_DBG("Extract: {}", toHex(kek_pm));
+
     return OK;
 }
 
 } // namespace libcdoc
-
