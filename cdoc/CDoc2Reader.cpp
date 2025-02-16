@@ -285,7 +285,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 
 	priv->tgs = std::make_unique<TaggedSource>(priv->_src, false, 16);
 	libcdoc::CipherSource *csrc = new libcdoc::CipherSource(priv->tgs.get(), false, priv->cipher.get());
-	priv->zsrc = std::make_unique<libcdoc::ZSource>(csrc, false);
+	priv->zsrc = std::make_unique<libcdoc::ZSource>(csrc, true);
 	priv->tar = std::make_unique<libcdoc::TarSource>(priv->zsrc.get(), false);
 
     return libcdoc::OK;

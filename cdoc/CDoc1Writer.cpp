@@ -23,6 +23,7 @@
 #include "XmlWriter.h"
 #include "CDoc1Writer.h"
 #include "ILogger.h"
+#include "utils/memory.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <IntSafe.h>
@@ -31,9 +32,6 @@
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/x509.h>
-
-
-#define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
 using namespace libcdoc;
 
@@ -79,7 +77,7 @@ CDoc1Writer::~CDoc1Writer()
 
 bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, const libcdoc::Crypto::Key& transportKey)
 {
-	SCOPE(X509, peerCert, libcdoc::Crypto::toX509(recipient));
+	auto peerCert = make_unique_ptr<X509_free>(libcdoc::Crypto::toX509(recipient));
 	if(!peerCert)
 		return false;
 	std::string cn = [&]{
@@ -102,12 +100,12 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 	}();
 	xmlw->writeElement(Private::DENC, "EncryptedKey", {{"Recipient", cn}}, [&]{
 		std::vector<uint8_t> encryptedData;
-		SCOPE(EVP_PKEY, peerPKey, X509_get_pubkey(peerCert.get()));
-		switch(EVP_PKEY_base_id(peerPKey.get()))
+		auto *peerPKey = X509_get0_pubkey(peerCert.get());
+		switch(EVP_PKEY_base_id(peerPKey))
 		{
 		case EVP_PKEY_RSA:
 		{
-			SCOPE(RSA, rsa, EVP_PKEY_get1_RSA(peerPKey.get()));
+			auto rsa = make_unique_ptr<RSA_free>(EVP_PKEY_get1_RSA(peerPKey));
 			encryptedData.resize(size_t(RSA_size(rsa.get())));
 			RSA_public_encrypt(int(transportKey.key.size()), transportKey.key.data(),
 				encryptedData.data(), rsa.get(), RSA_PKCS1_PADDING);
@@ -121,13 +119,13 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 		}
 		case EVP_PKEY_EC:
 		{
-			SCOPE(EC_KEY, peerECKey, EVP_PKEY_get1_EC_KEY(peerPKey.get()));
-			int curveName = EC_GROUP_get_curve_name(EC_KEY_get0_group(peerECKey.get()));
-			SCOPE(EC_KEY, priv, EC_KEY_new_by_curve_name(curveName));
+			auto *peerECKey = EVP_PKEY_get0_EC_KEY(peerPKey);
+			int curveName = EC_GROUP_get_curve_name(EC_KEY_get0_group(peerECKey));
+			auto priv = make_unique_ptr<EC_KEY_free>(EC_KEY_new_by_curve_name(curveName));
 			EC_KEY_generate_key(priv.get());
-			SCOPE(EVP_PKEY, pkey, EVP_PKEY_new());
+			auto pkey = make_unique_ptr<EVP_PKEY_free>(EVP_PKEY_new());
 			EVP_PKEY_set1_EC_KEY(pkey.get(), priv.get());
-			std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(pkey.get(), peerPKey.get());
+			std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(pkey.get(), peerPKey);
 
 			std::string oid(50, 0);
 			oid.resize(size_t(OBJ_obj2txt(&oid[0], int(oid.size()), OBJ_nid2obj(curveName), 1)));

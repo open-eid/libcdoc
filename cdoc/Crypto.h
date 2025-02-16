@@ -18,7 +18,8 @@
 
 #pragma once
 
-#include <memory>
+#include "utils/memory.h"
+
 #include <string>
 #include <vector>
 
@@ -36,7 +37,7 @@ namespace libcdoc {
 class Crypto
 {
 public:
-    typedef typename std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)> EVP_PKEY_ptr;
+	using EVP_PKEY_ptr = unique_free_t<EVP_PKEY>;
 
 	struct Cipher {
 		struct evp_cipher_ctx_st *ctx;
