@@ -57,6 +57,7 @@ add_library(cdoc
     ToolConf.h
     CDoc2.h
     Wrapper.h
+    utils/memory.h
 )
 set_target_properties(cdoc PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -82,7 +83,7 @@ target_link_libraries(cdoc PRIVATE
     OpenSSL::SSL
     LibXml2::LibXml2
     ZLIB::ZLIB
-    #cdoc_ver
+    $<$<BOOL:BUILD_SHARED_LIBS>:cdoc_ver>
     $<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
     #$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
 )
@@ -94,6 +95,8 @@ if(BUILD_TOOLS)
     set_target_properties(cdoc-tool PROPERTIES
         INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
     )
+    install(TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR})
+    #install( FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 )
 endif()
 
 if(WIN32)
@@ -230,8 +233,4 @@ if(NOT ANDROID)
     )
 endif()
 
-if(BUILD_TOOLS)
-    install(TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-#install( FILES ${CMAKE_CURRENT_BINARY_DIR}/cdoc-tool.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 )
 #install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libcdoc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )

@@ -36,8 +36,6 @@
 
 #include <cstring>
 
-#define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
-
 using namespace libcdoc;
 
 const std::string Crypto::SHA256_MTH = "http://www.w3.org/2001/04/xmlenc#sha256";
@@ -218,7 +216,7 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, const std::vector<uint8_t> &data)
 {
 	const EVP_CIPHER *c = cipher(method);
-	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
+    auto ctx = make_unique_ptr<EVP_CIPHER_CTX_free>(EVP_CIPHER_CTX_new());
     if (SSL_FAILED(EVP_CipherInit(ctx.get(), c, key.key.data(), key.iv.data(), 1), "EVP_CipherInit"))
         return {};
 
@@ -249,7 +247,7 @@ std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, 
 std::vector<uint8_t>
 Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
 {
-	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(pub, nullptr));
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(pub, nullptr));
 	size_t size = 0;
     if (SSL_FAILED(EVP_PKEY_encrypt_init(ctx.get()), "EVP_PKEY_encrypt_init") ||
         SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding") ||
@@ -277,7 +275,7 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
     LOG_DBG("iv {}", toHex(iv));
     LOG_DBG("transport {}", toHex(key));
 
-	SCOPE(EVP_CIPHER_CTX, ctx, EVP_CIPHER_CTX_new());
+    auto ctx = make_unique_ptr<EVP_CIPHER_CTX_free>(EVP_CIPHER_CTX_new());
     if (!ctx)
     {
         LOG_SSL_ERROR("EVP_CIPHER_CTX_new");
@@ -322,7 +320,7 @@ std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
 		return result;
     }
 	result.resize(strlen((const char*)data));
-	SCOPE(EVP_ENCODE_CTX, ctx, EVP_ENCODE_CTX_new());
+    auto ctx = make_unique_ptr<EVP_ENCODE_CTX_free>(EVP_ENCODE_CTX_new());
     if (!ctx)
     {
         LOG_SSL_ERROR("EVP_ENCODE_CTX_new");
@@ -350,7 +348,7 @@ std::vector<uint8_t> Crypto::deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPK
 {
 	std::vector<uint8_t> sharedSecret;
 	size_t sharedSecretLen = 0;
-	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(pkey, nullptr));
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(pkey, nullptr));
     if (!ctx)
     {
         LOG_SSL_ERROR("EVP_PKEY_CTX_new");
@@ -396,7 +394,7 @@ uint32_t Crypto::keySize(const std::string &algo)
 std::vector<uint8_t>
 Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, const std::vector<uint8_t> &info, int len, int mode)
 {
-	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx)
     {
         LOG_SSL_ERROR("EVP_PKEY_CTX_new_id");
@@ -432,26 +430,28 @@ Crypto::extract(const std::vector<uint8_t> &key, const std::vector<uint8_t> &sal
 std::vector<uint8_t>
 Crypto::sign_hmac(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data)
 {
-	EVP_PKEY *pkey = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, nullptr, key.data(), int(key.size()));
+    std::vector<uint8_t> sig;
+    auto pkey = make_unique_ptr<EVP_PKEY_free>(EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, nullptr, key.data(), int(key.size())));
     if (!pkey)
     {
         LOG_SSL_ERROR("EVP_PKEY_new_mac_key");
-        return {};
+        return sig;
     }
 
-	size_t req = 0;
-	SCOPE(EVP_MD_CTX, ctx, EVP_MD_CTX_new());
+    auto ctx = make_unique_ptr<EVP_MD_CTX_free>(EVP_MD_CTX_new());
     if (!ctx)
     {
         LOG_SSL_ERROR("EVP_MD_CTX_new");
-        return {};
+        return sig;
     }
-    if (SSL_FAILED(EVP_DigestSignInit(ctx.get(), nullptr, EVP_sha256(), nullptr, pkey), "EVP_DigestSignInit") ||
+
+	size_t req = 0;
+    if (SSL_FAILED(EVP_DigestSignInit(ctx.get(), nullptr, EVP_sha256(), nullptr, pkey.get()), "EVP_DigestSignInit") ||
         SSL_FAILED(EVP_DigestSignUpdate(ctx.get(), data.data(), data.size()), "EVP_DigestSignUpdate") ||
         SSL_FAILED(EVP_DigestSignFinal(ctx.get(), nullptr, &req), "EVP_DigestSignFinal"))
-		return {};
+		return sig;
 
-	std::vector<uint8_t> sig(int(req), 0);
+    sig.resize(req);
     if(SSL_FAILED(EVP_DigestSignFinal(ctx.get(), sig.data(), &req), "EVP_DigestSignFinal"))
 		sig.clear();
 	return sig;
@@ -482,7 +482,7 @@ Crypto::EVP_PKEY_ptr
 Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
 {
 	EVP_PKEY *params = nullptr;
-    SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
     if (!ctx)
         LOG_SSL_ERROR("EVP_PKEY_CTX_new_id");
 
@@ -516,13 +516,12 @@ Crypto::EVP_PKEY_ptr
 Crypto::genECKey(EVP_PKEY *params)
 {
 	EVP_PKEY *key = nullptr;
-	SCOPE(EVP_PKEY_CTX, ctx, EVP_PKEY_CTX_new(params, nullptr));
-	SCOPE(EVP_PKEY, result, nullptr);
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(params, nullptr));
 	if(ctx &&
         !SSL_FAILED(EVP_PKEY_keygen_init(ctx.get()), "EVP_PKEY_keygen_init") &&
         !SSL_FAILED(EVP_PKEY_keygen(ctx.get(), &key), "EVP_PKEY_keygen"))
-		result.reset(key);
-	return result;
+    {}
+    return EVP_PKEY_ptr(key, EVP_PKEY_free);
 }
 
 std::vector<uint8_t>
