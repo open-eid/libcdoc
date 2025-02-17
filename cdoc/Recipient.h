@@ -57,7 +57,9 @@ struct CDOC_EXPORT Recipient {
         /**
          * @brief public key on keyserver
          */
-        SERVER
+        SERVER,
+        // Shared secret
+        SHARED_SECRET
 	};
 
     /**
@@ -140,6 +142,7 @@ struct CDOC_EXPORT Recipient {
      * @return true if type is SERVER
      */
     bool isKeyServer() const { return (type == Type::SERVER); }
+    bool isSharedSecret() const { return type == Type::SHARED_SECRET; }
 
     /**
      * @brief Clear all values and set type to NONE
