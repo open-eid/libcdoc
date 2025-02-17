@@ -109,13 +109,24 @@ static int ParseAndEncrypt(int argc, char *argv[])
                 rcpt.cert = std::move(readFile(cert_file.string()));
                 rcpt.key_file_name = cert_file.filename().string();
             }
-            else if (method == "key" || method == "skey" || method == "pkey") {
+            else if (method == "pkey") {
+                if (parts.size() != 3)
+                    return 2;
+
+                rcpt.type = RcptInfo::PKEY;
+                rcpt.secret = std::move(fromHex(parts[2]));
+            }
+            else if (method == "key" || method == "skey") {
                 // For backward compatibility leave also "key" as the synonym for "skey" method.
                 if (parts.size() != 3)
                     return 2;
 
-                rcpt.type = method == "pkey" ? RcptInfo::PKEY : RcptInfo::SKEY;
+                rcpt.type = RcptInfo::SKEY;
                 rcpt.secret = std::move(fromHex(parts[2]));
+                if (rcpt.secret.size() != 32) {
+                    LOG_ERROR("Symmetric key has to be exactly 32 bytes long");
+                    return 1;
+                }
             }
             else if (method == "pfkey") {
                 if (parts.size() != 3)

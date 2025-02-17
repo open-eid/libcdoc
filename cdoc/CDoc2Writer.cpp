@@ -307,10 +307,22 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(rcpt.label);
 			std::vector<uint8_t> kek_pm(32);
 			std::vector<uint8_t> salt;
-			crypto->random(salt, 32);
+            int64_t result = crypto->random(salt, 32);
+            if (result < 0) {
+                setLastError(crypto->getLastErrorStr((int) result));
+                return result;
+            }
 			std::vector<uint8_t> pw_salt;
-			crypto->random(pw_salt, 32);
-            crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt_idx);
+            result = crypto->random(pw_salt, 32);
+            if (result < 0) {
+                setLastError(crypto->getLastErrorStr((int) result));
+                return result;
+            }
+            result = crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt_idx);
+            if (result < 0) {
+                setLastError(crypto->getLastErrorStr((int) result));
+                return result;
+            }
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
 
             LOG_DBG("Label: {}", rcpt.label);
