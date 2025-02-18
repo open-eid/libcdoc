@@ -161,9 +161,9 @@ jobs:
           -DVCPKG_MANIFEST_FEATURES=tests `
           -DCMAKE_INSTALL_LIBDIR=bin
         cmake --build build --config RelWithDebInfo
-        dir build
-        dir "build/test"
-        cd build
+        dir "build/cdoc/RelWithDebInfo"
+        dir "build/test/RelWithDebInfo"
+        cd "build/RelWithDebInfo"
         unittests.exe
         ctest -V -C RelWithDebInfo --test-dir build
         cmake --install build --config RelWithDebInfo --prefix ${{ env.DEST }}
