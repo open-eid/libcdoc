@@ -231,15 +231,25 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 libcdoc::result_t
 CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
 {
-	int result = beginDecryption(fmk);
+	int64_t result = beginDecryption(fmk);
     if (result != libcdoc::OK) return result;
 	bool warning = false;
 	std::string name;
 	int64_t size;
 	result = nextFile(name, size);
     while (result == libcdoc::OK) {
-		consumer->open(name, size);
-		consumer->writeAll(*priv->tar);
+		result = consumer->open(name, size);
+		if (result != libcdoc::OK) {
+			setLastError(consumer->getLastErrorStr(result));
+			LOG_ERROR("{}", last_error);
+			return result;
+		}
+		result = consumer->writeAll(*priv->tar);
+		if (result != libcdoc::OK) {
+			setLastError(consumer->getLastErrorStr(result));
+			LOG_ERROR("{}", last_error);
+			return result;
+		}
 		result = nextFile(name, size);
 	}
 	if (result != libcdoc::END_OF_STREAM) {
@@ -322,7 +332,6 @@ CDoc2Reader::finishDecryption()
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
 	setLastError({});
-    return libcdoc::OK;
 	priv->tar.reset();
     return libcdoc::OK;
 }
@@ -517,7 +526,7 @@ CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
 bool
 CDoc2Reader::isCDoc2File(const std::string& path)
 {
-    std::ifstream fb(path);
+    std::ifstream fb(path, std::ios_base::in | std::ios_base::binary);
     char in[libcdoc::CDoc2::LABEL.size()];
     constexpr size_t len = libcdoc::CDoc2::LABEL.size();
     if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;

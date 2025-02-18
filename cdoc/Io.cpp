@@ -86,12 +86,12 @@ DataSource::skip(size_t size) {
 }
 
 IStreamSource::IStreamSource(const std::string& path)
-	: IStreamSource(new std::ifstream(path), true)
+	: IStreamSource(new std::ifstream(path, std::ios_base::in | std::ios_base::binary), true)
 {
 }
 
 OStreamConsumer::OStreamConsumer(const std::string& path)
-	: OStreamConsumer(new std::ofstream(path), true)
+	: OStreamConsumer(new std::ofstream(path, std::ios_base::binary), true)
 {
 }
 
@@ -138,7 +138,7 @@ FileListSource::next(std::string& name, int64_t& size)
 	std::filesystem::path path(_base);
 	path.append(_files[_current]);
 	if (!std::filesystem::exists(path)) return IO_ERROR;
-	_ifs.open(path, std::ios_base::in);
+	_ifs.open(path, std::ios_base::in | std::ios_base::binary);
 	if (_ifs.bad()) return IO_ERROR;
 	name = _files[_current];
 	size = std::filesystem::file_size(path);

@@ -212,7 +212,7 @@ struct CDOC_EXPORT IStreamSource : public DataSource {
 	IStreamSource(std::istream *ifs, bool take_ownership = false) : _ifs(ifs), _owned(take_ownership) {}
 	IStreamSource(const std::string& path);
 	~IStreamSource() {
-        //if (_owned) delete _ifs;
+        if (_owned) delete _ifs;
 	}
 
     result_t seek(size_t pos) {
@@ -327,8 +327,8 @@ struct CDOC_EXPORT FileListConsumer : public MultiDataConsumer {
         }
         std::filesystem::path path(base);
         path /= fileName;
-		ofs.open(path.string(), std::ios_base::out);
-        return ofs.bad() ? OK : OUTPUT_STREAM_ERROR;
+		ofs.open(path.string(), std::ios_base::binary);
+        return ofs.bad() ? OUTPUT_STREAM_ERROR : OK;
 	}
 
 protected:
