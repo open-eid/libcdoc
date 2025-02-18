@@ -163,7 +163,7 @@ jobs:
         cmake --build build --config RelWithDebInfo
         dir "build/cdoc/RelWithDebInfo"
         dir "build/test/RelWithDebInfo"
-        cd "build/RelWithDebInfo"
+        cd "build/test/RelWithDebInfo"
         unittests.exe
         ctest -V -C RelWithDebInfo --test-dir build
         cmake --install build --config RelWithDebInfo --prefix ${{ env.DEST }}
