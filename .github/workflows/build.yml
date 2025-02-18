@@ -163,9 +163,8 @@ jobs:
         cmake --build build --config RelWithDebInfo
         dir "build/cdoc/RelWithDebInfo"
         dir "build/test/RelWithDebInfo"
-        cd "build/test/RelWithDebInfo"
-        unittests.exe
         ctest -V -C RelWithDebInfo --test-dir build
+        build/test/RelWithDebInfo/unittests.exe
         cmake --install build --config RelWithDebInfo --prefix ${{ env.DEST }}
     - name: Archive artifacts
       uses: actions/upload-artifact@v4
