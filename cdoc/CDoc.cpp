@@ -59,7 +59,7 @@ static constexpr int n_results = sizeof(results) / sizeof(Result);
 
 std::string
 getErrorStr(int64_t code) {
-    for (auto& r : results) {
+    for (const auto& r : results) {
         if (r.code == code) return std::string(r.message);
     }
     return FORMAT("Unknown result code {}", code);
@@ -72,7 +72,7 @@ getVersion()
 }
 
 bool
-libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)
+libcdoc::Configuration::getBoolean(std::string_view param, bool def_val) const
 {
 	std::string val = getValue(param);
     if (val.empty()) return def_val;
@@ -80,7 +80,7 @@ libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)
 }
 
 int
-libcdoc::Configuration::getInt(const std::string_view& param, int def_val)
+libcdoc::Configuration::getInt(std::string_view param, int def_val) const
 {
     std::string val = getValue(param);
     if (val.empty()) return def_val;

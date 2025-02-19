@@ -56,7 +56,7 @@ struct CDOC_EXPORT CryptoBackend {
     virtual ~CryptoBackend() noexcept = default;
     CryptoBackend(const CryptoBackend&) = delete;
     CryptoBackend& operator=(const CryptoBackend&) = delete;
-    CDOC_ENABLE_MOVE(CryptoBackend);
+    CDOC_DISABLE_MOVE(CryptoBackend);
 
 	virtual std::string getLastErrorStr(int code) const;
 

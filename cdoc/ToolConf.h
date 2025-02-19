@@ -66,7 +66,7 @@ struct ToolConf : public Configuration {
      */
     bool gen_label = false;
 
-    std::string getValue(const std::string_view& domain, const std::string_view& param) override final {
+    std::string getValue(std::string_view domain, std::string_view param) const final {
         for (auto& sdata : servers) {
             if (sdata.ID == domain) {
                 if (param == Configuration::KEYSERVER_SEND_URL) {

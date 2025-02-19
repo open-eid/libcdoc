@@ -19,7 +19,6 @@
 #include "CDocCipher.h"
 #include "CDocReader.h"
 #include "CDoc2.h"
-#include "Certificate.h"
 #include "ILogger.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
@@ -214,15 +213,15 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
             switch (rcpt.type)
             {
             case RcptInfo::Type::PASSWORD:
-                label = std::move(Recipient::BuildLabelPassword(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label));
+                label = Recipient::BuildLabelPassword(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label);
                 break;
 
             case RcptInfo::Type::SKEY:
-                label = std::move(Recipient::BuildLabelSymmetricKey(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label, rcpt.key_file_name));
+                label = Recipient::BuildLabelSymmetricKey(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label, rcpt.key_file_name);
                 break;
 
             case RcptInfo::Type::PKEY:
-                label = std::move(Recipient::BuildLabelPublicKey(CDoc2::KEYLABELVERSION, rcpt.key_file_name));
+                label = Recipient::BuildLabelPublicKey(CDoc2::KEYLABELVERSION, rcpt.key_file_name);
                 break;
 
             case RcptInfo::Type::P11_PKI:
@@ -236,16 +235,13 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
                     LOG_ERROR("Certificate reading from SC card failed. Key label: {}", rcpt.key_label);
                     return 1;
                 }
-                Certificate cert(cert_bytes);
-                label = std::move(Recipient::BuildLabelEID(CDoc2::KEYLABELVERSION, Recipient::getEIDType(cert.policies()), cert.getCommonName(), cert.getSerialNumber(), cert.getSurname(), cert.getGivenName()));
+                label = Recipient::BuildLabelEID(cert_bytes);
                 break;
             }
 
             case RcptInfo::Type::CERT:
             {
-                Certificate cert(rcpt.cert);
-                vector<uint8_t> digest = cert.getDigest();
-                label = std::move(Recipient::BuildLabelCertificate(CDoc2::KEYLABELVERSION, rcpt.key_file_name, cert.getCommonName(), digest));
+                label = Recipient::BuildLabelCertificate(rcpt.key_file_name, rcpt.cert);
                 break;
             }
             case RcptInfo::Type::P11_SYMMETRIC:

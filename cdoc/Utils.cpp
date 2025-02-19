@@ -70,14 +70,13 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
 }
 
 std::string
-urlEncode(const std::string_view &src)
+urlEncode(std::string_view src)
 {
     std::ostringstream escaped;
     escaped.fill('0');
     escaped << std::hex;
 
-    for (auto i = src.begin(), n = src.end(); i != n; ++i) {
-        std::string::value_type c = (*i);
+    for (auto c : src) {
         // Keep alphanumeric and other accepted characters intact
         if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             escaped << c;

@@ -49,7 +49,7 @@ static std::string toHex(const F &data)
 }
 
 static std::vector<uint8_t>
-fromHex(const std::string_view& hex) {
+fromHex(std::string_view hex) {
     std::vector<uint8_t> val(hex.size() / 2);
     char c[3] = {0};
     for (size_t i = 0; i < (hex.size() & 0xfffffffe); i += 2) {
@@ -71,7 +71,7 @@ split (const std::string &s, char delim = ':') {
 }
 
 static std::vector<uint8_t>
-readAllBytes(const std::string_view filename)
+readAllBytes(std::string_view filename)
 {
     std::filesystem::path keyFilePath(filename);
     if (!std::filesystem::exists(keyFilePath)) {
@@ -92,7 +92,7 @@ readAllBytes(const std::string_view filename)
 
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
 
-std::string urlEncode(const std::string_view &src);
+std::string urlEncode(std::string_view src);
 std::string urlDecode(std::string &src);
 
 #ifdef _WIN32

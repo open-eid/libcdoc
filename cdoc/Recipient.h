@@ -180,7 +180,14 @@ struct CDOC_EXPORT Recipient {
      * @param cert the certificate value (der-encoded)
      * @return a new Recipient structure
      */
-    static Recipient makeCertificate(const std::string& label, const std::vector<uint8_t>& cert);
+    static Recipient makeCertificate(std::string label, std::vector<uint8_t> cert);
+    /**
+     * @brief Create a new certificate based Recipient filling label from certificate
+     * @see makeCertificate, BuildLabelEID
+     * @param cert the certificate value (der-encoded)
+     * @return a new Recipient structure
+     */
+    static Recipient makeEID(std::vector<uint8_t> cert);
     /**
      * @brief Create new server based Recipient
      * @param label a label value
@@ -189,7 +196,15 @@ struct CDOC_EXPORT Recipient {
      * @param server_id the keyserver id
      * @return a new Recipient structure
      */
-    static Recipient makeServer(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type, const std::string& server_id);
+    static Recipient makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id);
+    /**
+     * @brief Create new server based Recipient filling label from certificate
+     * @see makeServer, BuildLabelEID
+     * @param cert the certificate value (der-encoded)
+     * @param server_id the keyserver id
+     * @return a new Recipient structure
+     */
+    static Recipient makeEIDServer(std::vector<uint8_t> cert, std::string server_id);
 
     /**
      * @brief build machine-readable CDoc2 label
@@ -207,7 +222,14 @@ struct CDOC_EXPORT Recipient {
      * @param first_name the first name
      * @return a composed label
      */
-    static std::string BuildLabelEID(int version, EIDType type, const std::string& cn, const std::string& serial_number, const std::string& last_name, const std::string& first_name);
+    static std::string BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name);
+    /**
+     * @brief build machine-readable CDoc2 label for EID recipient filling info from certificate
+     * @see BuildLabelEID
+     * @param cert the certificate value (der-encoded)
+     * @return a composed label
+     */
+    static std::string BuildLabelEID(const std::vector<uint8_t> &cert);
     /**
      * @brief build machine-readable CDoc2 label for certificate-based recipient
      * @param version the label version
@@ -216,7 +238,15 @@ struct CDOC_EXPORT Recipient {
      * @param cert_sha1 the certificate SHA1 hash
      * @return a composed label
      */
-    static std::string BuildLabelCertificate(int version, const std::string file, const std::string& cn, const std::vector<uint8_t>& cert_sha1);
+    static std::string BuildLabelCertificate(int version, std::string_view file, std::string_view cn, const std::vector<uint8_t>& cert_sha1);
+    /**
+     * @brief build machine-readable CDoc2 label for certificate-based recipient filling info from certificate
+     * @see BuildLabelCertificate
+     * @param file the name of certificate file
+     * @param cert the certificate value (der-encoded)
+     * @return a composed label
+     */
+    static std::string BuildLabelCertificate(std::string_view file, const std::vector<uint8_t> &cert);
     /**
      * @brief build machine-readable CDoc2 label for public key based recipient
      * @param version the label version

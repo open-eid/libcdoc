@@ -21,21 +21,25 @@
 
 #include "Exports.h"
 
+#include "utils/memory.h"
+
 #include <string>
 #include <vector>
 
+using X509 = struct x509_st;
+
 namespace libcdoc {
 
-class CDOC_EXPORT Certificate {
+class Certificate {
 public:
 	enum Algorithm {
 		RSA,
 		ECC
 	};
 
-    std::vector<uint8_t> cert;
+    unique_free_t<X509> cert;
 
-    Certificate(const std::vector<uint8_t>& cert) : cert(cert) {}
+    explicit Certificate(const std::vector<uint8_t>& cert) noexcept;
 
 	std::string getCommonName() const;
 	std::string getGivenName() const;

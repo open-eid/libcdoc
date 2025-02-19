@@ -47,7 +47,7 @@ struct CDOC_EXPORT Configuration {
 	virtual ~Configuration() noexcept = default;
     Configuration(const Configuration&) = delete;
     Configuration& operator=(const Configuration&) = delete;
-    CDOC_ENABLE_MOVE(Configuration);
+    CDOC_DISABLE_MOVE(Configuration);
 
     /**
      * @brief get a value of configuration parameter
@@ -57,28 +57,28 @@ struct CDOC_EXPORT Configuration {
      * @param param the parameter name.
      * @return a string value or empty string if parameter is not defined.
      */
-    virtual std::string getValue(const std::string_view& domain, const std::string_view& param) {return {};}
+    virtual std::string getValue(std::string_view domain, std::string_view param) const {return {};}
 
     /**
      * @brief get a value of configuration parameter from default domain
      * @param param the parameter name.
      * @return a string value or empty string if parameter is not defined.
      */
-    std::string getValue(const std::string_view& param) {return getValue({}, param);}
+    std::string getValue(std::string_view param) const {return getValue({}, param);}
     /**
      * @brief get boolean value of configuration parameter from default domain
      * @param param the parameter name
      * @param def_val the default value to return if parameter is not set
      * @return the parameter value
      */
-    bool getBoolean(const std::string_view& param, bool def_val = false);
+    bool getBoolean(std::string_view param, bool def_val = false) const;
     /**
      * @brief get integer value of configuration parameter from default domain
      * @param param the parameter name
      * @param def_val the default value to return if parameter is not set
      * @return the key value
      */
-    int getInt(const std::string_view& param, int def_val = 0);
+    int getInt(std::string_view param, int def_val = 0) const;
 
 #if LIBCDOC_TESTING
     virtual int64_t test(std::vector<uint8_t>& dst);
