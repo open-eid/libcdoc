@@ -84,6 +84,10 @@ enum {
      */
     INPUT_STREAM_ERROR = -108,
     /**
+     * @brief The supplied decryption key is wrong
+     */
+    WRONG_KEY = -109,
+    /**
      * @brief Data format of a file (or sub-object inside a file) is wrong
      */
     DATA_FORMAT_ERROR = -110,
@@ -119,6 +123,11 @@ enum {
 
 CDOC_EXPORT std::string getErrorStr(int64_t code);
 
+/**
+ * @brief A simple container of file name and size
+ *
+ * A container struct to store file name and size, needed for wrapper interfaces
+ */
 struct FileInfo {
     std::string name;
     int64_t size;

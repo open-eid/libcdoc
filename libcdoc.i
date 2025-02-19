@@ -26,6 +26,7 @@
 #include "Lock.h"
 #include "CDocWriter.h"
 #include "CDocReader.h"
+#include "PKCS11Backend.h"
 #include "Utils.h"
 #include "Wrapper.h"
 #include <iostream>
@@ -57,15 +58,22 @@
 %ignore libcdoc::CDocReader::nextFile(std::string& name, int64_t& size);
 %ignore libcdoc::CDocReader::getLockForCert(Lock& lock, const std::vector<uint8_t>& cert);
 %ignore libcdoc::CDocReader::decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer);
+%ignore libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
 %ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
 %ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
+
+%ignore libcdoc::PKCS11Backend::Handle;
+%ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label, const std::string& serial);
+%ignore libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::string& serial);
+%ignore libcdoc::PKCS11Backend::findCertificates(const std::vector<uint8_t>& public_key);
+%ignore libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+%ignore libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 
 #ifdef SWIGJAVA
 %include "arrays_java.i"
 %include "enums.swg"
 %javaconst(1);
-
 
 %apply long long { libcdoc::result_t }
 %apply long long { int64_t }
@@ -530,10 +538,11 @@ import java.util.ArrayList;
 %include "Wrapper.h"
 %include "Io.h"
 %include "Recipient.h"
+    %include "Lock.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
-%include "Lock.h"
+%include "PKCS11Backend.h"
 
 #ifdef SWIGJAVA
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{

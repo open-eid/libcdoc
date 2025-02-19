@@ -137,7 +137,7 @@ public:
     static int getCDocFileVersion(DataSource *src);
 
     /**
-     * @brief createReader create CDoc document reader
+     * @brief create CDoc document reader
      *
      * Creates a new document reader if source is a valid CDoc container (either version 1 or 2).
      * The network backend may be null if keyservers are not used.
@@ -152,7 +152,7 @@ public:
     /**
      * @brief createReader create CDoc document reader
      *
-     * Creates a new document reader if file is a valid CDoc container (either version 1 or 2)
+     * Creates a new document reader if file is a valid CDoc container (either version 1 or 2).
      * The network backend may be null if keyservers are not used.
      * @param path the path to file
      * @param conf a configuration object
@@ -161,6 +161,17 @@ public:
      * @return a new CDocReader or null
      */
     static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
+    /**
+     * @brief createReader create CDoc document reader
+     *
+     * Creates a new document reader if stream contains a valid CDoc container (either version 1 or 2).
+     * The network backend may be null if keyservers are not used.
+     * @param ifs input stream
+     * @param conf a configuration object
+     * @param crypto a cryptographic backend implementation
+     * @param network a network backend implementation
+     * @return a new CDocReader or null
+     */
     static CDocReader *createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
 #if LIBCDOC_TESTING

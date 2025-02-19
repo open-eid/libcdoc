@@ -43,6 +43,7 @@ static constexpr Result results[] = {
     {OUTPUT_STREAM_ERROR, "Output stream error"},
     {INPUT_ERROR, "Input error"},
     {INPUT_STREAM_ERROR, "Input stream error"},
+    {WRONG_KEY, "Wrong key"},
     {DATA_FORMAT_ERROR, "Invalid data format"},
     {CRYPTO_ERROR, "Cryptography error"},
     {ZLIB_ERROR, "ZLib error"},
