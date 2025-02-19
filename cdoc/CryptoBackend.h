@@ -28,8 +28,13 @@ namespace libcdoc {
  * @brief An authentication provider
  *
  * Implements cryptographic methods that may need either user action (supplying password) or external communication (PKCS11).
- * At minimum one should implement deriveECDH1 for ECC keys, decryptRSA for RSA keys and getSecret for symmetric keys. ECC and
- * symmetric keys have also frontend methods; implementing these allows the program to perform certain cryptographic procedures in controlled
+ * At minimum one should implement:
+ *
+ * - deriveECDH1 for ECC keys
+ * - decryptRSA for RSA keys
+ * - getSecret for symmetric keys.
+ *
+ * ECC and symmetric keys have also frontend methods; implementing these allows the program to perform certain cryptographic procedures in controlled
  * environment and (in case of symmetric keys) avoid exposing secret keys/passwords.
  */
 struct CDOC_EXPORT CryptoBackend {

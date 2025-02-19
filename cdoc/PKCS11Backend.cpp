@@ -263,14 +263,14 @@ libcdoc::PKCS11Backend::~PKCS11Backend()
 }
 
 std::vector<libcdoc::PKCS11Backend::Handle>
-libcdoc::PKCS11Backend::findCertificates(const std::string& label, const std::string& serial)
+libcdoc::PKCS11Backend::findCertificates(const std::string& label)
 {
 	if (!d) return {};
 	return d->findAllObjects(CKO_CERTIFICATE, {}, label);
 }
 
 std::vector<libcdoc::PKCS11Backend::Handle>
-libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::string& serial)
+libcdoc::PKCS11Backend::findSecretKeys(const std::string& label)
 {
 	if (!d) return {};
 	return d->findAllObjects(CKO_SECRET_KEY, {}, label);
