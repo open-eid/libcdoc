@@ -529,8 +529,7 @@ Crypto::toPublicKeyDer(EVP_PKEY *key)
 {
 	if(!key) return {};
 	std::vector<uint8_t> der(i2d_PublicKey(key, nullptr), 0);
-	auto *p = der.data();
-    if(i2d_PublicKey(key, &p) != der.size())
+    if(auto *p = der.data(); i2d_PublicKey(key, &p) != der.size())
     {
         LOG_SSL_ERROR("i2d_PublicKey");
         der.clear();
@@ -562,10 +561,10 @@ Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, con
     return OK;
 }
 
-X509* Crypto::toX509(const std::vector<uint8_t> &data)
+unique_free_t<X509> Crypto::toX509(const std::vector<uint8_t> &data)
 {
 	const uint8_t *p = data.data();
-    X509* x509 = d2i_X509(nullptr, &p, int(data.size()));
+    auto x509 = make_unique_ptr(d2i_X509(nullptr, &p, int(data.size())), X509_free);
     if (!x509)
     {
         LOG_SSL_ERROR("d2i_X509");
