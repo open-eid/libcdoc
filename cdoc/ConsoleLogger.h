@@ -24,6 +24,13 @@
 namespace libcdoc
 {
 
+/**
+ * @brief Console logger
+ *
+ * An ILogger subclass that logs text to console.
+ *
+ * Info messages are logged to cout, all others to cerr.
+ */
 class ConsoleLogger : public ILogger
 {
 public:

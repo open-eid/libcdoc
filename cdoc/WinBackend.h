@@ -25,10 +25,33 @@
 
 namespace libcdoc {
 
+/**
+ * @brief A convenience class for Windows NCrypt cryptographic operations
+ *
+ * It has default implementations of all CryptoBackend methods. Instead the user has to implement
+ * connectToKey method. The latter should find the correct private or secret key for the lock and
+ * then call useKey to load the key.
+ */
 struct CDOC_EXPORT WinBackend : public CryptoBackend {
     result_t useKey(const std::string& name, const std::string& pin);
 
+    /**
+     * @brief loads key for encryption/decryption
+     *
+     * A method to load the correct private/secret key for given capsule or reciever. The subclass implementation should
+     * use useKey with proper name.
+     * @param idx lock or recipient index (0-based) in CDoc container
+     * @param priv whether to connect to private or secret key
+     * @return error code or OK
+     */
     virtual result_t connectToKey(int idx, bool priv) = 0;
+    /**
+     * @brief whether to use PSS RSA padding
+     *
+     * A subclass should overwrite this to inform the backend about the correct padding.
+     * @param idx a lock idx
+     * @return true if PSS padding is sued
+     */
     virtual result_t usePSS(int idx) {return true;}
 
     virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx);

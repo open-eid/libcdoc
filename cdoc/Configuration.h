@@ -26,22 +26,51 @@ namespace libcdoc {
 
 /**
  * @brief A configuration provider.
+ *
  * Subclasses can implement different configuration systems (registry, .ini files etc.) by overriding getValue.
  */
 struct CDOC_EXPORT Configuration {
-    //static constexpr std::string_view USE_KEYSERVER = "USE_KEYSERVER";
-    //static constexpr std::string_view KEYSERVER_ID = "KEYSERVER_ID";
-    /* Keyserver domain */
+    /**
+     * @brief Get send URL of keyserver
+     */
     static constexpr char const *KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
+    /**
+     * @brief Get fetch URL of keyserver
+     */
     static constexpr char const *KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
 
 	Configuration() = default;
 	virtual ~Configuration() = default;
 
+    /**
+     * @brief get a value of configuration parameter
+     *
+     * Get a string value of configuration parameter.
+     * @param domain the parameter domain. For keyservers this is the server ID.
+     * @param param the parameter name.
+     * @return a string value or empty string if parameter is not defined.
+     */
     virtual std::string getValue(const std::string_view& domain, const std::string_view& param) {return {};}
 
+    /**
+     * @brief get a value of configuration parameter from default domain
+     * @param param the parameter name.
+     * @return a string value or empty string if parameter is not defined.
+     */
     std::string getValue(const std::string_view& param) {return getValue({}, param);}
+    /**
+     * @brief get boolean value of configuration parameter from default domain
+     * @param param the parameter name
+     * @param def_val the default value to return if parameter is not set
+     * @return the parameter value
+     */
     bool getBoolean(const std::string_view& param, bool def_val = false);
+    /**
+     * @brief get integer value of configuration parameter from default domain
+     * @param param the parameter name
+     * @param def_val the default value to return if parameter is not set
+     * @return the key value
+     */
     int getInt(const std::string_view& param, int def_val = 0);
 
 	Configuration (const Configuration&) = delete;

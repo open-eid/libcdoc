@@ -64,8 +64,8 @@
 %ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
 
 %ignore libcdoc::PKCS11Backend::Handle;
-%ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label, const std::string& serial);
-%ignore libcdoc::PKCS11Backend::findSecretKeys(const std::string& label, const std::string& serial);
+%ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label);
+%ignore libcdoc::PKCS11Backend::findSecretKeys(const std::string& label);
 %ignore libcdoc::PKCS11Backend::findCertificates(const std::vector<uint8_t>& public_key);
 %ignore libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 %ignore libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
@@ -496,6 +496,15 @@
 }
 
 //
+// Configuration
+//
+
+%typemap(javacode) libcdoc::Configuration %{
+    public static final String KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
+    public static final String KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
+%}
+
+//
 // CryptoBackend
 //
 
@@ -511,20 +520,12 @@
     import java.util.ArrayList;
 %}
 %typemap(javaimports) libcdoc::NetworkBackend %{
-import java.util.ArrayList;
-    %}
-
-//%extend libcdoc::NetworkBackend {
-//    std::vector<std::vector<uint8_t>> getPeerTLSCertificates() {
-//        std::vector<std::vector<uint8_t>> certs;
-//        $self->getPeerTLSCertificates(certs);
-//        return certs;
-//    }
-//}
-//%ignore libcdoc::NetworkBackend::getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst);
+    import java.util.ArrayList;
+%}
 
 %feature("director") libcdoc::DataSource;
 %feature("director") libcdoc::CryptoBackend;
+%feature("director") libcdoc::PKCS11Backend;
 %feature("director") libcdoc::NetworkBackend;
 %feature("director") libcdoc::Configuration;
 #endif

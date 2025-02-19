@@ -27,13 +27,17 @@
 namespace libcdoc {
 
 /**
- * @brief The CDocReader class
- * An abstract class fro CDoc1 and CDoc2 readers. Provides unified interface for loading and decryption.
+ * @brief Provides decryption interface
+ *
+ * An abstract base class of CDoc1 and CDoc2 readers. Provides unified interface for loading and decryption of containers.
  */
 class CDOC_EXPORT CDocReader {
 public:
 	virtual ~CDocReader() = default;
 
+    /**
+     * @brief The container version (1 or 2)
+     */
     const int version;
 
 	/**
@@ -50,10 +54,10 @@ public:
 	 */
     virtual result_t getLockForCert(const std::vector<uint8_t>& cert) = 0;
 	/**
-     * @brief Fetches FMK from given lock
+     * @brief Obtain FMK of given lock
 	 *
-     * Fetches FMK (File Master Key) from the lock with given index. Depending on the lock type it uses a relevant CryptoBackend and/or
-	 * NetworkBackend method to either fetch secret and derive key or perform external decryption of encrypted KEK.
+     * Obtains FMK (File Master Key) of the lock with given index. Depending on the lock type it uses a relevant CryptoBackend and/or
+     * NetworkBackend methods to either fetch secret and derive key or perform external decryption of encrypted KEK.
 	 * @param fmk The FMK of the document
      * @param lock_idx the index of a lock (in the document lock list)
 	 * @return error code or OK
@@ -62,29 +66,31 @@ public:
 
 	// Pull interface
     /**
-     * @brief beginDecryption start decrypting document
+     * @brief Start decrypting container
      *
-     * Starts decryption of the document. This may involve parsing and decrypting headers, checking
+     * Starts decryption of the container. This may involve parsing and decrypting headers, checking
      * file and key integrity etc.
      * @param fmk File Master Key of the document
      * @return error code or OK
      */
     virtual result_t beginDecryption(const std::vector<uint8_t>& fmk) = 0;
     /**
-     * @brief nextFile start decrypting the next file
+     * @brief Go to the next file in container
      *
-     * Begins decrypting the next file in document. On success the file name and size are filled and the
+     * Begins decrypting the next file in container. On success the file name and size are filled and the
      * method returns OK. If there are no more file in the document, END_OF_STREAM is returned.
      * It is OK to call nextFile before reading the whole data from the previous one.
+     * It has to be called always (even for single-file container) immediately after beginDecryption to get access to the
+     * first file.
      * @param name the name of the next file
      * @param size the size of the next file
      * @return error code, OK or END_OF_STREAM
      */
     virtual result_t nextFile(std::string& name, int64_t& size) = 0;
     /**
-     * @brief readData read data from the current file
+     * @brief Read data from the current file
      *
-     * Read bytes from the current file into the buffer. The number of bytes read is always the
+     * Read bytes from the current file (opened with nextFile) inside of the container into the buffer. The number of bytes read is always the
      * requested number, unless end of file is reached or error occurs. Thus the end of file is marked
      * by returning 0.
      * @param dst destination byte buffer
@@ -93,15 +99,19 @@ public:
      */
     virtual result_t readData(uint8_t *dst, size_t size) = 0;
     /**
-     * @brief finishDecryption finish decryption of file
+     * @brief Finish decrypting container
      *
-     * Finishes the decryption of file. This may onvolve releasing buffers, closing hardware keys etc.
+     * Finishes the decryption of the container. This may onvolve releasing buffers, closing hardware keys etc.
      * @return error code or OK
      */
     virtual result_t finishDecryption() = 0;
 
     /**
-     * @brief nextFile start decrypting the next file
+     * @brief Go to the next file in container
+     *
+     * Begins decrypting the next file in container. On success the FileInfo struct is filled and the
+     * method returns OK. If there are no more file in the document, END_OF_STREAM is returned.
+     * It is OK to call nextFile before reading the whole data from the previous one.
      * @param info a FileInfo structure
      * @return error code, OK or END_OF_STREAM
      */
@@ -109,8 +119,9 @@ public:
 
 	// Push interface
 	/**
-	 * @brief Decrypt document
-	 * Decrypts the encrypted content and writes files to provided output object
+     * @brief Decrypt document in one step
+     *
+     * Decrypts the encrypted content and writes files to provided output object.
 	 * @param fmk The FMK of the document
 	 * @param consumer a consumer of decrypted files
 	 * @return error code or OK
@@ -118,29 +129,36 @@ public:
     virtual result_t decrypt(const std::vector<uint8_t>& fmk, MultiDataConsumer *consumer) = 0;
 
 	/**
-	 * @brief get the error text of the last failed operation
+     * @brief Get the error text of the last failed operation
+     *
+     * Get the error message of the last failed operation. It should be called immediately after getting
+     * error code as certain methods may reset the error.
 	 * @return error description, empty string if no errors
 	 */
 	std::string getLastErrorStr() const { return last_error; }
 
 	/**
-	 * @brief try to determine the cdoc file version
+     * @brief Try to determine the cdoc file version
+     *
+     * Tries to open the file and find CDoc format descriptors inside it.
 	 * @param path a path to file
      * @return version or error code if not a readable CDoc file
 	 */
     static int getCDocFileVersion(const std::string& path);
     /**
-     * @brief try to determine the cdoc file version
+     * @brief  Try to determine the cdoc file version
+     *
+     * Tries to read the source and find CDoc format descriptors inside it.
      * @param src the container source
      * @return version or error code if not a readable CDoc file
      */
     static int getCDocFileVersion(DataSource *src);
 
     /**
-     * @brief create CDoc document reader
+     * @brief Create CDoc document reader
      *
      * Creates a new document reader if source is a valid CDoc container (either version 1 or 2).
-     * The network backend may be null if keyservers are not used.
+     * Configuration and NetworkBackend may be null if keyservers are not used.
      * @param src the container source
      * @param take_ownership if true the source is deleted in reader destructor
      * @param conf a configuration object
@@ -150,10 +168,10 @@ public:
      */
     static CDocReader *createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
     /**
-     * @brief createReader create CDoc document reader
+     * @brief Create CDoc document reader
      *
-     * Creates a new document reader if file is a valid CDoc container (either version 1 or 2).
-     * The network backend may be null if keyservers are not used.
+     * Creates a new document reader if file is a valid CDoc container (either version 1 or 2)
+     * Configuration and NetworkBackend may be null if keyservers are not used.
      * @param path the path to file
      * @param conf a configuration object
      * @param crypto a cryptographic backend implementation
@@ -162,11 +180,11 @@ public:
      */
     static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
     /**
-     * @brief createReader create CDoc document reader
+     * @brief Create CDoc document reader
      *
-     * Creates a new document reader if stream contains a valid CDoc container (either version 1 or 2).
-     * The network backend may be null if keyservers are not used.
-     * @param ifs input stream
+     * Creates a new document reader if inputstream is a valid CDoc container (either version 1 or 2)
+     * Configuration and NetworkBackend may be null if keyservers are not used.
+     * @param ifs the input stream
      * @param conf a configuration object
      * @param crypto a cryptographic backend implementation
      * @param network a network backend implementation
