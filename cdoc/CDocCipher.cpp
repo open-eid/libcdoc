@@ -20,7 +20,7 @@
 #include <map>
 #include <openssl/rand.h>
 
-#include "CDocChipher.h"
+#include "CDocCipher.h"
 #include "CDocReader.h"
 #include "CDoc.h"
 #include "CDoc2.h"
@@ -151,7 +151,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 };
 
 
-int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, const vector<string>& files)
+int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, const vector<string>& files)
 {
     for (const libcdoc::Recipient& rcpt : keys) {
         int64_t result = writer.addRecipient(rcpt);
@@ -186,7 +186,7 @@ int CDocChipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, 
 #define PUSH true
 
 
-int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const vector<vector<uint8_t>>& certs)
+int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const vector<vector<uint8_t>>& certs)
 {
     RecipientInfoVector rcptsInfo;
     ToolCrypto crypto(rcptsInfo);
@@ -332,7 +332,7 @@ int CDocChipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const 
     return result;
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
+int CDocCipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
 {
     RecipientInfoVector rcpts;
     ToolCrypto crypto(rcpts);
@@ -373,7 +373,7 @@ int CDocChipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipie
     return Decrypt(rdr, lock_idx, conf.out);
 }
 
-int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
+int CDocCipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient, const vector<vector<uint8_t>>& certs)
 {
     RecipientInfoVector rcpts;
     ToolCrypto crypto(rcpts);
@@ -411,7 +411,7 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
     return Decrypt(rdr, lock_idx, conf.out);
 }
 
-int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_pathname)
+int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_pathname)
 {
     vector<uint8_t> fmk;
     LOG_DBG("Fetching FMK, idx=", lock_idx);
@@ -493,7 +493,7 @@ int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_id
     return 0;
 }
 
-void CDocChipher::Locks(const char* file) const
+void CDocCipher::Locks(const char* file) const
 {
     unique_ptr<CDocReader> rdr(CDocReader::createReader(file, nullptr, nullptr, nullptr));
     const vector<Lock> locks(rdr->getLocks());
@@ -527,7 +527,7 @@ void CDocChipher::Locks(const char* file) const
     }
 }
 
-string CDocChipher::GenerateRandomSequence() const
+string CDocCipher::GenerateRandomSequence() const
 {
     constexpr uint32_t upperbound = 'z' - '0' + 1;
     constexpr int MaxSequenceLength = 11;

@@ -89,7 +89,7 @@ target_link_libraries(cdoc PRIVATE
 )
 
 if(BUILD_TOOLS)
-    add_executable(cdoc-tool cdoc-tool.cpp CDocChipher.cpp)
+    add_executable(cdoc-tool cdoc-tool.cpp CDocCipher.cpp)
     target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
     target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
     set_target_properties(cdoc-tool PROPERTIES

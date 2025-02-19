@@ -18,7 +18,7 @@
 
 #include <iostream>
 
-#include "CDocChipher.h"
+#include "CDocCipher.h"
 #include "ConsoleLogger.h"
 #include "ILogger.h"
 #include "Utils.h"
@@ -295,8 +295,8 @@ static int ParseAndEncrypt(int argc, char *argv[])
         }
     }
 
-    CDocChipher chipher;
-    return chipher.Encrypt(conf, rcpts, certs);
+    CDocCipher cipher;
+    return cipher.Encrypt(conf, rcpts, certs);
 }
 
 //
@@ -434,12 +434,12 @@ static int ParseAndDecrypt(int argc, char *argv[])
     if (conf.out.empty())
         conf.out = ".";
 
-    CDocChipher chipher;
+    CDocCipher cipher;
     RcptInfo rcpt {RcptInfo::ANY, {}, secret, slot, key_id, key_label};
     if (label_idx != -1) {
-        return chipher.Decrypt(conf, label_idx, rcpt, certs);
+        return cipher.Decrypt(conf, label_idx, rcpt, certs);
     } else {
-        return chipher.Decrypt(conf, label, rcpt, certs);
+        return cipher.Decrypt(conf, label, rcpt, certs);
     }
 }
 
@@ -452,8 +452,8 @@ static int ParseAndGetLocks(int argc, char *argv[])
     if (argc < 1)
         return 2;
 
-    CDocChipher chipher;
-    chipher.Locks(argv[0]);
+    CDocCipher cipher;
+    cipher.Locks(argv[0]);
     return 0;
 }
 
@@ -472,7 +472,7 @@ int main(int argc, char *argv[])
     string_view command(argv[1]);
     LOG_INFO("Command: {}", command);
 
-    CDocChipher chipher;
+    CDocCipher cipher;
     int retVal = 2;     // Output the help by default.
     if (command == "encrypt") {
         retVal = ParseAndEncrypt(argc - 2, argv + 2);

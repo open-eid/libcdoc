@@ -1,4 +1,4 @@
-add_executable(unittests libcdoc_boost.cpp ../cdoc/CDocChipher.cpp)
+add_executable(unittests libcdoc_boost.cpp ../cdoc/CDocCipher.cpp)
 target_compile_definitions(unittests PRIVATE DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 target_link_libraries(unittests OpenSSL::SSL cdoc Boost::unit_test_framework)
 

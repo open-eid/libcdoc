@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef CDOCCHIPHER_H
-#define CDOCCHIPHER_H
+#ifndef CDOCCIPHER_H
+#define CDOCCIPHER_H
 
 #include "CDocReader.h"
 #include "CDocWriter.h"
@@ -33,12 +33,12 @@ typedef typename std::map<std::string, RcptInfo> RecipientInfoLabelMap;
 typedef typename std::map<int, RcptInfo>         RecipientInfoIdMap;
 typedef typename std::vector<RcptInfo>           RecipientInfoVector;
 
-class CDocChipher
+class CDocCipher
 {
 public:
-    CDocChipher() = default;
-    CDocChipher(const CDocChipher&) = delete;
-    CDocChipher(CDocChipher&&) = delete;
+    CDocCipher() = default;
+    CDocCipher(const CDocCipher&) = delete;
+    CDocCipher(CDocCipher&&) = delete;
 
     int Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const std::vector<std::vector<uint8_t>>& certs);
 
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // CDOCCHIPHER_H
+#endif // CDOCCIPHER_H
