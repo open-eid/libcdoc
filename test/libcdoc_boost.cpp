@@ -39,20 +39,20 @@ using namespace std;
 /**
  * @brief Unencrypted file name.
  */
-const string SourceFile("test_data.txt");
+constexpr string_view SourceFile("test_data.txt");
 
 /**
  * @brief Encrypted file name.
  */
-const string TargetFile("test_data.txt.cdoc");
+constexpr string_view TargetFile("test_data.txt.cdoc");
 
 const string Label("Proov");
 
-const string Password("Proov123");
+constexpr string_view Password("Proov123");
 
-const string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
+constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
 
-const string_view CDOC2HEADER = "CDOC\x02"sv;
+constexpr string_view CDOC2HEADER = "CDOC\x02"sv;
 
 const map<string, string> ExpectedParsedLabel {
     {"v", "1"},
@@ -85,7 +85,7 @@ public:
      * @param fileName File's name to be appended to test data path.
      * @param target Target where the result is assigned.
      */
-    void FormFilePath(const string& fileName, fs::path& target)
+    void FormFilePath(const string_view& fileName, fs::path& target) const
     {
         target = testDataPath;
         target /= fileName;
@@ -100,7 +100,7 @@ public:
      * @param fileName the name of the file thats existence has to be checked.
      * @return predicate_result object with the check result.
      */
-    boost::test_tools::predicate_result DoesFileExist(const string& fileName)
+    boost::test_tools::predicate_result DoesFileExist(const string& fileName) const
     {
         fs::path file(testDataPath);
         file /= fileName;
@@ -140,7 +140,10 @@ public:
         // Remove target file if it exists
         if (fs::exists(targetFilePath))
         {
-            fs::remove(targetFilePath);
+            error_code e;
+            fs::remove(targetFilePath, e);
+            if(e)
+                BOOST_TEST_MESSAGE("Failed to remove file");
         }
     }
 
@@ -170,7 +173,7 @@ public:
         }
 
         // Check if the encrypted file starts with "CDOC"
-        ifstream encryptedFile(encryptedFilePath, ios_base::in | ios_base::binary);
+        ifstream encryptedFile(encryptedFilePath, ios_base::binary);
         vector<char> header(CDOC2HEADER.size() + 1);
         encryptedFile.read(header.data(), CDOC2HEADER.size());
         btools::predicate_result resCdocHeaderOk(string_view(header.data()) == CDOC2HEADER);
@@ -239,9 +242,12 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
     // Check if the source, encrypted file exists
     BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
 
+    auto tmp = testDataPath / "tmp";
+    fs::remove_all(tmp);
+    fs::create_directory(tmp);
     libcdoc::ToolConf conf;
     conf.input_files.push_back(sourceFilePath.string());
-    conf.out = testDataPath.string();
+    conf.out = tmp.string();
 
     libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
 

@@ -205,7 +205,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 	if(kek.empty()) {
 		setLastError(t_("Failed to derive key"));
         LOG_ERROR("{}", last_error);
-		return false;
+        return CRYPTO_ERROR;
 	}
     if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
 		setLastError(t_("Failed to decrypt/derive fmk"));
@@ -220,9 +220,9 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     LOG_DBG("hmac: {}", toHex(priv->headerHMAC));
 
 	if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
-		setLastError(t_("CDoc 2.0 hash mismatch"));
+		setLastError(t_("Wrong decryption key (user key)"));
         LOG_ERROR("{}", last_error);
-		return libcdoc::HASH_MISMATCH;
+		return libcdoc::WRONG_KEY;
 	}
 	setLastError({});
     return libcdoc::OK;
@@ -231,15 +231,25 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 libcdoc::result_t
 CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
 {
-	int result = beginDecryption(fmk);
+	int64_t result = beginDecryption(fmk);
     if (result != libcdoc::OK) return result;
 	bool warning = false;
 	std::string name;
 	int64_t size;
 	result = nextFile(name, size);
     while (result == libcdoc::OK) {
-		consumer->open(name, size);
-		consumer->writeAll(*priv->tar);
+		result = consumer->open(name, size);
+		if (result != libcdoc::OK) {
+			setLastError(consumer->getLastErrorStr(result));
+			LOG_ERROR("{}", last_error);
+			return result;
+		}
+		result = consumer->writeAll(*priv->tar);
+		if (result != libcdoc::OK) {
+			setLastError(consumer->getLastErrorStr(result));
+			LOG_ERROR("{}", last_error);
+			return result;
+		}
 		result = nextFile(name, size);
 	}
 	if (result != libcdoc::END_OF_STREAM) {
@@ -278,9 +288,9 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 	aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
 	aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
 	if(!priv->cipher->updateAAD(aad)) {
-		setLastError("OpenSSL error");
+        setLastError("Wrong decryption key (FMK)");
         LOG_ERROR("{}", last_error);
-		return libcdoc::UNSPECIFIED_ERROR;
+        return libcdoc::WRONG_KEY;
 	}
 
 	priv->tgs = std::make_unique<TaggedSource>(priv->_src, false, 16);
@@ -317,12 +327,11 @@ CDoc2Reader::finishDecryption()
 
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
-		setLastError("Stream tag does not match");
+		setLastError("Stream tag id invalid");
         LOG_ERROR("{}", last_error);
-		return libcdoc::UNSPECIFIED_ERROR;
+		return libcdoc::HASH_MISMATCH;
 	}
 	setLastError({});
-    return libcdoc::OK;
 	priv->tar.reset();
     return libcdoc::OK;
 }
@@ -517,7 +526,7 @@ CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
 bool
 CDoc2Reader::isCDoc2File(const std::string& path)
 {
-    std::ifstream fb(path);
+    std::ifstream fb(path, std::ios_base::in | std::ios_base::binary);
     char in[libcdoc::CDoc2::LABEL.size()];
     constexpr size_t len = libcdoc::CDoc2::LABEL.size();
     if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;

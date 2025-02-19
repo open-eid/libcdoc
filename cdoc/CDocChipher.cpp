@@ -411,7 +411,7 @@ int CDocChipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInf
     return Decrypt(rdr, lock_idx, conf.out);
 }
 
-int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_path)
+int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_pathname)
 {
     vector<uint8_t> fmk;
     LOG_DBG("Fetching FMK, idx=", lock_idx);
@@ -421,12 +421,74 @@ int CDocChipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_id
         LOG_ERROR("Error on extracting FMK: {} {}", result, rdr->getLastErrorStr());
         return 1;
     }
-    FileListConsumer fileWriter(base_path);
+    filesystem::path base_path(base_pathname);
+
+    /* Do pull */
+    result = rdr->beginDecryption(fmk);
+    if (result != libcdoc::OK) {
+        LOG_ERROR("Error while decrypting files: {} {}", result, rdr->getLastErrorStr());
+        return 1;
+    }
+    std::string name;
+    int64_t size;
+    result = rdr->nextFile(name, size);
+    while (result == libcdoc::OK) {
+        LOG_DBG("Got file: {} {}", name, size);
+        filesystem::path fpath(name);
+        if (fpath.is_absolute()) {
+            LOG_WARN("File has absolute path, stripping");
+            fpath = fpath.filename();
+        } else if (fpath.has_parent_path()) {
+            LOG_WARN("File has parent path, stripping");
+            fpath = fpath.filename();
+        }
+        fpath = base_path / fpath;
+        std::ofstream ofs(fpath.string(), std::ios_base::binary);
+        if (ofs.bad()) {
+            LOG_ERROR("Cannot open file {} for writing", fpath.string());
+            return 1;
+        }
+        int64_t n_copied = 0;
+        while (n_copied < size) {
+            uint8_t b[4096];
+            int64_t n_to_read = min<int64_t>((size - n_copied), 4096);
+            int64_t n_read = rdr->readData(b, n_to_read);
+            if (n_read < 0) {
+                LOG_ERROR("Cannot read {} from container: {}", name, rdr->getLastErrorStr());
+                return 1;
+            } else if (n_read == 0) {
+                break;
+            }
+            ofs.write((const char *) b, n_read);
+            if (ofs.bad()) {
+                LOG_ERROR("Cannot write to  {}", fpath.string());
+                return 1;
+            }
+            n_copied += n_read;
+        }
+        if (n_copied != size) {
+            LOG_ERROR("Cannot extract full {}: {}", name, rdr->getLastErrorStr());
+            return 1;
+        }        
+        result = rdr->nextFile(name, size);
+    }
+    if (result != libcdoc::END_OF_STREAM) {
+        LOG_ERROR("Error while decrypting files: {} {}", result, rdr->getLastErrorStr());
+        return 1;
+    }
+    result = rdr->finishDecryption();
+    if (result != libcdoc::OK) {
+        LOG_ERROR("Error finalizing decryption: ({}) {}", result, rdr->getLastErrorStr());
+        return 1;
+    }
+    /*
+    FileListConsumer fileWriter(base_pathname);
     result = rdr->decrypt(fmk, &fileWriter);
     if (result != libcdoc::OK) {
         LOG_ERROR("Error on decrypting files: {} {}", result, rdr->getLastErrorStr());
         return 1;
     }
+    */
     LOG_INFO("File decrypted successfully");
     return 0;
 }
