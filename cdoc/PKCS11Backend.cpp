@@ -385,10 +385,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
-    int plen = i2d_PublicKey(evp_pkey, nullptr);
-    val.resize(plen);
-    uint8_t *pptr = val.data();
-    i2d_PublicKey(evp_pkey, &pptr);
+    val = Crypto::toPublicKeyDer(evp_pkey);
     EVP_PKEY_free(evp_pkey);
     EC_POINT_free(pub_key_point);
     EC_GROUP_free(group);
