@@ -77,7 +77,7 @@ CDoc1Writer::~CDoc1Writer()
 
 bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uint8_t> &recipient, const libcdoc::Crypto::Key& transportKey)
 {
-	auto peerCert = make_unique_ptr<X509_free>(libcdoc::Crypto::toX509(recipient));
+	auto peerCert = libcdoc::Crypto::toX509(recipient);
 	if(!peerCert)
 		return false;
 	std::string cn = [&]{
@@ -129,9 +129,7 @@ bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uin
 
 			std::string oid(50, 0);
 			oid.resize(size_t(OBJ_obj2txt(&oid[0], int(oid.size()), OBJ_nid2obj(curveName), 1)));
-			std::vector<uint8_t> SsDer(size_t(i2d_PublicKey(pkey.get(), nullptr)), 0);
-			uint8_t *p = SsDer.data();
-			i2d_PublicKey(pkey.get(), &p);
+			std::vector<uint8_t> SsDer = Crypto::toPublicKeyDer(pkey.get());
 
 			std::string encryptionMethod(libcdoc::Crypto::KWAES256_MTH);
 			std::string concatDigest = libcdoc::Crypto::SHA384_MTH;
@@ -287,7 +285,7 @@ libcdoc::result_t
 CDoc1Writer::addFile(const std::string& name, size_t size)
 {
 	d->files.push_back({name, size, {}});
-	return libcdoc::NOT_IMPLEMENTED;
+	return libcdoc::OK;
 }
 
 libcdoc::result_t

@@ -21,12 +21,13 @@
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "Utils.h"
+#include "utils/memory.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/bio.h>
 #include <openssl/http.h>
-#include "openssl/ssl.h"
+#include <openssl/ssl.h>
 
 #include "json.hpp"
 
@@ -54,7 +55,7 @@ static ECDSA_SIG* ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const B
 static int rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const ::RSA *rsa);
 
 struct Private {
-    X509 *x509 = nullptr;
+    libcdoc::unique_free_t<X509> x509{nullptr, X509_free};
     EVP_PKEY *pkey = nullptr;
 
     RSA_METHOD *rsamethod = nullptr;
@@ -64,7 +65,7 @@ struct Private {
         if (client_cert.empty()) return;
         x509 = libcdoc::Crypto::toX509(client_cert);
         if (!x509) return;
-        pkey = EVP_PKEY_dup(X509_get0_pubkey(x509));
+        pkey = X509_get_pubkey(x509.get());
         if (!pkey) return;
         int id = EVP_PKEY_get_id(pkey);
         if (id == EVP_PKEY_EC) {
@@ -91,7 +92,6 @@ struct Private {
     }
 
     ~Private() {
-        if (x509) X509_free(x509);
         if (pkey) EVP_PKEY_free(pkey);
         if (rsamethod) RSA_meth_free(rsamethod);
         if (ecmethod) EC_KEY_METHOD_free(ecmethod);
@@ -124,10 +124,9 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         X509_STORE *store = SSL_CTX_get_cert_store(ctx);
         X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
         for (const std::vector<uint8_t>& c : certs) {
-            X509 *x509 = Crypto::toX509(c);
+            auto x509 = Crypto::toX509(c);
             if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509);
-            X509_free(x509);
+            X509_STORE_add_cert(store, x509.get());
         }
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
@@ -186,7 +185,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     std::unique_ptr<Private> d = std::make_unique<Private>(this, cert);
     if (!cert.empty() && (!d->x509 || !d->pkey)) return CRYPTO_ERROR;
 
-    httplib::SSLClient cli(host, port, d->x509, d->pkey);
+    httplib::SSLClient cli(host, port, d->x509.get(), d->pkey);
 
     std::vector<std::vector<uint8_t>> certs;
     getPeerTLSCertificates(certs);
@@ -196,10 +195,9 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
         X509_STORE *store = SSL_CTX_get_cert_store(ctx);
         X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
         for (const std::vector<uint8_t>& c : certs) {
-            X509 *x509 = Crypto::toX509(c);
+            auto x509 = Crypto::toX509(c);
             if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509);
-            X509_free(x509);
+            X509_STORE_add_cert(store, x509.get());
         }
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
