@@ -454,8 +454,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             // LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
 
             for (int i = 0; i < N_SHARES; i++) {
-                libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                int result = network->sendKey(cinfo, SEND_URL[i], rcpt.rcpt_key, key_material, "ecc_secp384r1");
+                libcdoc::NetworkBackend::ShareInfo sinfo;
+                int result = network->sendShare(sinfo, SEND_URL[i], recipient_id, kek_shares[i]);
                 if (result < 0) {
                     setLastError(network->getLastErrorStr(result));
                     LOG_ERROR("{}", last_error);

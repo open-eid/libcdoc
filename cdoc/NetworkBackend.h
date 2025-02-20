@@ -34,6 +34,11 @@ struct CDOC_EXPORT NetworkBackend {
         uint64_t expiry_time;
     };
 
+    struct ShareInfo {
+        std::vector<uint8_t> share;
+        std::string recipient;
+    };
+
     NetworkBackend() = default;
 	virtual ~NetworkBackend() noexcept = default;
     NetworkBackend(const NetworkBackend&) = delete;
@@ -54,6 +59,17 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @return error code or OK
 	 */
     virtual result_t sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type);
+    /**
+     * @brief send key share to server
+     *
+     * The recipient has to be in form "etsi/PNOEE-XXXXXXXXXXXX" and must match certificate subject serial number field (without "etsi/" prefix).
+     * @param dst a container for result
+     * @param url server url
+     * @param recipient the recipient id (ETSI319412-1)
+     * @param share base64 encoded Key Share
+     * @return error code or OK
+     */
+    virtual result_t sendShare(CapsuleInfo& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share);
 	/**
 	 * @brief fetch key material from keyserver
      *
@@ -64,6 +80,22 @@ struct CDOC_EXPORT NetworkBackend {
 	 * @return error code or OK
 	 */
     virtual result_t fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);
+    /**
+     * @brief fetch authentication nonce from share server
+     * @param dst a destination container for nonce
+     * @param share_id share id (transaction id)
+     * @return error code or OK
+     */
+    virtual result_t fetchNonce(std::vector<uint8_t>& dst, const std::vector<uint8_t>& share_id);
+    /**
+     * @brief fetch key share from share server
+     * @param share acontainer for result
+     * @param url server url
+     * @param share_id share id (transaction id)
+     * @return error code or OK
+     */
+    virtual result_t fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id);
+
 
     /**
      * @brief get client TLS certificate in der format
