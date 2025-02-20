@@ -64,6 +64,12 @@ getErrorStr(int64_t code) {
     return FORMAT("Unknown result code {}", code);
 }
 
+std::string
+getVersion()
+{
+    return VERSION_STR;
+}
+
 bool
 libcdoc::Configuration::getBoolean(const std::string_view& param, bool def_val)
 {

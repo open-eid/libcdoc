@@ -81,6 +81,7 @@ DataSource::skip(size_t size) {
 		int64_t n_read = read(b, to_read);
 		if (n_read < 0) return n_read;
 		total_read += n_read;
+        if (n_read < to_read) break;
 	}
 	return total_read;
 }

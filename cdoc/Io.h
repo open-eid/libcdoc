@@ -49,36 +49,45 @@ struct CDOC_EXPORT DataConsumer {
 	 */
     virtual result_t write(const uint8_t *src, size_t size) = 0;
 	/**
-	 * @brief close signals the object that writing is finished
+     * @brief informs DataConsumer that the writing is finished
 	 * @return error code or OK
 	 */
     virtual result_t close() = 0;
 	/**
 	 * @brief checks whether DataSource is in error state
-     * @return error code or OK
+     * @return true if error state
 	 */
 	virtual bool isError() = 0;
 	/**
-	 * @brief getLastErrorStr get textual description of the last error
+     * @brief get textual description of the last error
 	 *
 	 * Implementation can decide whether to store the actual error string or
-	 * return the generic text based on error code. It is undfined what will
+     * return the generic text based on error code. It is undefined what will
 	 * be returned if the last error code is not the one used as the argument.
 	 * @param code the last returned error code
 	 * @return error text
 	 */
 	virtual std::string getLastErrorStr(int code) const;
-
+    /**
+     * @brief write all bytes in vector
+     * @param src a vector
+     * @return vector size or error code
+     */
     result_t write(const std::vector<uint8_t>& src) {
 		return write(src.data(), src.size());
 	}
+    /**
+     * @brief write all bytes in string
+     * @param src a string
+     * @return string length or error code
+     */
     result_t write(const std::string& src) {
 		return write((const uint8_t *) src.data(), src.size());
 	}
     /**
-     * @brief writeAll reads all data from input object and writes to this
+     * @brief write all data from input object
      *
-     * Copies all bytes from input source (until EOF or error) to the object. If error occurs
+     * Copies all bytes from input source (until EOF or error) to the consumer. If error occurs
      * while reading source, the source objects' error code is returned.
      * @param src the input DataSource
      * @return the number of bytes copied or error
@@ -99,7 +108,7 @@ struct CDOC_EXPORT DataSource {
 	virtual ~DataSource() = default;
 
 	/**
-	 * @brief seek set stream input pointer
+     * @brief set stream input pointer
 	 *
 	 * Positions the read pointer at the specific distance from the stream start.
 	 * If the stream does not support seeking NOT_IMPLEMENTED is returned.
@@ -108,24 +117,51 @@ struct CDOC_EXPORT DataSource {
 	 */
     virtual result_t seek(size_t pos) { return NOT_IMPLEMENTED; }
 	/**
-	 * @brief read read bytes from input object
+     * @brief read bytes from input object
 	 *
 	 * The following invariant holds:
-	 * If there is neither error nor eof then result == size
-	 * If there is no errors but is eof then 0 <= result <= size
-	 * If there is error then result < 0
+     * - if there is neither error nor eof then result == size
+     * - if there is no errors but end of stream is reached then 0 <= result <= size
+     * - if there is error then result < 0
 	 * @param dst the destination block
 	 * @param size the number of bytes to read
-	 * @return thenumber of bytes read or error code
+     * @return the number of bytes read or error code
 	 */
     virtual result_t read(uint8_t *dst, size_t size) { return NOT_IMPLEMENTED; }
+    /**
+     * @brief check whether DataConsumer is in error state
+     * @return true if error state
+     */
     virtual bool isError() { return true; }
+    /**
+     * @brief check whether DataConsumer is reached to the end of data
+     * @return true if end of stream
+     */
     virtual bool isEof() { return true; }
-	virtual std::string getLastErrorStr(int code) const;
+    /**
+     * @brief get textual description of the last error
+     *
+     * Implementation can decide whether to store the actual error string or
+     * return the generic text based on error code. It is undefined what will
+     * be returned if the last error code is not the one used as the argument.
+     * @param code the last returned error code
+     * @return error text
+     */
+    virtual std::string getLastErrorStr(int code) const;
 
+    /**
+     * @brief skip specified number of bytes
+     *
+     * The following invariant holds:
+     * - if there is neither error nor eof then result == size
+     * - if there is no errors but end of stream is reached then 0 <= result <= size
+     * - if there is error then result < 0
+     * @param size the number of bytes to skip
+     * @return the number of bytes skipped
+     */
     result_t skip(size_t size);
     /**
-     * @brief readAll reads all data and writes to output object
+     * @brief read all data and writes to output object
      *
      * Copies all bytes (until EOF or error) to the output object. If error occurs
      * while writing data, the destination objects' error code is returned.
@@ -150,11 +186,11 @@ struct CDOC_EXPORT DataSource {
 struct CDOC_EXPORT MultiDataConsumer : public DataConsumer {
 	virtual ~MultiDataConsumer() = default;
     /**
-     * @brief open create a new named sub-stream
+     * @brief create a new named sub-stream
      *
      * Creates a new named sub-stream. It is up to implementation to handle the name and optional size.
      * @param name the name of sub-stream
-     * @param size the size of sub-stream or -1 if unknown during creation time
+     * @param size the size of sub-stream or -1 if unknown at creation time
      * @return error code or OK
      */
     virtual result_t open(const std::string& name, int64_t size) = 0;
@@ -162,6 +198,9 @@ struct CDOC_EXPORT MultiDataConsumer : public DataConsumer {
 
 /**
  * @brief An abstract base class for multi-stream sources
+ *
+ * A next sub-stream is made available by nextFile. The initial state of MultiDataSource does
+ * not have any sub-stream open (i.e. the to get the first one, nextFile has to be called).
  */
 struct CDOC_EXPORT MultiDataSource : public DataSource {
     virtual result_t getNumComponents() { return NOT_IMPLEMENTED; }

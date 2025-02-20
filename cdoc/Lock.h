@@ -60,10 +60,6 @@ struct CDOC_EXPORT Lock
          */
         PUBLIC_KEY,
         /**
-         * @brief Certificate (ECC or RSA)
-         */
-        CERTIFICATE,
-        /**
          * @brief CDoc1 lock
          */
         CDOC1,
@@ -77,7 +73,13 @@ struct CDOC_EXPORT Lock
      * @brief The public key type
      */
 	enum PKType : unsigned char {
+        /**
+         * Elliptic curve
+         */
         ECC,
+        /**
+         * RSA
+         */
 		RSA
 	};
 
@@ -98,11 +100,11 @@ struct CDOC_EXPORT Lock
          */
         KDF_ITER,
         /**
-         * @brief Recipient's public key (PUBLIC_KEY, CERTIFICATE, CDOC1, SERVER)
+         * @brief Recipient's public key (PUBLIC_KEY, CDOC1, SERVER)
          */
         RCPT_KEY,
         /**
-         * @brief Recipient's certificate (CERTIFICATE, CDOC1)
+         * @brief Recipient's certificate (CDOC1)
          */
         CERT,
         /**
@@ -188,14 +190,14 @@ struct CDOC_EXPORT Lock
 	bool isSymmetric() const { return (type == Type::SYMMETRIC_KEY) || (type == Type::PASSWORD); }
     /**
      * @brief check whether lock is based on public key
-     * @return true if type is CERTIFICATE, CDOC1, PUBLIC_KEY or SERVER
+     * @return true if type is CDOC1, PUBLIC_KEY or SERVER
      */
-	bool isPKI() const { return (type == Type::CERTIFICATE) || (type == Type::CDOC1) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
+    bool isPKI() const { return (type == Type::CDOC1) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
     /**
      * @brief check whether lock is based on certificate
-     * @return true if type is CERTIFICATE or CDOC1
+     * @return true if type is CDOC1
      */
-    bool isCertificate() const { return (type == Type::CERTIFICATE) || (type == Type::CDOC1); }
+    bool isCertificate() const { return (type == Type::CDOC1); }
     /**
      * @brief check whether lock is CDoc1 version
      * @return true if type is CDOC1

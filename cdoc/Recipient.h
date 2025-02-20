@@ -38,13 +38,16 @@ struct CDOC_EXPORT Recipient {
      * @brief The recipient type
      */
 	enum Type : unsigned char {
+        /**
+         * Uninitialized recipient
+         */
 		NONE,
         /**
          * @brief Symmetric key (or password)
          */
 		SYMMETRIC_KEY,
         /**
-         * @brief Public key (or password)
+         * @brief Public key
          */
         PUBLIC_KEY,
         /**
@@ -61,7 +64,13 @@ struct CDOC_EXPORT Recipient {
      * @brief The public key type
      */
     enum PKType : unsigned char {
+        /**
+         * Elliptic curve
+         */
 		ECC,
+        /**
+         * RSA
+         */
 		RSA
 	};
 

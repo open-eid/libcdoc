@@ -123,6 +123,8 @@ enum {
 
 CDOC_EXPORT std::string getErrorStr(int64_t code);
 
+CDOC_EXPORT std::string getVersion();
+
 /**
  * @brief A simple container of file name and size
  *
