@@ -19,9 +19,13 @@
 #ifndef __CONFIGURATION_H__
 #define __CONFIGURATION_H__
 
-#include <cdoc/CDoc.h>
+#include "Exports.h"
+
+#include <string>
+#include <vector>
 
 #include <cstdint>
+
 namespace libcdoc {
 
 /**
@@ -40,7 +44,10 @@ struct CDOC_EXPORT Configuration {
     static constexpr char const *KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
 
 	Configuration() = default;
-	virtual ~Configuration() = default;
+	virtual ~Configuration() noexcept = default;
+    Configuration(const Configuration&) = delete;
+    Configuration& operator=(const Configuration&) = delete;
+    CDOC_ENABLE_MOVE(Configuration);
 
     /**
      * @brief get a value of configuration parameter
@@ -72,9 +79,6 @@ struct CDOC_EXPORT Configuration {
      * @return the key value
      */
     int getInt(const std::string_view& param, int def_val = 0);
-
-	Configuration (const Configuration&) = delete;
-	Configuration& operator= (const Configuration&) = delete;
 
 #if LIBCDOC_TESTING
     virtual int64_t test(std::vector<uint8_t>& dst);

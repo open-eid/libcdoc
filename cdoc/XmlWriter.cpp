@@ -16,8 +16,6 @@
  *
  */
 
-#include <fstream>
-
 #include "XmlWriter.h"
 
 #include "Crypto.h"
@@ -25,9 +23,8 @@
 
 #include <libxml/xmlwriter.h>
 
-#include <algorithm>
+using namespace libcdoc;
 
-typedef xmlChar *pxmlChar;
 typedef const xmlChar *pcxmlChar;
 
 struct XMLWriter::Private

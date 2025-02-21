@@ -21,6 +21,8 @@
 
 #include "CDocWriter.h"
 
+#include <memory>
+
 class CDoc2Writer final: public libcdoc::CDocWriter {
 public:
 	explicit CDoc2Writer(libcdoc::DataConsumer *dst, bool take_ownership);

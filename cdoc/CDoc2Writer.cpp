@@ -18,18 +18,18 @@
 
 #include "CDoc2Writer.h"
 
-#include "header_generated.h"
-
+#include "Configuration.h"
 #include "Crypto.h"
+#include "CryptoBackend.h"
 #include "CDoc2.h"
-#include "ZStream.h"
+#include "ILogger.h"
+#include "NetworkBackend.h"
+#include "Recipient.h"
 #include "Tar.h"
 #include "Utils.h"
-#include "ILogger.h"
+#include "ZStream.h"
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <IntSafe.h>
-#endif
+#include "header_generated.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 

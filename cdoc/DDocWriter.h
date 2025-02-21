@@ -20,6 +20,8 @@
 
 #include "XmlWriter.h"
 
+namespace libcdoc {
+
 class DDOCWriter: public XMLWriter
 {
 public:
@@ -36,3 +38,5 @@ private:
 	struct Private;
 	Private *d;
 };
+
+}

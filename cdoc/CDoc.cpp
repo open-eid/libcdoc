@@ -20,9 +20,10 @@
 #include "CDoc1Reader.h"
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
+#include "Configuration.h"
 #include "ILogger.h"
-
-#include <iostream>
+#include "Io.h"
+#include "NetworkBackend.h"
 
 namespace libcdoc {
 

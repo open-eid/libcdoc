@@ -18,10 +18,16 @@
 
 #pragma once
 
-#include "Io.h"
-
+#include <cstdint>
 #include <functional>
 #include <map>
+#include <ostream>
+#include <string>
+#include <vector>
+
+namespace libcdoc {
+
+struct DataConsumer;
 
 class XMLWriter
 {
@@ -31,7 +37,7 @@ public:
 	XMLWriter(std::ostream *ofs);
 	XMLWriter(const std::string& path);
 	XMLWriter(std::vector<uint8_t>& vec);
-	XMLWriter(libcdoc::DataConsumer *dst);
+	XMLWriter(DataConsumer *dst);
 	virtual ~XMLWriter();
 
 	virtual void close();
@@ -46,3 +52,5 @@ private:
 	struct Private;
 	Private *d;
 };
+
+} // namespace libcdoc

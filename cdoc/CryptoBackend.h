@@ -20,10 +20,12 @@
 #define __CRYPTOBACKEND_H__
 
 #include <cdoc/CDoc.h>
-#include <cdoc/Lock.h>
+
+#include <cstdint>
 
 namespace libcdoc {
 
+struct Lock;
 /**
  * @brief An authentication provider
  *
@@ -50,8 +52,11 @@ struct CDOC_EXPORT CryptoBackend {
         SHA_512
     };
 
-	CryptoBackend() = default;
-	virtual ~CryptoBackend() = default;
+    CryptoBackend() = default;
+    virtual ~CryptoBackend() noexcept = default;
+    CryptoBackend(const CryptoBackend&) = delete;
+    CryptoBackend& operator=(const CryptoBackend&) = delete;
+    CDOC_ENABLE_MOVE(CryptoBackend);
 
 	virtual std::string getLastErrorStr(int code) const;
 
@@ -160,9 +165,6 @@ struct CDOC_EXPORT CryptoBackend {
     }
 
     virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
-
-	CryptoBackend (const CryptoBackend&) = delete;
-	CryptoBackend& operator= (const CryptoBackend&) = delete;
 };
 
 } // namespace libcdoc
