@@ -120,7 +120,7 @@ CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8
 	std::fill(key_material.begin(), key_material.end(), 0);
 	if (kek_pm.empty()) return OPENSSL_ERROR;
 
-    LOG_DBG("Extract: {}", toHex(kek_pm));
+    LOG_TRACE_KEY("Extract: {}", kek_pm);
 
     return OK;
 }

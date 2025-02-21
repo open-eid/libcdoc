@@ -272,8 +272,8 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	std::vector<uint8_t> iv(data.cbegin(), data.cbegin() + EVP_CIPHER_iv_length(cipher));
 	dataSize -= iv.size();
 
-    LOG_DBG("iv {}", toHex(iv));
-    LOG_DBG("transport {}", toHex(key));
+    LOG_TRACE_KEY("iv {}", iv);
+    LOG_TRACE_KEY("transport {}", key);
 
     auto ctx = make_unique_ptr<EVP_CIPHER_CTX_free>(EVP_CIPHER_CTX_new());
     if (!ctx)
