@@ -186,7 +186,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
                 LOG_DBG("Slot: {}", rcpt.slot);
                 if (!rcpt.secret.empty()) {
                     string str(rcpt.secret.cbegin(), rcpt.secret.cend());
-                    LOG_DBG("Pin: {}", str);
+                    LOG_TRACE("Pin: {}", str);
                 }
                 if (!rcpt.key_id.empty())
                     LOG_DBG("Key ID: {}", toHex(rcpt.key_id));
