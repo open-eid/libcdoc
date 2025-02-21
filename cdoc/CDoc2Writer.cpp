@@ -182,6 +182,16 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_DBG("enc_kek: {}", toHex(encrytpedKek));
 
                 if(rcpt.isKeyServer()) {
+                    if(!conf) {
+                        setLastError("Configuration is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+                    }
+                    if(!network) {
+                        setLastError("Network backend is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+                    }
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
                         setLastError("Missing keyserver URL");
@@ -257,6 +267,16 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_DBG("xor: {}", toHex(xor_key));
 
                 if(rcpt.isKeyServer()) {
+                    if(!conf) {
+                        setLastError("Configuration is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+                    }
+                    if(!network) {
+                        setLastError("Network backend is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+					}
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
                         setLastError("Missing keyserver URL");

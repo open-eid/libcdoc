@@ -153,6 +153,16 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		// Public/private key
 		std::vector<uint8_t> key_material;
 		if(lock.type == libcdoc::Lock::Type::SERVER) {
+            if(!conf) {
+                setLastError("Configuration is missing");
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            if(!network) {
+                setLastError("Network backend is missing");
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
             std::string server_id = lock.getString(libcdoc::Lock::Params::KEYSERVER_ID);
             std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
             if (fetch_url.empty()) {
@@ -263,6 +273,11 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 libcdoc::result_t
 CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
+	if(fmk.size() != 32) {
+		setLastError("No decryption key provided or invalid key length");
+		LOG_ERROR("{}", last_error);
+		return libcdoc::WRONG_ARGUMENTS;
+	}
 	if (!priv->_at_nonce) {
 		int result = priv->_src->seek(priv->_nonce_pos);
         if (result != libcdoc::OK) {
