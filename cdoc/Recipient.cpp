@@ -111,6 +111,16 @@ Recipient::makeEIDServer(std::vector<uint8_t> cert, std::string server_id)
         x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
 }
 
+Recipient
+Recipient::makeShare(const std::string& label, const std::string& server_id, const std::string& recipient_id)
+{
+    Recipient rcpt(Type::KEYSHARE);
+    rcpt.label = label;
+    rcpt.server_id = server_id;
+    rcpt.id = recipient_id;
+    return rcpt;
+}
+
 bool
 Recipient::isTheSameRecipient(const Recipient& other) const
 {

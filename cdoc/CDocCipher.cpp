@@ -224,8 +224,7 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
                 label = Recipient::BuildLabelPublicKey(CDoc2::KEYLABELVERSION, rcpt.key_file_name);
                 break;
 
-            case RcptInfo::Type::P11_PKI:
-            {
+            case RcptInfo::Type::P11_PKI: {
                 bool isRsa;
                 vector<uint8_t> cert_bytes;
                 ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
@@ -243,8 +242,7 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
             {
                 label = Recipient::BuildLabelCertificate(rcpt.key_file_name, rcpt.cert);
                 break;
-            }
-            case RcptInfo::Type::P11_SYMMETRIC:
+            } case RcptInfo::Type::P11_SYMMETRIC:
                 // TODO: what label should be generated in this case?
                 break;
 
@@ -255,9 +253,7 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
 #ifndef NDEBUG
             LOG_DBG("Generated label: {}", label);
 #endif
-        }
-        else
-        {
+        } else {
             label = rcpt.label;
         }
 
@@ -301,6 +297,9 @@ int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const v
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
             key = libcdoc::Recipient::makeSymmetric(label, 65535);
+        } else if (rcpt.type == RcptInfo::Type::SHARE) {
+            LOG_DBG("Creating keyshare recipient:");
+            key = libcdoc::Recipient::makeShare(label, conf.servers[0].ID, "PNOEE-" + rcpt.id);
         }
 
         rcpts.push_back(std::move(key));

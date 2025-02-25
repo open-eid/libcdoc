@@ -39,8 +39,10 @@ static void print_usage(ostream& ofs)
     ofs << "    [label]:pw:PASSWORD - Derive key using PWBKDF" << endl;
     ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
     ofs << "    [label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
+    ofs << "    [label]:share:ID - use keyshares with given ID (personal code)" << endl;
     ofs << "  -v1 - creates CDOC1 version container. Supported only for encryption with certificate." << endl;
     ofs << "  --server ID SEND_URL - specifies a keyserver. The recipient key will be stored in server instead of in the document." << endl;
+    ofs << "  --share-server ID URLS - specifies a comma-separated list of share server urls." << endl;
     ofs << "  --genlabel - If specified, the lock label is generated." << endl;
     ofs << endl;
     ofs << "cdoc-tool decrypt [--library LIBRARY] ARGUMENTS FILE [OUTPU_DIR]" << endl;
@@ -108,15 +110,13 @@ static int ParseAndEncrypt(int argc, char *argv[])
                 filesystem::path cert_file(toUTF8(parts[2]));
                 rcpt.cert = std::move(readFile(cert_file.string()));
                 rcpt.key_file_name = cert_file.filename().string();
-            }
-            else if (method == "pkey") {
+            } else if (method == "pkey") {
                 if (parts.size() != 3)
                     return 2;
 
                 rcpt.type = RcptInfo::PKEY;
                 rcpt.secret = std::move(fromHex(parts[2]));
-            }
-            else if (method == "key" || method == "skey") {
+            } else if (method == "key" || method == "skey") {
                 // For backward compatibility leave also "key" as the synonym for "skey" method.
                 if (parts.size() != 3)
                     return 2;
@@ -127,8 +127,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
                     LOG_ERROR("Symmetric key has to be exactly 32 bytes long");
                     return 1;
                 }
-            }
-            else if (method == "pfkey") {
+            } else if (method == "pfkey") {
                 if (parts.size() != 3)
                     return 2;
 
@@ -141,15 +140,13 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
                 filesystem::path key_file(parts[2]);
                 rcpt.key_file_name = key_file.filename().string();
-            }
-            else if (method == "pw") {
+            } else if (method == "pw") {
                 if (parts.size() != 3)
                     return 2;
 
                 rcpt.type = RcptInfo::PASSWORD;
                 rcpt.secret.assign(parts[2].cbegin(), parts[2].cend());
-            }
-            else if (method == "p11sk" || method == "p11pk") {
+            } else if (method == "p11sk" || method == "p11pk") {
                 rcpt.type = method == "p11sk" ? RcptInfo::P11_SYMMETRIC : RcptInfo::P11_PKI;
 
                 conf.libraryRequired = true;
@@ -218,6 +215,12 @@ static int ParseAndEncrypt(int argc, char *argv[])
                 if (!rcpt.key_label.empty())
                     cout << "Key label: " << rcpt.key_label << endl;
 #endif
+            } else if (method == "share") {
+                if (parts.size() != 3)
+                    return 2;
+
+                rcpt.type = RcptInfo::SHARE;
+                rcpt.id = parts[2];
             } else {
                 LOG_ERROR("Unknown method: {}", method);
                 return 2;
@@ -226,22 +229,28 @@ static int ParseAndEncrypt(int argc, char *argv[])
             rcpts.push_back(std::move(rcpt));
 
             i += 1;
-        } else if (arg == "--out" && ((i + 1) <= argc)) {
+        } else if (arg == "--out" && ((i + 1) < argc)) {
             conf.out = argv[i + 1];
             i += 1;
-        } else if (arg == "--library" && ((i + 1) <= argc)) {
+        } else if (arg == "--library" && ((i + 1) < argc)) {
             conf.library = argv[i + 1];
             i += 1;
         } else if (arg == "-v1") {
             conf.cdocVersion = 1;
-        } else if (arg == "--server" && ((i + 2) <= argc)) {
+        } else if (arg == "--server" && ((i + 2) < argc)) {
             ToolConf::ServerData sdata;
             sdata.ID = argv[i + 1];
             sdata.SEND_URL = argv[i + 2];
             conf.servers.push_back(sdata);
             conf.use_keyserver = true;
             i += 2;
-        } else if (arg == "--accept" && ((i + 1) <= argc)) {
+        } else if (arg == "--share-server" && ((i + 2) < argc)) {
+            ToolConf::ServerData sdata;
+            sdata.ID = argv[i + 1];
+            sdata.SHARE_URLS = argv[i + 2];
+            conf.servers.push_back(sdata);
+            i += 2;
+        } else if (arg == "--accept" && ((i + 1) < argc)) {
             certs.push_back(std::move(readAllBytes(argv[i + 1])));
             i += 1;
         } else if (arg == "--genlabel") {

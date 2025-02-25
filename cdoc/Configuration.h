@@ -35,13 +35,17 @@ namespace libcdoc {
  */
 struct CDOC_EXPORT Configuration {
     /**
-     * @brief Get send URL of keyserver
+     * @brief Send URL of keyserver
      */
     static constexpr char const *KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
     /**
-     * @brief Get fetch URL of keyserver
+     * @brief Fetch URL of keyserver
      */
     static constexpr char const *KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
+    /**
+     * @brief Comma-separated list of share server base urls
+     */
+    static constexpr char const *SHARE_SERVER_URLS = "SHARE_SERVER_URLS";
 
 	Configuration() = default;
 	virtual ~Configuration() noexcept = default;

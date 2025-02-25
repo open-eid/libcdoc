@@ -63,13 +63,13 @@ struct CDOC_EXPORT NetworkBackend {
      * @brief send key share to server
      *
      * The recipient has to be in form "etsi/PNOEE-XXXXXXXXXXXX" and must match certificate subject serial number field (without "etsi/" prefix).
-     * @param dst a container for result
+     * @param dst a container for share id
      * @param url server url
      * @param recipient the recipient id (ETSI319412-1)
      * @param share base64 encoded Key Share
      * @return error code or OK
      */
-    virtual result_t sendShare(CapsuleInfo& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share);
+    virtual result_t sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share);
 	/**
 	 * @brief fetch key material from keyserver
      *

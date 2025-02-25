@@ -31,6 +31,7 @@ struct ToolConf : public Configuration {
         std::string ID;
         std::string SEND_URL;
         std::string FETCH_URL;
+        std::string SHARE_URLS;
     };
 
     /**
@@ -73,6 +74,8 @@ struct ToolConf : public Configuration {
                     return sdata.SEND_URL;
                 } else if (param == Configuration::KEYSERVER_FETCH_URL) {
                     return sdata.FETCH_URL;
+                } else if (param == Configuration::SHARE_SERVER_URLS) {
+                    return sdata.SHARE_URLS;
                 }
             }
         }

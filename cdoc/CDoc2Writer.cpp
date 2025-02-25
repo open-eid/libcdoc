@@ -321,7 +321,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					}
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
-                        setLastError("Missing keyserver URL");
+                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
                         LOG_ERROR("{}", last_error);
                         return libcdoc::CONFIGURATION_ERROR;
                     }
@@ -356,7 +356,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					}
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
-                        setLastError("Missing keyserver URL");
+                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
                         LOG_ERROR("{}", last_error);
                         return libcdoc::CONFIGURATION_ERROR;
                     }
@@ -421,22 +421,51 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 auto offs = createSymmetricKeyCapsule(builder, rcpt, salt, xor_key);
                 fb_rcpts.push_back(std::move(offs));
 			}
-        } else if (rcpt.isSharedSecret()) {
+        } else if (rcpt.isKeyShare()) {
+            std::string url_list = conf->getValue(rcpt.server_id, libcdoc::Configuration::SHARE_SERVER_URLS);
+            if (url_list.empty()) {
+                setLastError("Missing server list for ID " + rcpt.server_id);
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            LOG_DBG("Share servers: {}", url_list);
+            std::vector<std::string> urls = split(url_list, ',');
+            if (urls.size() < 1) {
+                setLastError("No server URLs in " + rcpt.server_id);
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            int N_SHARES = urls.size();
+            LOG_DBG("Number of shares: {}", N_SHARES);
+
+            // identifier of the method, which is used to encrypt the plaintext FMK value:
+            std::string FMKEncryptionMethod = "XOR";
+            // length of KEK_i in octets, so that it matches the length of FMK for the XOR() algorithm
+            int L = 32;
+            // Recipient identifier ("etsi/PNOEE-48010010101"):
+            std::string RecipientInfo_i = "etsi/" + rcpt.id;
+            LOG_DBG("Recipient info: {}", RecipientInfo_i);
+
             //# KEK_i computation:
             //KeyMaterialSalt_i = CSRNG(256)
             std::vector<uint8_t> key_material_salt;
             crypto->random(key_material_salt, 32);
+
             //KeyMaterial_i = CSRNG(256)
             std::vector<uint8_t> key_material;
             crypto->random(key_material, 32);
+
             //KEK_i_pm = HKDF_Extract(KeyMaterialSalt_i, KeyMaterial_i)
             std::vector<uint8_t> kek_pm = libcdoc::Crypto::extract(key_material_salt, key_material);
-            std::string info_str = CDoc2::getSaltForExpand(RECIPIENT_INFO);
+
             // KEK_i = HKDF_Expand(KEK_i_pm, "CDOC2kek" + FMKEncryptionMethod + RecipientInfo_i, L)
+            std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
+            LOG_DBG("Info: {}", info_str);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()));
+
             // # Splitting KEK_i into shares
             // for j in (2, 3, ..., n):
-            std::vector<std::vector<uint8_t>> kek_shares;
+            std::vector<std::vector<uint8_t>> kek_shares(N_SHARES);
             for (int i = 1; i < N_SHARES; i++) {
                 // KEK_i_share_j = CSRNG(256)
                 crypto->random(kek_shares[i], 32);
@@ -450,22 +479,39 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             //   # gets corresponding Capsule_i_Share_j_ID for each KEK_i_share_j
             //   RecipientInfo_i = "etsi/PNOEE-48010010101"
             //   DistributedKEKInfo_i = {CSS_ID, Capsule_i_Share_j_ID}
-
-            // LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
-
+            std::vector<std::string> transaction_ids(N_SHARES);
             for (int i = 0; i < N_SHARES; i++) {
-                libcdoc::NetworkBackend::ShareInfo sinfo;
-                int result = network->sendShare(sinfo, SEND_URL[i], recipient_id, kek_shares[i]);
+                std::string send_url = urls[i];// + "key-shares";
+                LOG_DBG("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
+#if 1
+                int result = network->sendShare(transaction_ids[i], send_url, RecipientInfo_i, kek_shares[i]);
                 if (result < 0) {
                     setLastError(network->getLastErrorStr(result));
                     LOG_ERROR("{}", last_error);
                     return libcdoc::IO_ERROR;
                 }
-                LOG_DBG("Share {} Transaction Id: {}", i, cinfo.transaction_id);
+#endif
+                LOG_DBG("Share {} Transaction Id: {}", i, transaction_ids[i]);
             }
-
-            //   Capsule_i = {RecipientInfo_i, DistributedKEKInfo_i}
-            //   EncryptedFMK_i = XOR(FMK, KEK_i)
+            std::vector<flatbuffers::Offset<cdoc20::recipients::KeyShare>> shares;
+            for (int i = 0; i < N_SHARES; i++) {
+                auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString(transaction_ids[i]));
+                shares.push_back(share);
+            }
+            auto fb_shares = builder.CreateVector(shares);
+            auto fb_capsule = cdoc20::recipients::CreateKeySharesCapsule(builder,
+                                                                      fb_shares,
+                                                                      builder.CreateVector(key_material_salt),
+                                                                      cdoc20::recipients::KeyShareRecipientType::SID_MID,
+                                                                      cdoc20::recipients::SharesScheme::N_OF_N,
+                                                                      builder.CreateString(RecipientInfo_i));
+            auto offset = cdoc20::header::CreateRecipientRecord(builder,
+                                                         cdoc20::header::Capsule::recipients_KeySharesCapsule,
+                                                         fb_capsule.Union(),
+                                                         builder.CreateString(rcpt.label),
+                                                         builder.CreateVector(xor_key),
+                                                         cdoc20::header::FMKEncryptionMethod::XOR);
+            fb_rcpts.push_back(offset);
         } else {
 			setLastError("Invalid recipient type");
             LOG_ERROR("{}", last_error);
