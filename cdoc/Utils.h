@@ -33,7 +33,7 @@
 namespace libcdoc {
 
 std::string toBase64(const uint8_t *data, size_t len);
-static std::string toBase64(const std::vector<uint8_t> data) {
+static std::string toBase64(const std::vector<uint8_t> &data) {
     return toBase64(data.data(), data.size());
 }
 

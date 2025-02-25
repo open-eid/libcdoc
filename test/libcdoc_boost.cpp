@@ -85,7 +85,7 @@ public:
      * @param fileName File's name to be appended to test data path.
      * @param target Target where the result is assigned.
      */
-    void FormFilePath(const string_view& fileName, fs::path& target) const
+    void FormFilePath(string_view fileName, fs::path& target) const
     {
         target = testDataPath;
         target /= fileName;
