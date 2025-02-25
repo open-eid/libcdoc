@@ -40,19 +40,19 @@ using namespace libcdoc;
 
 struct CDoc2Writer::Private {
 	Private(libcdoc::DataConsumer *dst) {
-		fmk = libcdoc::Crypto::extract(libcdoc::Crypto::random(libcdoc::CDoc2::KEY_LEN), std::vector<uint8_t>(libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()));
-		cek = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()));
-		hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
+        fmk = libcdoc::Crypto::extract(libcdoc::Crypto::random(libcdoc::CDoc2::KEY_LEN), {libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()});
+        cek = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()});
+        hhk = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()});
 		nonce = libcdoc::Crypto::random(libcdoc::CDoc2::NONCE_LEN);
 		cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, true);
 		libcdoc::CipherConsumer *ccons = new libcdoc::CipherConsumer(dst, false, cipher.get());
 		libcdoc::ZConsumer *zcons = new libcdoc::ZConsumer(ccons, true);
 		tar = std::make_unique<libcdoc::TarConsumer>(zcons, true);
 
-        LOG_DBG("fmk: {}", toHex(fmk));
-        LOG_DBG("cek: {}", toHex(cek));
-        LOG_DBG("hhk: {}", toHex(hhk));
-        LOG_DBG("nonce: {}", toHex(hhk));
+        LOG_TRACE_KEY("fmk: {}", fmk);
+        LOG_TRACE_KEY("cek: {}", cek);
+        LOG_TRACE_KEY("hhk: {}", hhk);
+        LOG_TRACE_KEY("nonce: {}", hhk);
     }
 
 	~Private() {
@@ -132,8 +132,8 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 {
 	std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
 
-    LOG_DBG("hmac: {}", toHex(headerHMAC));
-    LOG_DBG("nonce: {}", toHex(priv->nonce));
+    LOG_TRACE_KEY("hmac: {}", headerHMAC);
+    LOG_TRACE_KEY("nonce: {}", priv->nonce);
 
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
 	aad.insert(aad.end(), header.cbegin(), header.cend());
@@ -176,10 +176,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				}
 				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 
-                LOG_DBG("publicKeyDer: {}", toHex(rcpt.rcpt_key));
-                LOG_DBG("kek: {}", toHex(kek));
-                LOG_DBG("fmk_xor_kek: {}", toHex(xor_key));
-                LOG_DBG("enc_kek: {}", toHex(encrytpedKek));
+                LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
+                LOG_TRACE_KEY("kek: {}", kek);
+                LOG_TRACE_KEY("fmk_xor_kek: {}", xor_key);
+                LOG_TRACE_KEY("enc_kek: {}", encrytpedKek);
 
                 if(rcpt.isKeyServer()) {
                     if(!conf) {
@@ -261,10 +261,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
                 LOG_DBG("publicKeyDer: {}", toHex(rcpt.rcpt_key));
                 LOG_DBG("ephPublicKeyDer: {}", toHex(ephPublicKeyDer));
-                LOG_DBG("sharedSecret: {}", toHex(sharedSecret));
-                LOG_DBG("kekPm: {}", toHex(kekPm));
-                LOG_DBG("kek: {}", toHex(kek));
-                LOG_DBG("xor: {}", toHex(xor_key));
+                LOG_TRACE_KEY("sharedSecret: {}", sharedSecret);
+                LOG_TRACE_KEY("kekPm: {}", kekPm);
+                LOG_TRACE_KEY("kek: {}", kek);
+                LOG_TRACE_KEY("xor: {}", xor_key);
 
                 if(rcpt.isKeyServer()) {
                     if(!conf) {
@@ -348,10 +348,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             LOG_DBG("Label: {}", rcpt.label);
             LOG_DBG("KDF iter: {}", rcpt.kdf_iter);
             LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
-            LOG_DBG("salt: {}", toHex(salt));
-            LOG_DBG("pw_salt: {}", toHex(pw_salt));
-            LOG_DBG("kek_pm: {}", toHex(kek_pm));
-            LOG_DBG("kek: {}", toHex(kek));
+            LOG_TRACE_KEY("salt: {}", salt);
+            LOG_TRACE_KEY("pw_salt: {}", pw_salt);
+            LOG_TRACE_KEY("kek_pm: {}", kek_pm);
+            LOG_TRACE_KEY("kek: {}", kek);
 
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {

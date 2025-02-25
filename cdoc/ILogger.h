@@ -144,8 +144,10 @@ CDOC_EXPORT ILogger* STDCALL get_logger();
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
+#define LOG_TRACE_KEY(MSG, KEY)
 #else
 #define LOG_TRACE(...) get_logger()->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_TRACE_KEY(MSG, KEY) get_logger()->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
 #endif
 
 }

@@ -144,9 +144,9 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
         LOG_DBG("Label: {}", lock.label);
         LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
-        LOG_DBG("salt: {}", toHex(lock.getBytes(libcdoc::Lock::SALT)));
-        LOG_DBG("kek_pm: {}", toHex(kek_pm));
-        LOG_DBG("kek: {}", toHex(kek));
+        LOG_TRACE_KEY("salt: {}", lock.getBytes(libcdoc::Lock::SALT));
+        LOG_TRACE_KEY("kek_pm: {}", kek_pm);
+        LOG_TRACE_KEY("kek: {}", kek);
 
         if (kek.empty()) return libcdoc::CRYPTO_ERROR;
 	} else {
@@ -199,7 +199,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 				return result;
 			}
 
-            LOG_DBG("Key kekPm: {}", toHex(kek_pm));
+            LOG_TRACE_KEY("Key kekPm: {}", kek_pm);
 
 			std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(libcdoc::Lock::Params::RCPT_KEY));
 
@@ -209,7 +209,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		}
 	}
 
-    LOG_DBG("KEK: {}", toHex(kek));
+    LOG_TRACE_KEY("KEK: {}", kek);
 
 
 	if(kek.empty()) {
@@ -224,10 +224,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 	}
 	std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
 
-    LOG_DBG("xor: {}", toHex(lock.encrypted_fmk));
-    LOG_DBG("fmk: {}", toHex(fmk));
-    LOG_DBG("hhk: {}", toHex(hhk));
-    LOG_DBG("hmac: {}", toHex(priv->headerHMAC));
+    LOG_TRACE_KEY("xor: {}", lock.encrypted_fmk);
+    LOG_TRACE_KEY("fmk: {}", fmk);
+    LOG_TRACE_KEY("hhk: {}", hhk);
+    LOG_TRACE_KEY("hmac: {}", priv->headerHMAC);
 
 	if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
 		setLastError(t_("Wrong decryption key (user key)"));
@@ -295,8 +295,8 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 		return libcdoc::IO_ERROR;
 	}
 
-    LOG_DBG("cek: {}", toHex(cek));
-    LOG_DBG("nonce: {}", toHex(nonce));
+    LOG_TRACE_KEY("cek: {}", cek);
+    LOG_TRACE_KEY("nonce: {}", nonce);
 
 	priv->cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, false);
 	std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
@@ -338,7 +338,7 @@ CDoc2Reader::finishDecryption()
         LOG_ERROR("{}", last_error);
 	}
 
-    LOG_DBG("tag: {}", toHex(priv->tgs->tag));
+    LOG_TRACE_KEY("tag: {}", priv->tgs->tag);
 
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
