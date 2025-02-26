@@ -16,18 +16,15 @@
  *
  */
 
+#include "CDoc1Writer.h"
+
 #include "Crypto.h"
 #include "DDocWriter.h"
-#include "Utils.h"
-#include "CDoc.h"
-#include "XmlWriter.h"
-#include "CDoc1Writer.h"
 #include "ILogger.h"
+#include "Recipient.h"
+#include "Utils.h"
+#include "XmlWriter.h"
 #include "utils/memory.h"
-
-#if defined(_WIN32) || defined(_WIN64)
-#include <IntSafe.h>
-#endif
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 

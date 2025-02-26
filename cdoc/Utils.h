@@ -19,7 +19,6 @@
 #ifndef __LIBCDOC_UTILS_H__
 #define __LIBCDOC_UTILS_H__
 
-#include "CDoc.h"
 #include "Io.h"
 
 #include <algorithm>

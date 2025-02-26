@@ -18,7 +18,14 @@
 
 #pragma once
 
-#include "Io.h"
+#include <string>
+#include <vector>
+#include <cstdint>
+
+namespace libcdoc {
+
+struct DataSource;
+struct MultiDataConsumer;
 
 class DDOCReader
 {
@@ -32,3 +39,5 @@ public:
 
 	static std::vector<File> files(const std::vector<uint8_t> &data);
 };
+
+} // namespace libcdoc

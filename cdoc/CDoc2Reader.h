@@ -21,6 +21,8 @@
 
 #include "CDocReader.h"
 
+#include <memory>
+
 class CDoc2Reader final: public libcdoc::CDocReader {
 public:
 	~CDoc2Reader() final;

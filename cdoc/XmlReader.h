@@ -18,9 +18,14 @@
 
 #pragma once
 
-#include "Io.h"
-
+#include <cstdint>
 #include <istream>
+#include <string>
+#include <vector>
+
+namespace libcdoc {
+
+struct DataSource;
 
 class XMLReader
 {
@@ -42,3 +47,5 @@ private:
 	struct Private;
 	Private *d;
 };
+
+} // namespace libcdoc

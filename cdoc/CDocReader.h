@@ -18,13 +18,19 @@
 
 #ifndef __CDOCREADER_H__
 #define __CDOCREADER_H__
- 
-#include <cdoc/Configuration.h>
-#include <cdoc/CryptoBackend.h>
-#include <cdoc/Io.h>
-#include <cdoc/NetworkBackend.h>
+
+#include "CDoc.h"
+
+#include <cstdint>
 
 namespace libcdoc {
+
+struct Configuration;
+struct CryptoBackend;
+struct DataSource;
+struct Lock;
+struct MultiDataConsumer;
+struct NetworkBackend;
 
 /**
  * @brief Provides decryption interface

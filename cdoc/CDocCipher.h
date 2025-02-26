@@ -25,6 +25,7 @@
 #include "ToolConf.h"
 
 #include <map>
+#include <memory>
 
 namespace libcdoc
 {

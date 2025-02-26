@@ -18,13 +18,18 @@
 
 #ifndef __CDOCWRITER_H__
 #define __CDOCWRITER_H__
- 
-#include <cdoc/Io.h>
-#include <cdoc/Configuration.h>
-#include <cdoc/CryptoBackend.h>
-#include <cdoc/NetworkBackend.h>
+
+#include "CDoc.h"
+
+#include <cstdint>
 
 namespace libcdoc {
+    struct Configuration;
+    struct CryptoBackend;
+    struct DataConsumer;
+    struct MultiDataSource;
+    struct NetworkBackend;
+    struct Recipient;
 
 /**
  * @brief Provides encryption interface

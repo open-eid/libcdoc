@@ -16,21 +16,23 @@
  *
  */
 
-#include <sstream>
-#include <map>
-#include <openssl/rand.h>
-
 #include "CDocCipher.h"
 #include "CDocReader.h"
-#include "CDoc.h"
 #include "CDoc2.h"
 #include "Certificate.h"
 #include "ILogger.h"
+#include "Lock.h"
+#include "NetworkBackend.h"
 #include "PKCS11Backend.h"
+#include "Recipient.h"
 #include "Utils.h"
 #ifdef _WIN32
 #include "WinBackend.h"
 #endif
+
+#include <sstream>
+#include <map>
+#include <openssl/rand.h>
 
 using namespace std;
 using namespace libcdoc;
