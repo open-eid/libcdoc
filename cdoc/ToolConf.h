@@ -29,9 +29,7 @@ namespace libcdoc {
 struct ToolConf : public Configuration {
     struct ServerData {
         std::string ID;
-        std::string SEND_URL;
-        std::string FETCH_URL;
-        std::string SHARE_URLS;
+        std::string url;
     };
 
     /**
@@ -49,7 +47,6 @@ struct ToolConf : public Configuration {
      */
     std::string library;
 
-    bool use_keyserver = false;
     std::vector<ServerData> servers;
 
     /**
@@ -67,15 +64,20 @@ struct ToolConf : public Configuration {
      */
     bool gen_label = false;
 
+    /**
+     * @brief The list of accepted keyserver certificates (empty - accept all)
+     */
+    std::vector<std::vector<uint8_t>> accept_certs;
+
     std::string getValue(std::string_view domain, std::string_view param) const final {
         for (auto& sdata : servers) {
             if (sdata.ID == domain) {
                 if (param == Configuration::KEYSERVER_SEND_URL) {
-                    return sdata.SEND_URL;
+                    return sdata.url;
                 } else if (param == Configuration::KEYSERVER_FETCH_URL) {
-                    return sdata.FETCH_URL;
+                    return sdata.url;
                 } else if (param == Configuration::SHARE_SERVER_URLS) {
-                    return sdata.SHARE_URLS;
+                    return sdata.url;
                 }
             }
         }

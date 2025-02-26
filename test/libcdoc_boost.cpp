@@ -229,7 +229,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture, 
     libcdoc::RecipientInfoVector rcpts {rcpt};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
 
     // Validate the encrypted file
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
@@ -252,7 +252,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
     libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
@@ -280,7 +280,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixtu
     libcdoc::RecipientInfoVector rcpts {rcpt};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
 
     // Validate the encrypted file
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
@@ -300,7 +300,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
     libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
@@ -328,7 +328,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture, * utf::des
     libcdoc::RecipientInfoVector rcpts {rcpt};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
 
     // Validate the encrypted file
     BOOST_TEST(ValidateEncryptedFile(targetFilePath));
@@ -348,7 +348,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
     libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)};
 
     libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt, {}), 0);
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
 
     // Check if the encrypted file exists
     BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");

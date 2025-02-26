@@ -41,18 +41,18 @@ public:
     CDocCipher(const CDocCipher&) = delete;
     CDocCipher(CDocCipher&&) = delete;
 
-    int Encrypt(ToolConf& conf, RecipientInfoVector& recipients, const std::vector<std::vector<uint8_t>>& certs);
+    int Encrypt(ToolConf& conf, RecipientInfoVector& recipients);
 
-    int Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient, const std::vector<std::vector<uint8_t>>& certs);
-    int Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient, const std::vector<std::vector<uint8_t>>& certs);
+    int Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient);
+    int Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient);
+
+    int ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lock_label, const RcptInfo& lock_info, RecipientInfoVector& recipients);
 
     void Locks(const char* file) const;
 
 private:
     int writer_push(CDocWriter& writer, const std::vector<libcdoc::Recipient>& keys, const std::vector<std::string>& files);
     int Decrypt(const std::unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const std::string& base_path);
-
-    std::string GenerateRandomSequence() const;
 };
 
 }
