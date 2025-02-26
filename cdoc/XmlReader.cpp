@@ -16,13 +16,15 @@
  *
  */
 
-#include <libxml/xmlreader.h>
-
-#include "Crypto.h"
-
 #include "XmlReader.h"
 
-typedef xmlChar *pxmlChar;
+#include "Crypto.h"
+#include "Io.h"
+
+#include <libxml/xmlreader.h>
+
+using namespace libcdoc;
+
 typedef const xmlChar *pcxmlChar;
 
 struct XMLReader::Private

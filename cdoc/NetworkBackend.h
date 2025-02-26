@@ -20,7 +20,6 @@
 #define __NETWORKBACKEND_H__
 
 #include <cdoc/CryptoBackend.h>
-#include <cdoc/Recipient.h>
 
 namespace libcdoc {
 
@@ -36,7 +35,10 @@ struct CDOC_EXPORT NetworkBackend {
     };
 
     NetworkBackend() = default;
-	virtual ~NetworkBackend() = default;
+	virtual ~NetworkBackend() noexcept = default;
+    NetworkBackend(const NetworkBackend&) = delete;
+    NetworkBackend& operator=(const NetworkBackend&) = delete;
+    CDOC_ENABLE_MOVE(NetworkBackend);
 
 	virtual std::string getLastErrorStr(int code) const;
 
@@ -95,9 +97,6 @@ struct CDOC_EXPORT NetworkBackend {
 #if LIBCDOC_TESTING
     virtual int64_t test(std::vector<std::vector<uint8_t>> &dst);
 #endif
-
-    NetworkBackend (const NetworkBackend&) = delete;
-	NetworkBackend& operator= (const NetworkBackend&) = delete;
 };
 
 } // namespace libcdoc

@@ -18,7 +18,7 @@
 
 #include "DDocWriter.h"
 
-#include "XmlWriter.h"
+using namespace libcdoc;
 
 /**
  * @class DDOCWriter

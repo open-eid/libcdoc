@@ -16,21 +16,22 @@
  *
  */
 
-#include <map>
-#include <set>
-
-#include <openssl/x509.h>
-
-#include "Certificate.h"
+#include "CDoc1Reader.h"
 
 #include "CDoc.h"
+#include "Certificate.h"
 #include "Crypto.h"
+#include "CryptoBackend.h"
 #include "DDocReader.h"
 #include "ILogger.h"
+#include "Lock.h"
 #include "XmlReader.h"
 #include "ZStream.h"
 
-#include "CDoc1Reader.h"
+#include <openssl/x509.h>
+
+#include <map>
+#include <set>
 
 using namespace libcdoc;
 

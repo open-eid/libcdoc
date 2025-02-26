@@ -250,13 +250,14 @@ struct CDOC_EXPORT Lock
      */
     void setInt(Params param, int32_t val);
 
-	bool operator== (const Lock& other) const = default;
-
     /**
      * @brief A convenience method to initialize CERTIFICATE, RCPT_KEY and PK_TYPE values from given certificate
      * @param cert the certificate (der-encoded)
      */
 	void setCertificate(const std::vector<uint8_t>& cert);
+
+    bool operator== (const Lock& other) const = default;
+
 private:
 	std::map<int,std::vector<uint8_t>> params;
 };

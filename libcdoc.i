@@ -23,10 +23,12 @@
 #include "CDoc.h"
 #include "Io.h"
 #include "Configuration.h"
-#include "Lock.h"
 #include "CDocWriter.h"
 #include "CDocReader.h"
+#include "Lock.h"
+#include "NetworkBackend.h"
 #include "PKCS11Backend.h"
+#include "Recipient.h"
 #include "Utils.h"
 #include "Wrapper.h"
 #include <iostream>
@@ -534,12 +536,13 @@
 #define CDOC_EXPORT
 // fixme: Remove this in production
 #define LIBCDOC_TESTING 1
+#define CDOC_ENABLE_MOVE(X)
 
 %include "CDoc.h"
 %include "Wrapper.h"
 %include "Io.h"
 %include "Recipient.h"
-    %include "Lock.h"
+%include "Lock.h"
 %include "Configuration.h"
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"

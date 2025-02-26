@@ -18,8 +18,10 @@
 
 #include "DDocReader.h"
 #include "CDoc.h"
-
+#include "Io.h"
 #include "XmlReader.h"
+
+using namespace libcdoc;
 
 int
 DDOCReader::parse(libcdoc::DataSource *src, libcdoc::MultiDataConsumer *dst)
@@ -41,10 +43,10 @@ DDOCReader::parse(libcdoc::DataSource *src, libcdoc::MultiDataConsumer *dst)
     return (dst->isError()) ? libcdoc::IO_ERROR : libcdoc::OK;
 }
 
-struct FileListConsumer : public libcdoc::MultiDataConsumer {
+struct DDocFileListConsumer : public libcdoc::MultiDataConsumer {
 	std::vector<DDOCReader::File> files;
 
-	explicit FileListConsumer() = default;
+	explicit DDocFileListConsumer() = default;
 	int64_t write(const uint8_t *src, size_t size) override final {
 		DDOCReader::File& file = files.back();
 		file.data.insert(file.data.end(), src, src + size);
@@ -62,7 +64,7 @@ std::vector<DDOCReader::File>
 DDOCReader::files(const std::vector<uint8_t> &data)
 {
 	libcdoc::VectorSource src(data);
-	FileListConsumer list;
+	DDocFileListConsumer list;
 	parse(&src, &list);
 	return std::move(list.files);
 }

@@ -16,24 +16,27 @@
  *
  */
 
-#include <fstream>
-
-#define OPENSSL_SUPPRESS_DEPRECATED
-
-#include "openssl/evp.h"
-#include <openssl/x509.h>
+#include "CDoc2Reader.h"
 
 #include "Certificate.h"
-#include "Crypto.h"
+#include "Configuration.h"
+#include "CryptoBackend.h"
+#include "CDoc2.h"
+#include "ILogger.h"
+#include "Lock.h"
+#include "NetworkBackend.h"
 #include "Tar.h"
 #include "Utils.h"
 #include "ZStream.h"
-#include "CDoc2.h"
-#include "ILogger.h"
 
 #include "header_generated.h"
 
-#include "CDoc2Reader.h"
+#define OPENSSL_SUPPRESS_DEPRECATED
+
+#include <openssl/evp.h>
+#include <openssl/x509.h>
+
+#include <fstream>
 
 // fixme: Placeholder
 #define t_(t) t
