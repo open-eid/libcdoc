@@ -64,6 +64,7 @@
 
 %ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
 %ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
+%ignore libcdoc::Configuration::SHARE_SERVER_URLS;
 
 %ignore libcdoc::PKCS11Backend::Handle;
 %ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label);
@@ -494,6 +495,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %typemap(javacode) libcdoc::Configuration %{
     public static final String KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
     public static final String KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
+    public static final String SHARE_SERVER_URLS = "SHARE_SERVER_URLS";
 %}
 
 //

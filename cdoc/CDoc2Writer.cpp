@@ -150,6 +150,101 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 	return libcdoc::OK;
 }
 
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createRSACapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> encrypted_kek, const std::vector<uint8_t>& xor_key)
+{
+    auto capsule = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
+                                                                 builder.CreateVector(rcpt.rcpt_key),
+                                                                 builder.CreateVector(encrypted_kek));
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                        cdoc20::header::Capsule::recipients_RSAPublicKeyCapsule,
+                                                        capsule.Union(),
+                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateVector(xor_key),
+                                                        cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createRSAServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, const std::vector<uint8_t>& xor_key)
+{
+    auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
+                                                                builder.CreateVector(rcpt.rcpt_key));
+    auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
+                                                              cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
+                                                              rsaKeyServer.Union(),
+                                                              builder.CreateString(rcpt.server_id),
+                                                              builder.CreateString(transaction_id));
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                        cdoc20::header::Capsule::recipients_KeyServerCapsule,
+                                                        capsule.Union(),
+                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateVector(xor_key),
+                                                        cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> eph_public_key, const std::vector<uint8_t>& xor_key)
+{
+    auto capsule = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
+                                                                 cdoc20::recipients::EllipticCurve::secp384r1,
+                                                                 builder.CreateVector(rcpt.rcpt_key),
+                                                                 builder.CreateVector(eph_public_key));
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                        cdoc20::header::Capsule::recipients_ECCPublicKeyCapsule,
+                                                        capsule.Union(),
+                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateVector(xor_key),
+                                                        cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string transaction_id, const std::vector<uint8_t>& xor_key)
+{
+    auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
+                                                                cdoc20::recipients::EllipticCurve::secp384r1,
+                                                                builder.CreateVector(rcpt.rcpt_key));
+    auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
+                                                              cdoc20::recipients::KeyDetailsUnion::EccKeyDetails,
+                                                              eccKeyServer.Union(),
+                                                              builder.CreateString(rcpt.server_id),
+                                                              builder.CreateString(transaction_id));
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                        cdoc20::header::Capsule::recipients_KeyServerCapsule,
+                                                        capsule.Union(),
+                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateVector(xor_key),
+                                                        cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createSymmetricKeyCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> salt, const std::vector<uint8_t>& xor_key)
+{
+    auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
+                                                                 builder.CreateVector(salt));
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                      cdoc20::header::Capsule::recipients_SymmetricKeyCapsule,
+                                                      capsule.Union(),
+                                                      builder.CreateString(rcpt.label),
+                                                      builder.CreateVector(xor_key),
+                                                      cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
+static flatbuffers::Offset<cdoc20::header::RecipientRecord>
+createPasswordCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> salt, const std::vector<uint8_t> pw_salt, const std::vector<uint8_t>& xor_key)
+{
+    auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder,
+                                                           builder.CreateVector(salt),
+                                                           builder.CreateVector(pw_salt),
+                                                           cdoc20::recipients::KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256,
+                                                           rcpt.kdf_iter);
+    return cdoc20::header::CreateRecipientRecord(builder,
+                                                      cdoc20::header::Capsule::recipients_PBKDF2Capsule,
+                                                      capsule.Union(),
+                                                      builder.CreateString(rcpt.label),
+                                                      builder.CreateVector(xor_key),
+                                                      cdoc20::header::FMKEncryptionMethod::XOR);
+}
+
 int
 CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc::Recipient>& recipients, const std::vector<uint8_t>& fmk)
 {
@@ -159,9 +254,9 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 	std::vector<uint8_t> xor_key(libcdoc::CDoc2::KEY_LEN);
     for (unsigned int rcpt_idx = 0; rcpt_idx < recipients.size(); rcpt_idx++) {
         const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
+        std::vector<uint8_t> key_material, kek;
         if (rcpt.isPKI()) {
             if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
-				std::vector<uint8_t> kek;
 				crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
 				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
 					setLastError("Internal error");
@@ -174,98 +269,45 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     LOG_ERROR("{}", last_error);
 					return libcdoc::CRYPTO_ERROR;
 				}
-				std::vector<uint8_t> encrytpedKek = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
+                key_material = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 
                 LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
                 LOG_TRACE_KEY("kek: {}", kek);
                 LOG_TRACE_KEY("fmk_xor_kek: {}", xor_key);
-                LOG_TRACE_KEY("enc_kek: {}", encrytpedKek);
-
-                if(rcpt.isKeyServer()) {
-                    if(!conf) {
-                        setLastError("Configuration is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    if(!network) {
-                        setLastError("Network backend is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
-                    if (send_url.empty()) {
-                        setLastError("Missing keyserver URL");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, encrytpedKek, "RSA");
-                    if (result < 0) {
-                        setLastError(network->getLastErrorStr(result));
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::IO_ERROR;
-                    }
-
-                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
-                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
-
-                    auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
-                                                                                builder.CreateVector(rcpt.rcpt_key));
-                    auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
-                                                                                cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
-                                                                                rsaKeyServer.Union(),
-                                                                                builder.CreateString(rcpt.server_id),
-                                                                                builder.CreateString(cinfo.transaction_id));
-                    auto record = cdoc20::header::CreateRecipientRecord(builder,
-                                                                      cdoc20::recipients::Capsule::KeyServerCapsule,
-                                                                      capsule.Union(),
-                                                                      builder.CreateString(rcpt.label),
-                                                                      builder.CreateVector(xor_key),
-                                                                      cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(std::move(record));
-                } else {
-                    auto capsule = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
-                                                                                      builder.CreateVector(rcpt.rcpt_key),
-																					  builder.CreateVector(encrytpedKek));
-                    auto record = cdoc20::header::CreateRecipientRecord(builder,
-																	  cdoc20::recipients::Capsule::RSAPublicKeyCapsule,
-                                                                      capsule.Union(),
-                                                                      builder.CreateString(rcpt.label),
-																	  builder.CreateVector(xor_key),
-																	  cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(std::move(record));
-				}
-			} else {
+                LOG_TRACE_KEY("enc_kek: {}", key_material);
+            } else {
                 auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
-				if(!publicKey) {
-					setLastError("Invalid ECC key");
+                if(!publicKey) {
+                    setLastError("Invalid ECC key");
                     LOG_ERROR("{}", last_error);
-					return libcdoc::CRYPTO_ERROR;
-				}
-				auto ephKey = libcdoc::Crypto::genECKey(publicKey.get());
-				std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), publicKey.get());
-				std::vector<uint8_t> ephPublicKeyDer = libcdoc::Crypto::toPublicKeyDer(ephKey.get());
-				std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
-				std::string info_str = std::string() + libcdoc::CDoc2::KEK.data() +
-						cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
-                        std::string(rcpt.rcpt_key.cbegin(), rcpt.rcpt_key.cend()) +
-						std::string(ephPublicKeyDer.cbegin(), ephPublicKeyDer.cend());
+                    return libcdoc::CRYPTO_ERROR;
+                }
+                auto ephKey = libcdoc::Crypto::genECKey(publicKey.get());
+                std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), publicKey.get());
+                key_material = libcdoc::Crypto::toPublicKeyDer(ephKey.get());
+                std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
+                std::string info_str = std::string() + libcdoc::CDoc2::KEK.data() +
+                                       cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
+                                       std::string(rcpt.rcpt_key.cbegin(), rcpt.rcpt_key.cend()) +
+                                       std::string(key_material.cbegin(), key_material.cend());
 
-				std::vector<uint8_t> kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
-				if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
-					setLastError("Internal error");
+                kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
+                if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
+                    setLastError("Internal error");
                     LOG_ERROR("{}", last_error);
-					return libcdoc::CRYPTO_ERROR;
-				}
+                    return libcdoc::CRYPTO_ERROR;
+                }
 
                 LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
-                LOG_DBG("publicKeyDer: {}", toHex(rcpt.rcpt_key));
-                LOG_DBG("ephPublicKeyDer: {}", toHex(ephPublicKeyDer));
+                LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
+                LOG_TRACE_KEY("ephPublicKeyDer: {}", key_material);
                 LOG_TRACE_KEY("sharedSecret: {}", sharedSecret);
                 LOG_TRACE_KEY("kekPm: {}", kekPm);
-                LOG_TRACE_KEY("kek: {}", kek);
-                LOG_TRACE_KEY("xor: {}", xor_key);
+            }
+            LOG_TRACE_KEY("kek: {}", kek);
+            LOG_TRACE_KEY("xor: {}", xor_key);
 
+            if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
                 if(rcpt.isKeyServer()) {
                     if(!conf) {
                         setLastError("Configuration is missing");
@@ -279,12 +321,12 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					}
                     std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
                     if (send_url.empty()) {
-                        setLastError("Missing keyserver URL");
+                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
                         LOG_ERROR("{}", last_error);
                         return libcdoc::CONFIGURATION_ERROR;
                     }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, ephPublicKeyDer, "ecc_secp384r1");
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "RSA");
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);
@@ -294,32 +336,45 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     LOG_DBG("Keyserver Id: {}", rcpt.server_id);
                     LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
 
-                    auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
-                                                                                cdoc20::recipients::EllipticCurve::secp384r1,
-                                                                                builder.CreateVector(rcpt.rcpt_key));
-                    auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
-                                                                                cdoc20::recipients::KeyDetailsUnion::EccKeyDetails,
-                                                                                eccKeyServer.Union(),
-                                                                                builder.CreateString(rcpt.server_id),
-                                                                                builder.CreateString(cinfo.transaction_id));
-                    auto record = cdoc20::header::CreateRecipientRecord(builder,
-                                                                      cdoc20::recipients::Capsule::KeyServerCapsule,
-                                                                      capsule.Union(),
-                                                                      builder.CreateString(rcpt.label),
-                                                                      builder.CreateVector(xor_key),
-                                                                      cdoc20::header::FMKEncryptionMethod::XOR);
+                    auto record = createRSAServerCapsule(builder, rcpt, cinfo.transaction_id, xor_key);
                     fb_rcpts.push_back(std::move(record));
                 } else {
-                    auto capsule = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
-																					  cdoc20::recipients::EllipticCurve::secp384r1,
-                                                                                      builder.CreateVector(rcpt.rcpt_key),
-																					  builder.CreateVector(ephPublicKeyDer));
-                    auto record = cdoc20::header::CreateRecipientRecord(builder,
-																	  cdoc20::recipients::Capsule::ECCPublicKeyCapsule,
-                                                                      capsule.Union(),
-                                                                      builder.CreateString(rcpt.label),
-																	  builder.CreateVector(xor_key),
-																	  cdoc20::header::FMKEncryptionMethod::XOR);
+                    auto record = createRSACapsule(builder, rcpt, key_material, xor_key);
+                    fb_rcpts.push_back(std::move(record));
+				}
+			} else {
+                if(rcpt.isKeyServer()) {
+                    if(!conf) {
+                        setLastError("Configuration is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+                    }
+                    if(!network) {
+                        setLastError("Network backend is missing");
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+					}
+                    std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
+                    if (send_url.empty()) {
+                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::CONFIGURATION_ERROR;
+                    }
+                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1");
+                    if (result < 0) {
+                        setLastError(network->getLastErrorStr(result));
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::IO_ERROR;
+                    }
+
+                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
+                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
+
+                    auto record = createECCServerCapsule(builder, rcpt, cinfo.transaction_id, xor_key);
+                    fb_rcpts.push_back(std::move(record));
+                } else {
+                    auto record = createECCCapsule(builder, rcpt, key_material, xor_key);
                     fb_rcpts.push_back(std::move(record));
 				}
 			}
@@ -360,30 +415,104 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 				return libcdoc::CRYPTO_ERROR;
 			}
             if (rcpt.kdf_iter > 0) {
-				auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder,
-																	   builder.CreateVector(salt),
-																	   builder.CreateVector(pw_salt),
-																	   cdoc20::recipients::KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256,
-                                                                       rcpt.kdf_iter);
-				auto offs = cdoc20::header::CreateRecipientRecord(builder,
-																  cdoc20::recipients::Capsule::PBKDF2Capsule,
-																  capsule.Union(),
-                                                                  builder.CreateString(rcpt.label),
-																  builder.CreateVector(xor_key),
-																  cdoc20::header::FMKEncryptionMethod::XOR);
+                auto offs = createPasswordCapsule(builder, rcpt, salt, pw_salt, xor_key);
                 fb_rcpts.push_back(std::move(offs));
 			} else {
-				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
-																			 builder.CreateVector(salt));
-				auto offs = cdoc20::header::CreateRecipientRecord(builder,
-																  cdoc20::recipients::Capsule::SymmetricKeyCapsule,
-																  capsule.Union(),
-                                                                  builder.CreateString(rcpt.label),
-																  builder.CreateVector(xor_key),
-																  cdoc20::header::FMKEncryptionMethod::XOR);
+                auto offs = createSymmetricKeyCapsule(builder, rcpt, salt, xor_key);
                 fb_rcpts.push_back(std::move(offs));
 			}
-		} else {
+        } else if (rcpt.isKeyShare()) {
+            std::string url_list = conf->getValue(rcpt.server_id, libcdoc::Configuration::SHARE_SERVER_URLS);
+            if (url_list.empty()) {
+                setLastError("Missing server list for ID " + rcpt.server_id);
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            LOG_DBG("Share servers: {}", url_list);
+            std::vector<std::string> urls = split(url_list, ',');
+            if (urls.size() < 1) {
+                setLastError("No server URLs in " + rcpt.server_id);
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            int N_SHARES = urls.size();
+            LOG_DBG("Number of shares: {}", N_SHARES);
+
+            // identifier of the method, which is used to encrypt the plaintext FMK value:
+            std::string FMKEncryptionMethod = "XOR";
+            // length of KEK_i in octets, so that it matches the length of FMK for the XOR() algorithm
+            int L = 32;
+            // Recipient identifier ("etsi/PNOEE-48010010101"):
+            std::string RecipientInfo_i = "etsi/" + rcpt.id;
+            LOG_DBG("Recipient info: {}", RecipientInfo_i);
+
+            //# KEK_i computation:
+            //KeyMaterialSalt_i = CSRNG(256)
+            std::vector<uint8_t> key_material_salt;
+            crypto->random(key_material_salt, 32);
+
+            //KeyMaterial_i = CSRNG(256)
+            std::vector<uint8_t> key_material;
+            crypto->random(key_material, 32);
+
+            //KEK_i_pm = HKDF_Extract(KeyMaterialSalt_i, KeyMaterial_i)
+            std::vector<uint8_t> kek_pm = libcdoc::Crypto::extract(key_material_salt, key_material);
+
+            // KEK_i = HKDF_Expand(KEK_i_pm, "CDOC2kek" + FMKEncryptionMethod + RecipientInfo_i, L)
+            std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
+            LOG_DBG("Info: {}", info_str);
+            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()));
+
+            // # Splitting KEK_i into shares
+            // for j in (2, 3, ..., n):
+            std::vector<std::vector<uint8_t>> kek_shares(N_SHARES);
+            for (int i = 1; i < N_SHARES; i++) {
+                // KEK_i_share_j = CSRNG(256)
+                crypto->random(kek_shares[i], 32);
+            }
+            // KEK_i_share_1 = XOR(KEK_i, KEK_i_share_2, KEK_i_share_3,..., KEK_i_share_n)
+            kek_shares[0] = kek;
+            for (int i = 1; i < N_SHARES; i++) {
+                libcdoc::Crypto::xor_data(kek_shares[0], kek_shares[0], kek_shares[i]);
+            }
+            //   # Client uploads all shares of KEK_i to CSS servers and
+            //   # gets corresponding Capsule_i_Share_j_ID for each KEK_i_share_j
+            //   RecipientInfo_i = "etsi/PNOEE-48010010101"
+            //   DistributedKEKInfo_i = {CSS_ID, Capsule_i_Share_j_ID}
+            std::vector<std::string> transaction_ids(N_SHARES);
+            for (int i = 0; i < N_SHARES; i++) {
+                std::string send_url = urls[i];// + "key-shares";
+                LOG_DBG("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
+#if 1
+                int result = network->sendShare(transaction_ids[i], send_url, RecipientInfo_i, kek_shares[i]);
+                if (result < 0) {
+                    setLastError(network->getLastErrorStr(result));
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::IO_ERROR;
+                }
+#endif
+                LOG_DBG("Share {} Transaction Id: {}", i, transaction_ids[i]);
+            }
+            std::vector<flatbuffers::Offset<cdoc20::recipients::KeyShare>> shares;
+            for (int i = 0; i < N_SHARES; i++) {
+                auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString(transaction_ids[i]));
+                shares.push_back(share);
+            }
+            auto fb_shares = builder.CreateVector(shares);
+            auto fb_capsule = cdoc20::recipients::CreateKeySharesCapsule(builder,
+                                                                      fb_shares,
+                                                                      builder.CreateVector(key_material_salt),
+                                                                      cdoc20::recipients::KeyShareRecipientType::SID_MID,
+                                                                      cdoc20::recipients::SharesScheme::N_OF_N,
+                                                                      builder.CreateString(RecipientInfo_i));
+            auto offset = cdoc20::header::CreateRecipientRecord(builder,
+                                                         cdoc20::header::Capsule::recipients_KeySharesCapsule,
+                                                         fb_capsule.Union(),
+                                                         builder.CreateString(rcpt.label),
+                                                         builder.CreateVector(xor_key),
+                                                         cdoc20::header::FMKEncryptionMethod::XOR);
+            fb_rcpts.push_back(offset);
+        } else {
 			setLastError("Invalid recipient type");
             LOG_ERROR("{}", last_error);
 			return libcdoc::UNSPECIFIED_ERROR;

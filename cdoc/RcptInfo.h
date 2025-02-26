@@ -40,8 +40,10 @@ struct RcptInfo {
         P11_SYMMETRIC,
         // Public key from PKC11 device
         P11_PKI,
-        // Windows 
-        NCRYPT
+        // Windows
+        NCRYPT,
+        // N of n
+        SHARE
     };
 
     Type type;
@@ -52,6 +54,8 @@ struct RcptInfo {
     std::vector<uint8_t> key_id;
     std::string key_label;
     std::string key_file_name;
+    // ID code for shares server
+    std::string id;
     // Locks label
     std::string label;
 };

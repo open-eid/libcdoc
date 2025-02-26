@@ -433,8 +433,8 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 		};
 		switch(recipient->capsule_type())
 		{
-		case Capsule::ECCPublicKeyCapsule:
-			if(const auto *key = recipient->capsule_as_ECCPublicKeyCapsule()) {
+        case Capsule::recipients_ECCPublicKeyCapsule:
+            if(const auto *key = recipient->capsule_as_recipients_ECCPublicKeyCapsule()) {
 				if(key->curve() != EllipticCurve::secp384r1) {
                     LOG_ERROR("Unsupported ECC curve: skipping");
 					continue;
@@ -445,16 +445,16 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 				priv->locks.push_back(k);
 			}
 			break;
-		case Capsule::RSAPublicKeyCapsule:
-			if(const auto *key = recipient->capsule_as_RSAPublicKeyCapsule())
+        case Capsule::recipients_RSAPublicKeyCapsule:
+            if(const auto *key = recipient->capsule_as_recipients_RSAPublicKeyCapsule())
 			{
 				libcdoc::Lock *k = fillRecipientPK(libcdoc::Lock::PKType::ECC, key);
 				k->setBytes(libcdoc::Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
 				priv->locks.push_back(k);
 			}
 			break;
-		case Capsule::KeyServerCapsule:
-			if (const KeyServerCapsule *server = recipient->capsule_as_KeyServerCapsule()) {
+        case Capsule::recipients_KeyServerCapsule:
+            if (const KeyServerCapsule *server = recipient->capsule_as_recipients_KeyServerCapsule()) {
 				KeyDetailsUnion details = server->recipient_key_details_type();
 				libcdoc::Lock *ckey = nullptr;
 				switch (details) {
@@ -494,8 +494,8 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
                 LOG_ERROR("Invalid file format");
 			}
 			break;
-		case Capsule::SymmetricKeyCapsule:
-			if(const auto *capsule = recipient->capsule_as_SymmetricKeyCapsule())
+        case Capsule::recipients_SymmetricKeyCapsule:
+            if(const auto *capsule = recipient->capsule_as_recipients_SymmetricKeyCapsule())
 			{
 				libcdoc::Lock *key = new libcdoc::Lock(libcdoc::Lock::SYMMETRIC_KEY);
 				key->label = recipient->key_label()->str();
@@ -504,8 +504,8 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 				priv->locks.push_back(key);
 			}
 			break;
-		case Capsule::PBKDF2Capsule:
-			if(const auto *capsule = recipient->capsule_as_PBKDF2Capsule()) {
+        case Capsule::recipients_PBKDF2Capsule:
+            if(const auto *capsule = recipient->capsule_as_recipients_PBKDF2Capsule()) {
 				KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
 				if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
                     LOG_ERROR("Unsupported KDF algorithm: skipping");
