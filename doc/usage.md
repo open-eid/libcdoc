@@ -58,7 +58,7 @@ In addition to NetworkBackend methods, a Configuration subclass has to be create
 
 It is needed to get keyserver parameters. Subclass has to implement the following method:
 
-    std::string getValue(const std::string_view& domain, const std::string_view& param)
+    std::string getValue(std::string_view domain, std::string_view param)
 
 It returns configuration value for domain/param combination. For keyserver:
 

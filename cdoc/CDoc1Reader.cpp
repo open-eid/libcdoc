@@ -93,17 +93,20 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
         const libcdoc::Lock *ll = d->locks.at(i);
 		if (!ll->isCDoc1()) continue;
 		std::vector<uint8_t> l_cert = ll->getBytes(libcdoc::Lock::Params::CERT);
-		if(l_cert != cc.cert || ll->encrypted_fmk.empty()) continue;
-		if(cc.getAlgorithm() == libcdoc::Certificate::RSA) {
-			if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
+        if(l_cert != cert || ll->encrypted_fmk.empty()) continue;
+        switch(cc.getAlgorithm()) {
+        case libcdoc::Certificate::RSA:
+            if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
-			}
-        } else if(cc.getAlgorithm() == libcdoc::Certificate::ECC) {
-			std::vector<uint8_t> eph_key = ll->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-			if(!eph_key.empty() && SUPPORTED_KWAES.contains(ll->getString(libcdoc::Lock::Params::METHOD))) {
+            }
+            break;
+        case libcdoc::Certificate::ECC:
+            if(std::vector<uint8_t> eph_key = ll->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
+                !eph_key.empty() && SUPPORTED_KWAES.contains(ll->getString(libcdoc::Lock::Params::METHOD))) {
                 return i;
-			}
-        } else {
+            }
+            break;
+        default:
             return libcdoc::NOT_SUPPORTED;
         }
 	}
@@ -131,7 +134,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		}
 	} else {
         std::vector<uint8_t> eph_key = lock->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST),
+        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, std::string(lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST)),
                                              lock->getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
                                              lock->getBytes(libcdoc::Lock::Params::PARTY_UINFO),
                                              lock->getBytes(libcdoc::Lock::Params::PARTY_VINFO),

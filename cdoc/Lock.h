@@ -146,7 +146,7 @@ struct CDOC_EXPORT Lock
      * @param param a parameter type
      * @return the parameter value
      */
-    std::vector<uint8_t> getBytes(Params param) const { return params.at(param); };
+    const std::vector<uint8_t>& getBytes(Params param) const { return params.at(param); };
     /**
      * @brief get lock parameter as string
      * @param key a parameter type
@@ -182,32 +182,32 @@ struct CDOC_EXPORT Lock
      * @brief check whether lock is valid
      * @return true if valid
      */
-	bool isValid() const { return (type != Type::INVALID) && !label.empty() && !encrypted_fmk.empty(); }
+    bool isValid() const noexcept { return (type != Type::INVALID) && !label.empty() && !encrypted_fmk.empty(); }
     /**
      * @brief check whether lock is based on symmetric key
      * @return true if type is SYMMETRIC_KEY or PASSWORD
      */
-	bool isSymmetric() const { return (type == Type::SYMMETRIC_KEY) || (type == Type::PASSWORD); }
+    constexpr bool isSymmetric() const noexcept { return (type == Type::SYMMETRIC_KEY) || (type == Type::PASSWORD); }
     /**
      * @brief check whether lock is based on public key
      * @return true if type is CDOC1, PUBLIC_KEY or SERVER
      */
-    bool isPKI() const { return (type == Type::CDOC1) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
+    constexpr bool isPKI() const noexcept { return (type == Type::CDOC1) || (type == Type::PUBLIC_KEY) || (type == Type::SERVER); }
     /**
      * @brief check whether lock is based on certificate
      * @return true if type is CDOC1
      */
-    bool isCertificate() const { return (type == Type::CDOC1); }
+    constexpr bool isCertificate() const noexcept { return (type == Type::CDOC1); }
     /**
      * @brief check whether lock is CDoc1 version
      * @return true if type is CDOC1
      */
-    bool isCDoc1() const { return type == Type::CDOC1; }
+    constexpr bool isCDoc1() const noexcept { return type == Type::CDOC1; }
     /**
      * @brief check whether public key lock uses RSA algorithm
      * @return true if pk_type is RSA
      */
-    bool isRSA() const { return pk_type == PKType::RSA; }
+    constexpr bool isRSA() const noexcept { return pk_type == PKType::RSA; }
 
     /**
      * @brief check whether two locks have the same public key
@@ -228,8 +228,8 @@ struct CDOC_EXPORT Lock
      */
     bool hasTheSameKey(const std::vector<uint8_t>& public_key) const;
 
-	Lock() = default;
-	Lock(Type _type) : type(_type) {};
+	Lock() noexcept = default;
+	Lock(Type _type) noexcept : type(_type) {};
 
     /**
      * @brief Set lock parameter value
@@ -259,7 +259,7 @@ struct CDOC_EXPORT Lock
     bool operator== (const Lock& other) const = default;
 
 private:
-	std::map<int,std::vector<uint8_t>> params;
+	std::map<Params,std::vector<uint8_t>> params;
 };
 
 } // namespace libcdoc

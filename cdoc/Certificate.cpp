@@ -23,14 +23,18 @@
 
 namespace libcdoc {
 
+Certificate::Certificate(const std::vector<uint8_t>& cert) noexcept
+    : cert(Crypto::toX509(cert))
+{
+}
+
 static std::string
-getName(const std::vector<uint8_t>& cert, int NID)
+getName(const unique_free_t<X509>& cert, int NID)
 {
     std::string cn;
-    auto peerCert = Crypto::toX509(cert);
-    if(!peerCert)
+    if(!cert)
         return cn;
-    X509_NAME *name = X509_get_subject_name(peerCert.get());
+    X509_NAME *name = X509_get_subject_name(cert.get());
     if(!name)
         return cn;
     int pos = X509_NAME_get_index_by_NID(name, NID, -1);
@@ -78,12 +82,11 @@ Certificate::policies() const
     constexpr int PolicyBufferLen = 50;
     std::vector<std::string> list;
 
-    auto peerCert = Crypto::toX509(cert);
-    if(!peerCert)
+    if(!cert)
         return list;
 
     auto cp = make_unique_cast<CERTIFICATEPOLICIES_free>(X509_get_ext_d2i(
-        peerCert.get(), NID_certificate_policies, nullptr, nullptr));
+        cert.get(), NID_certificate_policies, nullptr, nullptr));
     if(!cp)
         return list;
 
@@ -102,19 +105,18 @@ Certificate::policies() const
 std::vector<uint8_t>
 Certificate::getPublicKey() const
 {
-    if(auto x509 = Crypto::toX509(cert))
-        return Crypto::toPublicKeyDer(X509_get0_pubkey(x509.get()));
+    if(cert)
+        return Crypto::toPublicKeyDer(X509_get0_pubkey(cert.get()));
     return {};
 }
 
 Certificate::Algorithm
 Certificate::getAlgorithm() const
 {
-    auto x509 = Crypto::toX509(cert);
-    if(!x509)
+    if(!cert)
         return {};
 
-    EVP_PKEY *pkey = X509_get0_pubkey(x509.get());
+    EVP_PKEY *pkey = X509_get0_pubkey(cert.get());
 	int alg = EVP_PKEY_get_base_id(pkey);
 
 	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : Algorithm::ECC;
@@ -122,8 +124,7 @@ Certificate::getAlgorithm() const
 
 std::vector<uint8_t> Certificate::getDigest()
 {
-    auto x509 = Crypto::toX509(cert);
-    if(!x509)
+    if(!cert)
         return {};
 
     const EVP_MD* digest_type = EVP_get_digestbyname("sha1");
@@ -131,7 +132,7 @@ std::vector<uint8_t> Certificate::getDigest()
     std::vector<uint8_t> digest(EVP_MAX_MD_SIZE);
     unsigned int digest_len = 0;
 
-    if (X509_digest(x509.get(), digest_type, digest.data(), &digest_len))
+    if (X509_digest(cert.get(), digest_type, digest.data(), &digest_len))
     {
         digest.resize(digest_len);
     }

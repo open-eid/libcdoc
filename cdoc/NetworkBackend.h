@@ -38,7 +38,7 @@ struct CDOC_EXPORT NetworkBackend {
 	virtual ~NetworkBackend() noexcept = default;
     NetworkBackend(const NetworkBackend&) = delete;
     NetworkBackend& operator=(const NetworkBackend&) = delete;
-    CDOC_ENABLE_MOVE(NetworkBackend);
+    CDOC_DISABLE_MOVE(NetworkBackend);
 
 	virtual std::string getLastErrorStr(int code) const;
 

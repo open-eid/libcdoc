@@ -18,6 +18,7 @@
 
 #include "Recipient.h"
 
+#include "CDoc2.h"
 #include "Certificate.h"
 #include "Crypto.h"
 #include "ILogger.h"
@@ -64,12 +65,12 @@ Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& p
 }
 
 Recipient
-Recipient::makeCertificate(const std::string& label, const std::vector<uint8_t>& cert)
+Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
 {
 	Recipient rcpt(Type::CERTIFICATE);
-	rcpt.label = label;
-    rcpt.cert = cert;
-	Certificate ssl(cert);
+	rcpt.label = std::move(label);
+    rcpt.cert = std::move(cert);
+	Certificate ssl(rcpt.cert);
 	std::vector<uint8_t> pkey = ssl.getPublicKey();
 	Certificate::Algorithm algo = ssl.getAlgorithm();
     rcpt.rcpt_key = pkey;
@@ -78,20 +79,36 @@ Recipient::makeCertificate(const std::string& label, const std::vector<uint8_t>&
 }
 
 Recipient
-Recipient::makeServer(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type, const std::string& server_id)
+Recipient::makeEID(std::vector<uint8_t> cert)
+{
+    auto label = BuildLabelEID(cert);
+    return makeCertificate(std::move(label), std::move(cert));
+}
+
+Recipient
+Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id)
 {
     Recipient rcpt(Type::SERVER);
-    rcpt.label = label;
+    rcpt.label = std::move(label);
     rcpt.pk_type = pk_type;
     if (pk_type == PKType::ECC && public_key[0] == 0x30) {
         // 0x30 identifies SEQUENCE tag in ASN.1 encoding
         auto evp = Crypto::fromECPublicKeyDer(public_key);
         rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
     } else {
-        rcpt.rcpt_key = public_key;
+        rcpt.rcpt_key = std::move(public_key);
     }
-    rcpt.server_id = server_id;
+    rcpt.server_id = std::move(server_id);
     return rcpt;
+}
+
+Recipient
+Recipient::makeEIDServer(std::vector<uint8_t> cert, std::string server_id)
+{
+    Certificate x509(cert);
+    auto label = BuildLabelEID(cert);
+    return makeServer(std::move(label),
+        x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
 }
 
 bool
@@ -123,10 +140,10 @@ Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>>
     std::ostringstream ofs;
     ofs << LABELPREFIX;
     bool first = true;
-    for (auto& c : components) {
-        if (!c.second.empty()) {
+    for (auto& [key, value] : components) {
+        if (!value.empty()) {
             if (!first) ofs << '&';
-            ofs << libcdoc::urlEncode(c.first) << '=' << libcdoc::urlEncode(c.second);
+            ofs << libcdoc::urlEncode(key) << '=' << libcdoc::urlEncode(value);
             first = false;
         }
     }
@@ -134,7 +151,7 @@ Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>>
 }
 
 std::string
-Recipient::BuildLabelEID(int version, EIDType type, const std::string& cn, const std::string& serial_number, const std::string& last_name, const std::string& first_name)
+Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name)
 {
     // In case of cards issued to an organization the first name (and last name) are missing. We ommit these parts.
     if (first_name.empty()) {
@@ -157,7 +174,14 @@ Recipient::BuildLabelEID(int version, EIDType type, const std::string& cn, const
 }
 
 std::string
-Recipient::BuildLabelCertificate(int version, const std::string file, const std::string& cn, const std::vector<uint8_t>& cert_sha1)
+Recipient::BuildLabelEID(const std::vector<uint8_t>& cert)
+{
+    Certificate x509(cert);
+    return BuildLabelEID(CDoc2::KEYLABELVERSION, getEIDType(x509.policies()), x509.getCommonName(), x509.getSerialNumber(), x509.getSurname(), x509.getGivenName());
+}
+
+std::string
+Recipient::BuildLabelCertificate(int version, std::string_view file, std::string_view cn, const std::vector<uint8_t>& cert_sha1)
 {
     return buildLabel({
         {"v", std::to_string(version)},
@@ -166,6 +190,13 @@ Recipient::BuildLabelCertificate(int version, const std::string file, const std:
         {"cn", cn},
         {"cert_sha1", toHex(cert_sha1)}
     });
+}
+
+std::string
+Recipient::BuildLabelCertificate(std::string_view file, const std::vector<uint8_t>& cert)
+{
+    Certificate x509(cert);
+    return BuildLabelCertificate(CDoc2::KEYLABELVERSION, file, x509.getCommonName(), x509.getDigest());
 }
 
 std::string

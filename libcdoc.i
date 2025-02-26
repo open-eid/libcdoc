@@ -150,56 +150,47 @@
 %typemap(javadirectorin) (uint8_t *dst, size_t size) "$jniinput"
 
 //
-// std::vector<uint8_t> <- byte[]
+// std::vector<uint8_t> <-> byte[]
 //
 
-%typemap(out) std::vector<uint8_t> %{
-    // std::vector<uint8_t> out
-    jresult = jenv->NewByteArray((&result)->size());
-    jenv->SetByteArrayRegion(jresult, 0, (&result)->size(), (const jbyte*)(&result)->data());
-%}
-%typemap(in) std::vector<uint8_t> %{
-    // std::vector<uint8_t> in
-%}
-%typemap(jtype) std::vector<uint8_t> "byte[]"
-%typemap(jstype) std::vector<uint8_t> "byte[]"
-%typemap(jni) std::vector<uint8_t> "jbyteArray"
-%typemap(javaout) std::vector<uint8_t> {
-    return $jnicall;
-}
-
-//
-// std::vector<uint8_t>& -> byte[]
-//
-
-%typemap(in) (std::vector<uint8_t>&) %{
-    // std::vector<uint8_t>& in
-    jsize $input_size = jenv->GetArrayLength($input);
-    uint8_t *$input_data = (uint8_t *) jenv->GetByteArrayElements($input, NULL);
-    std::vector<uint8_t> $1_vec($input_data, $input_data + $input_size);
-    jenv->ReleaseByteArrayElements($input, (jbyte *) $input_data, 0);
+%fragment("SWIG_VectorUnsignedCharToJavaArray", "header") {
+static jbyteArray SWIG_VectorUnsignedCharToJavaArray(JNIEnv *jenv, const std::vector<unsigned char> &data) {
+    jbyteArray jresult = jenv->NewByteArray(data.size());
+    if(jresult)
+        jenv->SetByteArrayRegion(jresult, 0, data.size(), (const jbyte*)data.data());
+    return jresult;
+}}
+%fragment("SWIG_JavaArrayToVectorUnsignedChar", "header") {
+static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jenv, jbyteArray data) {
+    std::vector<unsigned char> result(jenv->GetArrayLength(data));
+    jenv->GetByteArrayRegion(data, 0, result.size(), (jbyte*)result.data());
+    return result;
+}}
+%typemap(out, fragment="SWIG_VectorUnsignedCharToJavaArray") std::vector<uint8_t>
+%{ jresult = SWIG_VectorUnsignedCharToJavaArray(jenv, result); // std::vector<uint8_t> out %}
+%typemap(out, fragment="SWIG_VectorUnsignedCharToJavaArray") std::vector<uint8_t>&
+%{ jresult = SWIG_VectorUnsignedCharToJavaArray(jenv, *result); // std::vector<uint8_t>& out %}
+%typemap(in, fragment="SWIG_JavaArrayToVectorUnsignedChar") std::vector<uint8_t>
+%{ $1 = SWIG_JavaArrayToVectorUnsignedChar(jenv, $input); // std::vector<uint8_t> in %}
+%typemap(in) std::vector<uint8_t>& %{
+    std::vector<uint8_t> $1_vec = SWIG_JavaArrayToVectorUnsignedChar(jenv, $input); //  std::vector<uint8_t>& in
     $1 = &$1_vec;
 %}
-%typemap(freearg) (std::vector<uint8_t>&) %{
-    // std::vector<uint8_t>& freearg
-%}
-%typemap(out) std::vector<uint8_t>& %{
-    // std::vector<uint8_t>& out
-    jresult = jenv->NewByteArray(result->size());
-    jenv->SetByteArrayRegion(jresult, 0, result->size(), (const jbyte*)result->data());
-%}
-%typemap(jtype) std::vector<uint8_t>& "byte[]"
-%typemap(jstype) std::vector<uint8_t>& "byte[]"
-%typemap(jni) std::vector<uint8_t>& "jbyteArray"
-%typemap(javain) std::vector<uint8_t>& "$javainput"
-%typemap(javaout) std::vector<uint8_t>& {
+%typemap(jtype) std::vector<uint8_t>, std::vector<uint8_t>& "byte[]"
+%typemap(jstype) std::vector<uint8_t>, std::vector<uint8_t>& "byte[]"
+%typemap(jni) std::vector<uint8_t>, std::vector<uint8_t>& "jbyteArray"
+%typemap(javaout) std::vector<uint8_t>, std::vector<uint8_t>& {
     return $jnicall;
 }
-%typemap(directorin,descriptor="[B") std::vector<uint8_t>& %{
+%typemap(freearg) std::vector<uint8_t>, std::vector<uint8_t>&
+%{ // std::vector<uint8_t>, std::vector<uint8_t>& freearg %}
+%typemap(javain) std::vector<uint8_t>, std::vector<uint8_t>& "$javainput"
+%typemap(directorin,descriptor="[B") std::vector<uint8_t>, std::vector<uint8_t>& %{
     $input = jenv->NewByteArray($1.size());
     jenv->SetByteArrayRegion($input, 0, $1.size(), (const jbyte*)$1.data());
 %}
-%typemap(javadirectorin) std::vector<uint8_t>& "$jniinput"
+%typemap(javadirectorin) std::vector<uint8_t>, std::vector<uint8_t>& "$jniinput"
+%apply std::vector<uint8_t>& { const std::vector<uint8_t>& }
 
 //
 // std::vector<uint8_t>& dst <-> DataBuffer
@@ -343,35 +334,34 @@
 %}
 
 //
-// std::string_view& -> String
+// std::string_view -> String
 //
 
-%typemap(in) std::string_view& %{
+%typemap(in) std::string_view %{
     const char *$1_utf8 = jenv->GetStringUTFChars($input, nullptr);
-    std::string_view $1_sv($1_utf8);
-    $1 = &$1_sv;
+    $1 = $1_utf8;
 %}
-%typemap(freearg) std::string_view& %{
+%typemap(freearg) std::string_view %{
     jenv->ReleaseStringUTFChars($input, $1_utf8);
 %}
-//%typemap(out) std::string_view& %{
+//%typemap(out) std::string_view %{
 //    std::string $1_str(*(&result));
 //    jresult = jenv->NewStringUtf($1_str.c_str());
 //%}
-%typemap(jtype) std::string_view& "String"
-%typemap(jstype) std::string_view& "String"
-%typemap(jni) std::string_view& "jstring"
-%typemap(javain) std::string_view& "$javainput"
-//%typemap(javaout) std::string_view& %{
+%typemap(jtype) std::string_view "String"
+%typemap(jstype) std::string_view "String"
+%typemap(jni) std::string_view "jstring"
+%typemap(javain) std::string_view "$javainput"
+//%typemap(javaout) std::string_view %{
 //    return $jnicall;
 //%}
-%typemap(directorin,descriptor="Ljava/lang/String;") std::string_view& %{
+%typemap(directorin,descriptor="Ljava/lang/String;") std::string_view %{
     std::string $1_str($1);
     $input = jenv->NewStringUTF($1_str.c_str());
 %}
-// No return of std::string_view& so no directorout
-%typemap(javadirectorin) std::string_view& "$jniinput"
-// No return of std::string_view& so no javadirectorout
+// No return of std::string_view so no directorout
+%typemap(javadirectorin) std::string_view "$jniinput"
+// No return of std::string_view so no javadirectorout
 
 //
 // CDocWriter
@@ -536,7 +526,7 @@
 #define CDOC_EXPORT
 // fixme: Remove this in production
 #define LIBCDOC_TESTING 1
-#define CDOC_ENABLE_MOVE(X)
+#define CDOC_DISABLE_MOVE(X)
 
 %include "CDoc.h"
 %include "Wrapper.h"

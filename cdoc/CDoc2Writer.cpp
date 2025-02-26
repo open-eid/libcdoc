@@ -222,7 +222,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                       builder.CreateString(rcpt.label),
                                                                       builder.CreateVector(xor_key),
                                                                       cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(record);
+                    fb_rcpts.push_back(std::move(record));
                 } else {
                     auto capsule = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
                                                                                       builder.CreateVector(rcpt.rcpt_key),
@@ -233,7 +233,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                       builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(record);
+                    fb_rcpts.push_back(std::move(record));
 				}
 			} else {
                 auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
@@ -308,7 +308,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                       builder.CreateString(rcpt.label),
                                                                       builder.CreateVector(xor_key),
                                                                       cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(record);
+                    fb_rcpts.push_back(std::move(record));
                 } else {
                     auto capsule = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
 																					  cdoc20::recipients::EllipticCurve::secp384r1,
@@ -320,7 +320,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                       builder.CreateString(rcpt.label),
 																	  builder.CreateVector(xor_key),
 																	  cdoc20::header::FMKEncryptionMethod::XOR);
-                    fb_rcpts.push_back(record);
+                    fb_rcpts.push_back(std::move(record));
 				}
 			}
         } else if (rcpt.isSymmetric()) {
@@ -371,7 +371,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                   builder.CreateString(rcpt.label),
 																  builder.CreateVector(xor_key),
 																  cdoc20::header::FMKEncryptionMethod::XOR);
-                fb_rcpts.push_back(offs);
+                fb_rcpts.push_back(std::move(offs));
 			} else {
 				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
 																			 builder.CreateVector(salt));
@@ -381,7 +381,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                                                                   builder.CreateString(rcpt.label),
 																  builder.CreateVector(xor_key),
 																  cdoc20::header::FMKEncryptionMethod::XOR);
-                fb_rcpts.push_back(offs);
+                fb_rcpts.push_back(std::move(offs));
 			}
 		} else {
 			setLastError("Invalid recipient type");

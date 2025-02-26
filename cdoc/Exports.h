@@ -55,8 +55,8 @@
   #define STDCALL
 #endif
 
-#define CDOC_ENABLE_MOVE(Class) \
-    Class(Class&&) noexcept = default; \
-    Class& operator=(Class&&) noexcept = default;
+#define CDOC_DISABLE_MOVE(Class) \
+    Class(Class&&) noexcept = delete; \
+    Class& operator=(Class&&) noexcept = delete;
 
 #endif // EXPOORTS_H
