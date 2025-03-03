@@ -520,6 +520,39 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 				priv->locks.push_back(key);
 			}
 			break;
+		case Capsule::recipients_KeySharesCapsule:
+			if (const auto *capsule = recipient->capsule_as_recipients_KeySharesCapsule()) {
+				std::vector<std::string> strs;
+				for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
+					std::string id = cshare->share_id()->str();
+					std::string url = cshare->server_base_url()->str();
+					std::string path = url + "key-shares/" + id;
+					LOG_DBG("Keyshare url: {}", path);
+					strs.push_back(path);
+				}
+				std::string urls = join(strs, ";");
+				LOG_DBG("Keyshare urls: {}", urls);
+				std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
+				LOG_DBG("Keyshare salt: {}", toHex(salt));
+				if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
+					LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
+					continue;
+				}
+				if (capsule->shares_scheme() != cdoc20::recipients::SharesScheme::N_OF_N) {
+					LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
+					continue;
+				}
+				std::string recipient_id = capsule->recipient_id()->str();
+				LOG_DBG("Keyshare recipient id: {}", recipient_id);
+				libcdoc::Lock *lock = new libcdoc::Lock(libcdoc::Lock::SHARE_SERVER);
+				lock->label = recipient->key_label()->str();
+				lock->encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
+				lock->setString(libcdoc::Lock::SHARE_URLS, urls);
+				lock->setBytes(libcdoc::Lock::SALT, salt);
+				lock->setString(libcdoc::Lock::RECIPIENT_ID, recipient_id);
+				priv->locks.push_back(std::move(lock));
+			}
+			break;
 		default:
             LOG_ERROR("Unsupported Key Details: skipping");
 		}
