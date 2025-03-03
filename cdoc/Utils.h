@@ -60,7 +60,7 @@ fromHex(std::string_view hex) {
 }
 
 static std::vector<std::string>
-split (const std::string &s, char delim = ':') {
+split(const std::string &s, char delim = ':') {
     std::vector<std::string> result;
     std::stringstream ss(s);
     std::string item;
@@ -68,6 +68,17 @@ split (const std::string &s, char delim = ':') {
         result.push_back (item);
     }
     return result;
+}
+
+static std::string
+join(const std::vector<std::string> parts, const std::string_view sep)
+{
+	std::string result;
+	for (auto& part : parts) {
+		if (part != parts.front()) result += sep;
+		result += part;
+	}
+	return std::move(result);
 }
 
 static std::vector<uint8_t>
