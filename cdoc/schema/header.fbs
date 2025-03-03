@@ -27,6 +27,16 @@ include "recipients.fbs";
 
 namespace cdoc20.header;
 
+// Union for communicating the recipient type
+union Capsule {
+    recipients.ECCPublicKeyCapsule,
+    recipients.RSAPublicKeyCapsule,
+    recipients.KeyServerCapsule,
+    recipients.SymmetricKeyCapsule,
+    recipients.PBKDF2Capsule,
+    recipients.KeySharesCapsule
+}
+
 // FMK encryption method enum.
 enum FMKEncryptionMethod:byte {
     UNKNOWN,
@@ -44,7 +54,7 @@ enum PayloadEncryptionMethod:byte {
 // Thus it is better to have an an array of tables that
 // contains the union as a field.
 table RecipientRecord {
-    capsule:                recipients.Capsule;
+    capsule:                Capsule;
     key_label:              string (required);
     encrypted_fmk:          [ubyte] (required);
     fmk_encryption_method:  FMKEncryptionMethod = UNKNOWN;

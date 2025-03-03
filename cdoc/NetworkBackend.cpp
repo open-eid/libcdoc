@@ -22,6 +22,7 @@
 #include "CryptoBackend.h"
 #include "Utils.h"
 #include "utils/memory.h"
+#include "ILogger.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -169,6 +170,69 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
 }
 
 libcdoc::result_t
+libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
+{
+    // Create KeyShare container
+    nlohmann::json req_json = {
+        {"share", libcdoc::toBase64(share)},
+        {"recipient", recipient}
+    };
+    std::string req_str = req_json.dump();
+    LOG_DBG("POST keyshare to: {}", url);
+    LOG_DBG("{}", req_str);
+
+    std::string host, path;
+    int port;
+    int result = libcdoc::parseURL(url, host, port, path);
+    if (result != libcdoc::OK) return result;
+    if (path == "/") path.clear();
+
+    LOG_DBG("Starting client: {} {}", host, port);
+    httplib::SSLClient cli(host, port);
+
+    std::vector<std::vector<uint8_t>> certs;
+    LOG_DBG("Fetching certs");
+    getPeerTLSCertificates(certs);
+    if (!certs.empty()) {
+        LOG_DBG("Loading certs");
+        SSL_CTX *ctx = cli.ssl_context();
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
+        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
+        for (const std::vector<uint8_t>& c : certs) {
+            auto x509 = Crypto::toX509(c);
+            if (!x509) return CRYPTO_ERROR;
+            X509_STORE_add_cert(store, x509.get());
+        }
+        cli.enable_server_certificate_verification(true);
+        cli.enable_server_hostname_verification(true);
+    } else {
+        LOG_WARN("Share servers' certificate list is empty");
+        cli.enable_server_certificate_verification(false);
+        cli.enable_server_hostname_verification(false);
+    }
+
+    // Build url and send request
+    std::string full = path + "/key-shares";
+    LOG_DBG("Full url: {}", full);
+    httplib::Result res = cli.Post(full, req_str, "application/json");
+    if (!res) return NETWORK_ERROR;
+    auto status = res->status;
+    LOG_DBG("Status: {}", status);
+    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+
+    httplib::Response rsp = res.value();
+    std::string location = rsp.get_header_value("Location");
+    LOG_DBG("Location: {}", location);
+    if (location.empty()) return libcdoc::IO_ERROR;
+    /* Remove /key-shares/ */
+    dst = location.substr(12);
+    LOG_DBG("Share: {}", dst);
+
+    return OK;
+}
+
+libcdoc::result_t
 libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
 {
     std::string host, path;
@@ -216,6 +280,18 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     dst.assign(key_material.cbegin(), key_material.cend());
 
     return libcdoc::OK;
+}
+
+libcdoc::result_t
+libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::vector<uint8_t>& share_id)
+{
+    return libcdoc::NOT_IMPLEMENTED;
+}
+
+libcdoc::result_t
+libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id)
+{
+    return libcdoc::NOT_IMPLEMENTED;
 }
 
 ECDSA_SIG *

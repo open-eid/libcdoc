@@ -57,7 +57,11 @@ struct CDOC_EXPORT Recipient {
         /**
          * @brief public key on keyserver
          */
-        SERVER
+        SERVER,
+        /**
+         * @brief n of n shared symmetric key
+         */
+        KEYSHARE
 	};
 
     /**
@@ -111,7 +115,11 @@ struct CDOC_EXPORT Recipient {
      */
     std::vector<uint8_t> cert;
     /**
-     * @brief The keyserver id (if present)
+     * @brief The recipient id for share server (PNOEE-XXXXXXXXXXX)
+     */
+    std::string id;
+    /**
+     * @brief The keyserver or share server list id (if present)
      */
     std::string server_id;
 
@@ -140,6 +148,11 @@ struct CDOC_EXPORT Recipient {
      * @return true if type is SERVER
      */
     bool isKeyServer() const { return (type == Type::SERVER); }
+    /**
+     * @brief check whether Recipient is keyshare
+     * @return true if type is KEYSHARE
+     */
+    bool isKeyShare() const { return type == Type::KEYSHARE; }
 
     /**
      * @brief Clear all values and set type to NONE
@@ -205,6 +218,7 @@ struct CDOC_EXPORT Recipient {
      * @return a new Recipient structure
      */
     static Recipient makeEIDServer(std::vector<uint8_t> cert, std::string server_id);
+    static Recipient makeShare(const std::string& label, const std::string& server_id, const std::string& recipient_id);
 
     /**
      * @brief build machine-readable CDoc2 label

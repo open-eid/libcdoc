@@ -25,15 +25,6 @@
 
 namespace cdoc20.recipients;
 
-// Union for communicating the recipient type
-union Capsule {
-    ECCPublicKeyCapsule,
-    RSAPublicKeyCapsule,
-    KeyServerCapsule,
-    SymmetricKeyCapsule,
-    PBKDF2Capsule
-}
-
 //server recipient type
 union KeyDetailsUnion {
     EccKeyDetails, RsaKeyDetails
@@ -43,12 +34,6 @@ union KeyDetailsUnion {
 enum EllipticCurve:byte {
     UNKNOWN,
     secp384r1
-}
-
-// KDF algorithm identifier enum
-enum KDFAlgorithmIdentifier:byte {
-    UNKNOWN,
-    PBKDF2WithHmacSHA256
 }
 
 table RsaKeyDetails {
@@ -90,6 +75,12 @@ table SymmetricKeyCapsule {
     salt:                 [ubyte] (required);
 }
 
+// KDF algorithm identifier enum
+enum KDFAlgorithmIdentifier:byte {
+    UNKNOWN,
+    PBKDF2WithHmacSHA256
+}
+
 // password derived key
 table PBKDF2Capsule {
     // HKDF salt to derive KEK
@@ -97,4 +88,36 @@ table PBKDF2Capsule {
     password_salt:            [ubyte] (required);
     kdf_algorithm_identifier: KDFAlgorithmIdentifier = UNKNOWN;
     kdf_iterations:           int32;
+}
+
+// ShamirKeyShare share. One per key server.
+table KeyShare {
+    //full url of key share, ex https://cdoc2-keyserver.dev.riaint.ee:8443/key-shares/SS0123456789ABCDEF
+    //url:           string (required);
+
+    // or server URL
+    // https://cdoc2-keyserver.dev.riaint.ee:8443/
+    server_base_url: string (required);
+
+    //SS0123456789ABCDEF
+    share_id:  string (required);
+}
+
+enum KeyShareRecipientType:byte {
+    UNKNOWN,
+    SID_MID
+}
+
+enum SharesScheme:byte {
+    UNKNOWN,
+    N_OF_N
+}
+
+// SymmetricKey that is split between keyservers using Shamir Secret Sharing scheme
+table KeySharesCapsule {
+    shares:               [KeyShare] (required);
+    salt:                 [ubyte] (required);
+    recipient_type:       KeyShareRecipientType = UNKNOWN;
+    shares_scheme:        SharesScheme = UNKNOWN;
+    recipient_id:         string (required);
 }
