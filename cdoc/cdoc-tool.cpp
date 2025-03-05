@@ -336,11 +336,10 @@ struct LockData {
     vector<uint8_t> secret;
 
     int validate(ToolConf& conf) {
-        if (lock_label.empty() && lock_idx == -1) {
+        if (lock_label.empty() && (lock_idx == -1) && (slot < 0)) {
             LOG_ERROR("No label nor index was provided");
             return RESULT_USAGE;
         }
-
         if ((slot >= 0) && conf.library.empty()) {
             LOG_ERROR("Cryptographic library is required");
             return RESULT_USAGE;
