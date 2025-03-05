@@ -111,8 +111,10 @@ libcdoc::result_t
 CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 	libcdoc::Certificate cc(cert);
 	std::vector<uint8_t> other_key = cc.getPublicKey();
+	LOG_DBG("Cert public key: {}", toHex(other_key));
     for (int lock_idx = 0; lock_idx < priv->locks.size(); lock_idx++) {
         const libcdoc::Lock *ll = priv->locks.at(lock_idx);
+		LOG_DBG("Lock {} type {}", lock_idx, (int) ll->type);
 		if (ll->hasTheSameKey(other_key)) {
             return lock_idx;
 		}
@@ -152,7 +154,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         LOG_TRACE_KEY("kek: {}", kek);
 
         if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-	} else {
+	} else if ((lock.type == libcdoc::Lock::Type::PUBLIC_KEY) || (lock.type == libcdoc::Lock::Type::SERVER)) {
 		// Public/private key
 		std::vector<uint8_t> key_material;
 		if(lock.type == libcdoc::Lock::Type::SERVER) {
@@ -210,6 +212,12 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
 			kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
 		}
+	} else  if (lock.type == libcdoc::Lock::Type::SHARE_SERVER) {
+		return libcdoc::NOT_IMPLEMENTED;
+	} else {
+		setLastError(t_("Unknown lock type"));
+		LOG_ERROR("Unknown lock type: %d", (int) lock.type);
+		return libcdoc::UNSPECIFIED_ERROR;
 	}
 
     LOG_TRACE_KEY("KEK: {}", kek);
