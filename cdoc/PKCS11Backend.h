@@ -133,7 +133,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * @param priv whether to connect to private or secret key
      * @return error code or OK
      */
-    virtual result_t connectToKey(int idx, bool priv) = 0;
+    virtual result_t connectToKey(int idx, bool priv) { return NOT_IMPLEMENTED; };
     /**
      * @brief whether to use PSS RSA padding
      *
