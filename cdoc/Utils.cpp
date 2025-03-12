@@ -118,14 +118,13 @@ buildURL(const std::string& host, int port)
     return std::string("https://") + host + ":" + std::to_string(port) + "/";
 }
 
-std::string
-urlEncode(std::string_view src)
+std::ostream&
+operator<<(std::ostream& escaped, urlEncode src)
 {
-    std::ostringstream escaped;
     escaped.fill('0');
     escaped << std::hex;
 
-    for (auto c : src) {
+    for (auto c : src.src) {
         // Keep alphanumeric and other accepted characters intact
         if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             escaped << c;
@@ -136,7 +135,7 @@ urlEncode(std::string_view src)
         escaped << '%' << std::setw(2) << int((unsigned char) c);
         escaped << std::nouppercase;
     }
-    return escaped.str();
+    return escaped;
 }
 
 std::string
