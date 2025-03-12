@@ -50,8 +50,9 @@ public:
 
 	std::vector<uint8_t> getPublicKey() const;
     Algorithm getAlgorithm() const;
+    time_t getNotAfter() const;
 
-    std::vector<uint8_t> getDigest();
+    std::vector<uint8_t> getDigest() const;
 };
 
 } // Namespace

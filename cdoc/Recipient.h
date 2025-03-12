@@ -80,20 +80,6 @@ struct CDOC_EXPORT Recipient {
         DigiID_EResident
     };
 
-    /**
-     * @brief Extra parameters for automatic label generation
-     */
-	enum Params : unsigned char {
-        /**
-         * @brief Name of symmetric key/password ('label')
-         */
-        LABEL,
-        /**
-         * @brief Public key or certificate filename ('file')
-         */
-        FILE
-	};
-
 	Recipient() = default;
 
     /**
@@ -199,7 +185,7 @@ struct CDOC_EXPORT Recipient {
      * @param kdf_iter the number of PBKDF iterations (0 if full key is provided)
      * @return a new Recipient structure
      */
-	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
+	static Recipient makeSymmetric(std::string label, int32_t kdf_iter);
     /**
      * @brief Create a new public key based Recipient
      * @param label the label text
@@ -207,7 +193,7 @@ struct CDOC_EXPORT Recipient {
      * @param pk_type the algorithm type (either ECC or RSA)
      * @return a new Recipient structure
      */
-    static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
+    static Recipient makePublicKey(std::string label, const std::vector<uint8_t>& public_key, PKType pk_type);
     /**
      * @brief Create a new certificate based Recipient
      * @param label the label text
@@ -257,7 +243,7 @@ struct CDOC_EXPORT Recipient {
      * @param extra additional parameter values to use
      * @return a label value
      */
-    std::string getLabel(std::vector<std::pair<std::string_view, std::string_view>> extra) const;
+    std::string getLabel(const std::vector<std::pair<std::string_view, std::string_view>> &extra) const;
 
     /**
      * @brief parse machine-readable CDoc2 label

@@ -74,6 +74,21 @@ Certificate::getSerialNumber() const
 	return getName(cert, NID_serialNumber);
 }
 
+time_t
+Certificate::getNotAfter() const
+{
+    if(!cert)
+        return 0;
+    tm tm{};
+    if(ASN1_TIME_to_tm(X509_get0_notAfter(cert.get()), &tm) != 1)
+        return 0;
+#ifdef _WIN32
+    return _mkgmtime(&tm);
+#else
+    return timegm(&tm);
+#endif
+}
+
 
 
 std::vector<std::string>
@@ -85,8 +100,8 @@ Certificate::policies() const
     if(!cert)
         return list;
 
-    auto p = static_cast<CERTIFICATEPOLICIES *>(X509_get_ext_d2i(cert.get(), NID_certificate_policies, nullptr, nullptr));
-    auto cp = std::unique_ptr<CERTIFICATEPOLICIES,decltype(&CERTIFICATEPOLICIES_free)>(p,CERTIFICATEPOLICIES_free);
+    auto cp = make_unique_cast<CERTIFICATEPOLICIES_free>(X509_get_ext_d2i(
+        cert.get(), NID_certificate_policies, nullptr, nullptr));
     if(!cp)
         return list;
 
@@ -122,7 +137,7 @@ Certificate::getAlgorithm() const
 	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : Algorithm::ECC;
 }
 
-std::vector<uint8_t> Certificate::getDigest()
+std::vector<uint8_t> Certificate::getDigest() const
 {
     if(!cert)
         return {};

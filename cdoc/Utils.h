@@ -118,7 +118,11 @@ readAllBytes(std::string_view filename)
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash = false);
 std::string buildURL(const std::string& host, int port);
 
-std::string urlEncode(std::string_view src);
+struct urlEncode {
+    std::string_view src;
+    friend std::ostream& operator<<(std::ostream& escaped, urlEncode src);
+};
+
 std::string urlDecode(const std::string &src);
 
 } // namespace libcdoc
