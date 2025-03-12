@@ -74,6 +74,21 @@ Certificate::getSerialNumber() const
 	return getName(cert, NID_serialNumber);
 }
 
+time_t
+Certificate::getNotAfter() const
+{
+    if(!cert)
+        return 0;
+    tm tm{};
+    if(ASN1_TIME_to_tm(X509_get0_notAfter(cert.get()), &tm) != 1)
+        return 0;
+#ifdef _WIN32
+    return _mkgmtime(&tm);
+#else
+    return timegm(&tm);
+#endif
+}
+
 
 
 std::vector<std::string>
