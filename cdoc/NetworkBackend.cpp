@@ -238,8 +238,8 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     std::string host, path;
     int port;
     int result = libcdoc::parseURL(url, host, port, path);
-    if (path == "/") path.clear();
     if (result != libcdoc::OK) return result;
+    if (path == "/") path.clear();
 
     std::vector<uint8_t> cert;
     result = getClientTLSCertificate(cert);
@@ -283,9 +283,56 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
 }
 
 libcdoc::result_t
-libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::vector<uint8_t>& share_id)
+libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id)
 {
-    return libcdoc::NOT_IMPLEMENTED;
+    LOG_DBG("Get nonce from: {}", url);
+
+    std::string host, path;
+    int port;
+    int result = libcdoc::parseURL(url, host, port, path);
+    if (result != libcdoc::OK) return result;
+    if (path == "/") path.clear();
+
+    LOG_DBG("Starting client: {} {}", host, port);
+    httplib::SSLClient cli(host, port);
+
+    std::vector<std::vector<uint8_t>> certs;
+    LOG_DBG("Fetching certs");
+    getPeerTLSCertificates(certs);
+    if (!certs.empty()) {
+        LOG_DBG("Loading certs");
+        SSL_CTX *ctx = cli.ssl_context();
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
+        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
+        for (const std::vector<uint8_t>& c : certs) {
+            auto x509 = Crypto::toX509(c);
+            if (!x509) return CRYPTO_ERROR;
+            X509_STORE_add_cert(store, x509.get());
+        }
+        cli.enable_server_certificate_verification(true);
+        cli.enable_server_hostname_verification(true);
+    } else {
+        LOG_WARN("Share servers' certificate list is empty");
+        cli.enable_server_certificate_verification(false);
+        cli.enable_server_hostname_verification(false);
+    }
+
+    // Build url and send request
+    std::string full = path + "/key-shares/" + share_id + "/nonce";
+    LOG_DBG("Nonce url: {}", full);
+    httplib::Result res = cli.Post(full, "", "application/json");
+    if (!res) return NETWORK_ERROR;
+    auto status = res->status;
+    LOG_DBG("Status: {}", status);
+    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+    httplib::Response rsp = res.value();
+    LOG_DBG("Response: {}", rsp.body);
+    nlohmann::json json = nlohmann::json::parse(rsp.body);
+    std::string nonce_str = json["nonce"];
+    //std::vector<uint8_t> nonce = fromBase64(nonce_str);
+    dst.assign(nonce_str.cbegin(), nonce_str.cend());
+    return OK;
 }
 
 libcdoc::result_t

@@ -213,7 +213,37 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
 		}
 	} else  if (lock.type == libcdoc::Lock::Type::SHARE_SERVER) {
+		/* SHARE_URLS */
+		std::string all = lock.getString(Lock::SHARE_URLS);
+		std::vector<std::string> strs = split(all, ';');
+		if (strs.empty()) return libcdoc::DATA_FORMAT_ERROR;
+		std::vector<std::pair<std::string, std::string>> shares;
+		for (auto& str : strs) {
+			std::vector<std::string> parts = split(str, ',');
+			if (parts.size() != 2) return libcdoc::DATA_FORMAT_ERROR;
+			std::string url = parts[0];
+			std::string id = parts[1];
+			LOG_DBG("Share {} url {}", id, url);
+			shares.push_back({url, id});
+		}
+		/* SALT */
+		std::vector<uint8_t> salt = lock.getBytes(Lock::SALT);
+		/* RECIPIENT_ID */
+		std::string rcpt_id = lock.getString(Lock::RECIPIENT_ID);
+		for (auto& share : shares) {
+			std::string url = share.first;
+			std::string id = share.second;
+			LOG_DBG("Url {} share {}", url, id);
+			std::vector<uint8_t> nonce;
+			int64_t result = network->fetchNonce(nonce, url, id);
+			if (result != libcdoc::OK) {
+				LOG_DBG("fetchNonce result {}", result);
+				return result;
+			}
+			LOG_DBG("Nonce: {}", toHex(nonce));
+		}
 		return libcdoc::NOT_IMPLEMENTED;
+
 	} else {
 		setLastError(t_("Unknown lock type"));
 		LOG_ERROR("Unknown lock type: %d", (int) lock.type);
@@ -530,18 +560,6 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 			break;
 		case Capsule::recipients_KeySharesCapsule:
 			if (const auto *capsule = recipient->capsule_as_recipients_KeySharesCapsule()) {
-				std::vector<std::string> strs;
-				for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
-					std::string id = cshare->share_id()->str();
-					std::string url = cshare->server_base_url()->str();
-					std::string path = url + "key-shares/" + id;
-					LOG_DBG("Keyshare url: {}", path);
-					strs.push_back(path);
-				}
-				std::string urls = join(strs, ";");
-				LOG_DBG("Keyshare urls: {}", urls);
-				std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
-				LOG_DBG("Keyshare salt: {}", toHex(salt));
 				if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
 					LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
 					continue;
@@ -550,6 +568,19 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
 					LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
 					continue;
 				}
+				/* url,share_id;url,share_id... */
+				std::vector<std::string> strs;
+				for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
+					std::string id = cshare->share_id()->str();
+					std::string url = cshare->server_base_url()->str();
+					std::string str = url + "," + id;
+					LOG_DBG("Keyshare: {}", str);
+					strs.push_back(str);
+				}
+				std::string urls = join(strs, ";");
+				LOG_DBG("Keyshare urls: {}", urls);
+				std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
+				LOG_DBG("Keyshare salt: {}", toHex(salt));
 				std::string recipient_id = capsule->recipient_id()->str();
 				LOG_DBG("Keyshare recipient id: {}", recipient_id);
 				libcdoc::Lock *lock = new libcdoc::Lock(libcdoc::Lock::SHARE_SERVER);
