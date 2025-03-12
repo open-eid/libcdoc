@@ -14,12 +14,13 @@ jobs:
     container: ubuntu:${{ matrix.container }}
     strategy:
       matrix:
-        container: ['22.04', '24.04', '24.10', '25.04']
+        container: ['22.04', '24.04', '25.04']
         arch: ['amd64', 'arm64']
     env:
       DEBIAN_FRONTEND: noninteractive
       DEBFULLNAME: github-actions
       DEBEMAIL: github-actions@github.com
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-${{ matrix.arch }}
     steps:
     - name: Install dependencies
       run: apt update -qq && apt install --no-install-recommends -y lsb-release build-essential devscripts debhelper lintian pkg-config ${UBUNTU_DEPS} doxygen swig openjdk-17-jdk-headless libpython3-dev python3-setuptools libboost-test-dev
@@ -32,7 +33,7 @@ jobs:
         dch --distribution $(lsb_release -cs) -v ${VERSIONEX} "Release ${VERSIONEX}."
     - name: Build packages
       run: |
-        JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${{ matrix.arch }} dpkg-buildpackage -us -uc
+        dpkg-buildpackage -us -uc
         mv ../libcdoc*.* .
     - name: Lintian
       run: lintian *.deb;
@@ -125,7 +126,7 @@ jobs:
     runs-on: ${{ matrix.image }}
     strategy:
       matrix:
-        image: [windows-2022]
+        image: [windows-2025]
         platform: [x64, arm64]
     env:
       CXXFLAGS: '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' # https://github.com/actions/runner-images/issues/10004
@@ -144,10 +145,7 @@ jobs:
       env:
         VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/vcpkg_installed
     - name: Install dependencies
-      run: |
-        choco install doxygen.install -y > $null
-        Invoke-WebRequest -UserAgent "Wget" "https://sourceforge.net/projects/swig/files/swigwin/swigwin-4.3.0/swigwin-4.3.0.zip/download" -OutFile swig.zip
-        tar xf swig.zip
+      run: winget install --accept-package-agreements --accept-source-agreements doxygen swig
     - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -156,7 +154,6 @@ jobs:
       run: |
         cmake -A ${{ matrix.platform }} -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo `
           "-DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
-          "-DSWIG_EXECUTABLE=${{ github.workspace }}/swigwin-4.3.0/swig.exe" `
           -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
           -DVCPKG_MANIFEST_FEATURES=tests `
           -DCMAKE_INSTALL_LIBDIR=bin
