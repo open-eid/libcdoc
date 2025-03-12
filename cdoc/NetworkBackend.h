@@ -83,10 +83,11 @@ struct CDOC_EXPORT NetworkBackend {
     /**
      * @brief fetch authentication nonce from share server
      * @param dst a destination container for nonce
+     * @param url server url
      * @param share_id share id (transaction id)
      * @return error code or OK
      */
-    virtual result_t fetchNonce(std::vector<uint8_t>& dst, const std::vector<uint8_t>& share_id);
+    virtual result_t fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id);
     /**
      * @brief fetch key share from share server
      * @param share acontainer for result
