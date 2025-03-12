@@ -104,7 +104,7 @@ Recipient
 Recipient::makeEIDServer(std::vector<uint8_t> cert, std::string server_id)
 {
     Certificate x509(cert);
-    auto label = BuildLabelEID(cert);
+    auto label = BuildLabelEID(cert, time(nullptr) + 60 * 60 * 24 * 31 * 6); // 6 months
     return makeServer(std::move(label),
         x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
 }
@@ -143,7 +143,7 @@ static constexpr std::string_view type_strs[] = {
 };
 
 std::string
-Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components)
+Recipient::buildLabel(const std::vector<std::pair<std::string_view, std::string_view>> &components, time_t exp)
 {
     std::ostringstream ofs;
     ofs << LABELPREFIX;
@@ -155,11 +155,14 @@ Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>>
             first = false;
         }
     }
+    if(exp > 0) {
+        ofs << "&server_exp=" << exp;
+    }
     return ofs.str();
 }
 
 std::string
-Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name)
+Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name, time_t exp)
 {
     // In case of cards issued to an organization the first name (and last name) are missing. We ommit these parts.
     if (first_name.empty()) {
@@ -168,7 +171,7 @@ Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::st
             {"type", type_strs[type]},
             {"cn", cn},
             {"serial_number", serial_number}
-        });
+        }, exp);
     } else {
         return buildLabel({
             {"v", std::to_string(version)},
@@ -177,15 +180,15 @@ Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::st
             {"serial_number", serial_number},
             {"last_name", last_name},
             {"first_name", first_name}
-        });
+        }, exp);
     }
 }
 
 std::string
-Recipient::BuildLabelEID(const std::vector<uint8_t>& cert)
+Recipient::BuildLabelEID(const std::vector<uint8_t>& cert, time_t exp)
 {
     Certificate x509(cert);
-    return BuildLabelEID(CDoc2::KEYLABELVERSION, getEIDType(x509.policies()), x509.getCommonName(), x509.getSerialNumber(), x509.getSurname(), x509.getGivenName());
+    return BuildLabelEID(CDoc2::KEYLABELVERSION, getEIDType(x509.policies()), x509.getCommonName(), x509.getSerialNumber(), x509.getSurname(), x509.getGivenName(), exp ? exp : x509.getNotAfter());
 }
 
 std::string
