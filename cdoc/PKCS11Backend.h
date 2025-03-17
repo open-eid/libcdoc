@@ -38,6 +38,11 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
 		std::vector<uint8_t> id;
 	};
 
+    /**
+     * @brief Construct a new PKCS11Backend object
+     * 
+     * @param path a path to PKCS11 library to use (usually .so or .dll depending on operating system)
+     */
 	PKCS11Backend(const std::string &path);
 	~PKCS11Backend();
 
@@ -71,7 +76,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
     /**
      * @brief load secret key
      *
-     * Opens slots, logs in with pin and finds the correct secret key.
+     * Opens slot, logs in with pin and finds the correct secret key.
      * Both key id and label have to match unless either one is empty.
      * If the key is found, it is loaded internally for subsequent cryptographic operations.
      * @param slot a PKCS11 slot to use
@@ -84,7 +89,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
     /**
      * @brief loads private key
      *
-     * Opens slots, logs in with pin and finds the correct private key.
+     * Opens slot, logs in with pin and finds the correct private key.
      * Both key id and label have to match unless either one is empty.
      * If the key is found, it is loaded internally for subsequent cryptographic operations.
      * @param slot a PKCS11 slot to use
@@ -127,8 +132,9 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
     /**
      * @brief loads key for encryption/decryption
      *
-     * A method to load the correct private/secret key for given capsule or reciever. The subclass implementation should
-     * use either useSecretKey or usePrivateKey with proper label and/or id.
+     * A method to load the correct private/secret key for given capsule or receiver. The subclass implementation should
+     * call either useSecretKey or usePrivateKey with proper pin, PKCS11 label and/or id to actually load the key for subsequent
+     * cryptographic operation.
      * @param idx lock or recipient index (0-based) in CDoc container
      * @param priv whether to connect to private or secret key
      * @return error code or OK
