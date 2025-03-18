@@ -23,6 +23,7 @@
 #include "CryptoBackend.h"
 #include "CDoc2.h"
 #include "ILogger.h"
+#include "KeyShares.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "Tar.h"
@@ -230,6 +231,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		std::vector<uint8_t> salt = lock.getBytes(Lock::SALT);
 		/* RECIPIENT_ID */
 		std::string rcpt_id = lock.getString(Lock::RECIPIENT_ID);
+
+		std::vector<ShareAccessData> aud;
 		for (auto& share : shares) {
 			std::string url = share.first;
 			std::string id = share.second;
@@ -237,11 +240,20 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			std::vector<uint8_t> nonce;
 			int64_t result = network->fetchNonce(nonce, url, id);
 			if (result != libcdoc::OK) {
-				LOG_DBG("fetchNonce result {}", result);
+				setLastError(t_("Cannot fetch nonce from server"));
+				LOG_ERROR("Cannot fetch nonce from server {}", url);
 				return result;
 			}
 			LOG_DBG("Nonce: {}", toHex(nonce));
+			ShareAccessData acc = {
+				url,
+				id,
+				std::string(nonce.cbegin(), nonce.cend())
+			};
+			aud.push_back(std::move(acc));
 		}
+
+
 		return libcdoc::NOT_IMPLEMENTED;
 
 	} else {

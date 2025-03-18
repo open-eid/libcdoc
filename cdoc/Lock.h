@@ -92,7 +92,7 @@ struct CDOC_EXPORT Lock
      */
 	enum Params : unsigned int {
         /**
-         * @brief HKDF salt (SYMMETRIC and PASSWORD)
+         * @brief HKDF salt (SYMMETRIC_KEY, PASSWORD and SHARE_SERVER)
          */
         SALT,
         /**
