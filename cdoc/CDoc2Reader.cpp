@@ -258,7 +258,7 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
 			return result;
 		}
 		result = consumer->writeAll(*priv->tar);
-		if (result != libcdoc::OK) {
+		if (result < 0) {
 			setLastError(consumer->getLastErrorStr(result));
 			LOG_ERROR("{}", last_error);
 			return result;
