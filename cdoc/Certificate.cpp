@@ -85,8 +85,8 @@ Certificate::policies() const
     if(!cert)
         return list;
 
-    auto cp = make_unique_cast<CERTIFICATEPOLICIES_free>(X509_get_ext_d2i(
-        cert.get(), NID_certificate_policies, nullptr, nullptr));
+    auto p = static_cast<CERTIFICATEPOLICIES *>(X509_get_ext_d2i(cert.get(), NID_certificate_policies, nullptr, nullptr));
+    auto cp = std::unique_ptr<CERTIFICATEPOLICIES,decltype(&CERTIFICATEPOLICIES_free)>(p,CERTIFICATEPOLICIES_free);
     if(!cp)
         return list;
 
