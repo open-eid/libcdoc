@@ -81,6 +81,10 @@ join(const std::vector<std::string> parts, const std::string_view sep)
 	return std::move(result);
 }
 
+// Get time in seconds since the Epoch
+
+double getTime();
+
 static std::vector<uint8_t>
 readAllBytes(std::string_view filename)
 {

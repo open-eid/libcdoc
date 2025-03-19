@@ -244,7 +244,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 				LOG_ERROR("Cannot fetch nonce from server {}", url);
 				return result;
 			}
-			LOG_DBG("Nonce: {}", toHex(nonce));
+			LOG_DBG("Nonce: {}", std::string(nonce.cbegin(), nonce.cend()));
 			ShareAccessData acc = {
 				url,
 				id,
@@ -252,7 +252,12 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			};
 			aud.push_back(std::move(acc));
 		}
+		std::vector<uint8_t> digest(32);
+		authKeyshares(rcpt_id, digest);
 
+		for (auto acc : aud) {
+			fetchKeyShare(acc);
+		}
 
 		return libcdoc::NOT_IMPLEMENTED;
 

@@ -23,6 +23,8 @@
 #include <openssl/evp.h>
 #include <openssl/http.h>
 
+#include <chrono>
+
 namespace libcdoc {
 
 std::string
@@ -42,6 +44,12 @@ fromBase64(const std::string& data)
     int size = EVP_DecodeBlock(result.data(), input.data(), static_cast<int>(input.size()));
     result.resize(size);
     return result;
+}
+
+double
+getTime()
+{
+    return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 int

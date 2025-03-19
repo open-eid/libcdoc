@@ -30,7 +30,7 @@
 #include <openssl/http.h>
 #include <openssl/ssl.h>
 
-#include "json.hpp"
+#include "json/picojson/picojson.h"
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
@@ -102,12 +102,12 @@ struct Private {
 libcdoc::result_t
 libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
 {
-    nlohmann::json req_json = {
-        {"recipient_id", libcdoc::toBase64(rcpt_key)},
-        {"ephemeral_key_material", libcdoc::toBase64(key_material)},
-        {"capsule_type", type }
-    };
-    std::string req_str = req_json.dump();
+    picojson::value req_json((std::map<std::string, picojson::value>) {
+        {"recipient_id", picojson::value(libcdoc::toBase64(rcpt_key))},
+        {"ephemeral_key_material", picojson::value(libcdoc::toBase64(key_material))},
+        {"capsule_type", picojson::value(type)}
+    });
+    std::string req_str = req_json.get<std::string>();
 
     std::string host, path;
     int port;
@@ -173,11 +173,11 @@ libcdoc::result_t
 libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
 {
     // Create KeyShare container
-    nlohmann::json req_json = {
-        {"share", libcdoc::toBase64(share)},
-        {"recipient", recipient}
-    };
-    std::string req_str = req_json.dump();
+    picojson::value req_json((std::map<std::string, picojson::value>) {
+        {"share", picojson::value(libcdoc::toBase64(share))},
+        {"recipient", picojson::value(recipient)}
+    });
+    std::string req_str = req_json.get<std::string>();
     LOG_DBG("POST keyshare to: {}", url);
     LOG_DBG("{}", req_str);
 
@@ -274,8 +274,9 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     httplib::Response rsp = res.value();
     auto status = rsp.status;
     if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
-    nlohmann::json rsp_json = nlohmann::json::parse(rsp.body);
-    std::string ks = rsp_json["ephemeral_key_material"];
+    picojson::value rsp_json;
+    picojson::parse(rsp_json, rsp.body);
+    std::string ks = rsp_json.get("ephemeral_key_material").get<std::string>();
     std::vector<uint8_t> key_material = Crypto::decodeBase64((const uint8_t *) ks.c_str());
     dst.assign(key_material.cbegin(), key_material.cend());
 
@@ -328,8 +329,9 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
     if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
     httplib::Response rsp = res.value();
     LOG_DBG("Response: {}", rsp.body);
-    nlohmann::json json = nlohmann::json::parse(rsp.body);
-    std::string nonce_str = json["nonce"];
+    picojson::value rsp_json;
+    picojson::parse(rsp_json, rsp.body);
+    std::string nonce_str = rsp_json.get("nonce").get<std::string>();
     //std::vector<uint8_t> nonce = fromBase64(nonce_str);
     dst.assign(nonce_str.cbegin(), nonce_str.cend());
     return OK;
