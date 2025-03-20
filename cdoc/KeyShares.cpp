@@ -278,7 +278,7 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
     picojson::array aio = {
         picojson::value(aio1)
     };
-    query.set((picojson::object) {
+    picojson::object qobj = {
         {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
         {"relyingPartyName", picojson::value(relyingPartyName)},
         {"certificateLevel", picojson::value(certificateLevel)},
@@ -287,7 +287,8 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
         {"allowedInteractionsOrder",
             picojson::value(aio)
         }
-    });
+    };
+    query = picojson::value(qobj);
     LOG_DBG("JSON:{}", query.serialize());
     //
     // Sign digest
