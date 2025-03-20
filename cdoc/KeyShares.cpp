@@ -268,7 +268,7 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
     uint8_t b[32];
     SHA256(digest.data(), digest.size(), b);
 	uint code = ((b[30] << 8) | b[31]) % 10000;
-    LOG_DBG("Code: %04d", code);
+    LOG_DBG("Code: {}", code);
 
     query.set((picojson::object) {
         {"relyingPartyUUID", picojson::value(relyingPartyUUID)},

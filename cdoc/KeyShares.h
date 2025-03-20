@@ -21,6 +21,7 @@
 
 #include <cdoc/CDoc.h>
 
+#include <cstdint>
 #include <string>
 
 namespace libcdoc {
