@@ -46,7 +46,7 @@ constexpr string_view SourceFile("test_data.txt");
  */
 constexpr string_view TargetFile("test_data.txt.cdoc");
 
-const string Label("Proov");
+const char* Label {"Proov"};
 
 constexpr string_view Password("Proov123");
 
@@ -60,6 +60,15 @@ const map<string, string> ExpectedParsedLabel {
     {"serial_number", "PNOEE-38001085718"},
     {"cn", "JÕEORG,JAAK-KRISTJAN,38001085718"}
 };
+
+const char* PKCS11Library {"/opt/homebrew/lib/opensc-pkcs11.so"};
+
+const char* ServerId {"00000000-0000-0000-0000-000000000000"};
+const char* ServerUrl {"https://cdoc2-keyserver.test.riaint.ee:8443"};
+
+constexpr string_view KeyServerCertFile("keyserver-cert.der");
+
+const char* PKCS11KeyLabel {"Isikutuvastus"};
 
 /**
  * @brief The base class for Test Fixtures.
@@ -405,6 +414,109 @@ BOOST_AUTO_TEST_CASE(Base64LabelParsingWithMediaType)
             BOOST_CHECK_EQUAL(result_pair->second, expected_pair.second);
         }
     }
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+/*
+Keyserver tests are disabled by default while they require working VPN
+connection to the RIA. Additionally, ID-card is required to be inserted
+and PIN code is required for decryption.
+*/
+BOOST_AUTO_TEST_SUITE_WITH_DECOR(KeyServer, * utf::disabled())
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithKeyServer, EncryptFixture, * utf::description("Encrypt a file with key server"))
+{
+    // Check if the source, unecrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+#ifndef _WIN32
+    conf.library = PKCS11Library;
+    conf.libraryRequired = true;
+#endif
+
+    libcdoc::ToolConf::ServerData sdata;
+    sdata.ID = ServerId;
+    sdata.url = ServerUrl;
+    conf.servers.push_back(sdata);
+
+    conf.gen_label = true;
+
+    fs::path keyServerCertPath;
+    FormFilePath(KeyServerCertFile, keyServerCertPath);
+    conf.accept_certs.push_back(libcdoc::readAllBytes(keyServerCertPath.string()));
+
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::P11_PKI;
+    rcpt.slot = 0;
+    rcpt.key_label = PKCS11KeyLabel;
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
+
+    // Validate the encrypted file
+    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+}
+
+/*
+Decryption requires presented ID-card and PIN code (PIN1). The PIN code has to be
+provided to the tests via command-line argument in form --pin <PIN>.
+*/
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithKeyServer, DecryptFixture, * utf::description("Decrypt a file with key server"))
+{
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::ANY;
+    rcpt.slot = 0;
+    rcpt.key_label = PKCS11KeyLabel;
+
+    // Get the PIN code
+    int argc = utf::framework::master_test_suite().argc;
+    char** argv = utf::framework::master_test_suite().argv;
+    for (int arg_idx = 1; arg_idx < argc && rcpt.secret.empty(); arg_idx++)
+    {
+        string_view arg(*(argv + arg_idx));
+        if (arg == "--pin")
+        {
+            BOOST_TEST_REQUIRE(argc > (arg_idx + 1), "PIN switch provided, but no PIN code");
+            string_view pin(*(argv + arg_idx + 1));
+            rcpt.secret.assign(pin.cbegin(), pin.cend());
+        }
+    }
+
+    BOOST_TEST_REQUIRE((!rcpt.secret.empty()), "PIN code not provided");
+
+    // Check if the source, encrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = testDataPath.string();
+
+#ifndef _WIN32
+    conf.library = PKCS11Library;
+    conf.libraryRequired = true;
+#endif
+
+    libcdoc::ToolConf::ServerData sdata;
+    sdata.ID = ServerId;
+    sdata.url = ServerUrl;
+    conf.servers.push_back(sdata);
+
+    fs::path keyServerCertPath;
+    FormFilePath(KeyServerCertFile, keyServerCertPath);
+    conf.accept_certs.push_back(libcdoc::readAllBytes(keyServerCertPath.string()));
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt), 0);
+
+    // Check if the encrypted file exists
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
