@@ -232,7 +232,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		/* RECIPIENT_ID */
 		std::string rcpt_id = lock.getString(Lock::RECIPIENT_ID);
 
-		std::vector<ShareAccessData> aud;
+		std::vector<ShareData> aud;
 		for (auto& share : shares) {
 			std::string url = share.first;
 			std::string id = share.second;
@@ -245,20 +245,22 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 				return result;
 			}
 			LOG_DBG("Nonce: {}", std::string(nonce.cbegin(), nonce.cend()));
-			ShareAccessData acc = {
-				url,
-				id,
-				std::string(nonce.cbegin(), nonce.cend())
-			};
+			ShareData acc(url, id, std::string(nonce.cbegin(), nonce.cend()));
 			aud.push_back(std::move(acc));
 		}
+
+		for (unsigned int i = 0; i < shares.size(); i++) {
+			std::string ticket = libcdoc::generateTicket(rcpt_id, aud, i);
+		}
+#if 0	
 		std::vector<uint8_t> digest(32);
-		authKeyshares(rcpt_id, digest);
+		std::vector<uint8_t> sig;
+		signSID(sig, rcpt_id, digest);
 
 		for (auto acc : aud) {
 			fetchKeyShare(acc);
 		}
-
+#endif
 		return libcdoc::NOT_IMPLEMENTED;
 
 	} else {

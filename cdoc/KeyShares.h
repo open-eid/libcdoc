@@ -25,15 +25,32 @@
 
 namespace libcdoc {
 
-struct ShareAccessData {
+struct ShareData {
     std::string base_url;
     std::string share_id;
     std::string nonce;
+    
+    ShareData(const std::string& base_url, const std::string& share_id, const std::string& nonce);
+
+    ShareData(const ShareData& other) = default;
+
+    std::string getSalt();
+    std::string getURL();
+    // Get base64(utf8(json([salt,url])))
+    std::string getDisclosure();
+    // Get base64(sha256(disclosure))
+    std::string getDisclosureHash();
+private:
+    std::vector<uint8_t> salt;
 };
 
-void fetchKeyShare(const ShareAccessData& acc);
+void fetchKeyShare(const ShareData& acc);
 
-result_t authKeyshares(const std::string& rcpt_id, const std::vector<uint8_t>& digest);
+result_t signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const std::vector<uint8_t>& digest);
+
+std::string testSID(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares);
+
+std::string generateTicket(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares, unsigned int idx);
 
 } // namespace libcdoc
 

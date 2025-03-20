@@ -34,6 +34,7 @@
 
 #include <chrono>
 #include <thread>
+#include <iostream>
 
 //
 // https://github.com/SK-EID/smart-id-documentation
@@ -174,7 +175,7 @@ waitForResult(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path
 }
 
 libcdoc::result_t
-libcdoc::authKeyshares(const std::string& rcpt_id, const std::vector<uint8_t>& digest)
+libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const std::vector<uint8_t>& digest)
 {
     std::string relyingPartyUUID = "00000000-0000-0000-0000-000000000000";
     std::string relyingPartyName = "RIA DigiDoc";
@@ -264,10 +265,10 @@ libcdoc::authKeyshares(const std::string& rcpt_id, const std::vector<uint8_t>& d
     std::string algo_name = algo_names[(int) algo];
 
     // Generate code
-    uint8_t dst[32];
-    SHA256(digest.data(), digest.size(), dst);
-	uint code = ((dst[30] << 8) | dst[31]) % 10000;
-    LOG_DBG("Code: {}", code);
+    uint8_t b[32];
+    SHA256(digest.data(), digest.size(), b);
+	uint code = ((b[30] << 8) | b[31]) % 10000;
+    LOG_DBG("Code: %04d", code);
 
     query.set((picojson::object) {
         {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
@@ -315,11 +316,168 @@ libcdoc::authKeyshares(const std::string& rcpt_id, const std::vector<uint8_t>& d
     LOG_DBG("Signature: {}", sidrsp.signature.value);
     LOG_DBG("Algorithm: {}", sidrsp.signature.algorithm);
 
+    dst = fromBase64(sidrsp.signature.value);
+
     return OK;
 }
 
 void
-libcdoc::fetchKeyShare(const libcdoc::ShareAccessData& acc)
+libcdoc::fetchKeyShare(const libcdoc::ShareData& acc)
 {
     LOG_DBG("Share data: {} {} {}", acc.base_url, acc.share_id, acc.nonce);
+}
+
+struct AuthTokenCreator {
+    struct Disclosure {
+        std::string salt;
+        std::string claimName;
+        std::string claimValue;
+        std::vector<uint8_t> hash;
+
+        Disclosure() = default;
+
+        Disclosure(const std::string& name, const std::string& claim)
+        : claimName(name), claimValue(claim) {
+            std::vector<uint8_t> rnd;
+            rnd = libcdoc::Crypto::random(16);
+            salt = libcdoc::toBase64(rnd);
+
+            std::cerr << "Disclosure: " << salt << " / " << claimName << " / " << claimValue << std::endl;
+        }
+    };
+
+    std::string signerEtsiIdentifier;
+    std::vector<libcdoc::ShareData> shareAccessData;
+    std::vector<Disclosure> audDisclosureArray;
+    Disclosure disclosedShareAccessData;
+
+    AuthTokenCreator(const std::string& etsiidentifier, const std::vector<libcdoc::ShareData> shares)
+    : signerEtsiIdentifier(etsiidentifier), shareAccessData(shares)
+    {
+        for (auto acc : shares) {
+            // https://cdoc-ccs.ria.ee:443/key-shares/9EE90F2D-D946-4D54-9C3D-F4C68F7FFAE3?nonce=649a44d6cd9827cae3f3df04fd5eda98246d2dde
+            std::string url = acc.base_url + "key-shares/" + acc.share_id + "?nonce=" + acc.nonce;
+            Disclosure d("", url);
+        }
+
+    }
+};
+using namespace libcdoc;
+
+struct your_algorithm{
+    std::string sign(const std::string& data, std::error_code& ec) const {
+        ec.clear();
+        std::vector<uint8_t> b(32);
+        SHA256((uint8_t *) data.c_str(), data.size(), b.data());
+        return libcdoc::toBase64(b);
+    }
+    void verify(const std::string& data, const std::string& signature, std::error_code& ec) const {
+        ec.clear();
+        std::vector<uint8_t> b(32);
+        SHA256((uint8_t *) data.c_str(), data.size(), b.data());
+        std::string sig = libcdoc::toBase64(b);
+        if (sig != signature) {
+            LOG_WARN("Signature does not match!");
+        } else {
+            LOG_INFO("Signature is correct!");
+        }
+    }
+    std::string name() const { return "RS256"; }
+};
+
+std::string
+libcdoc::testSID(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares)
+{
+    // Create payload object
+    std::vector<picojson::value> v;
+    for (auto share : shares) {
+        // {"..." : HASH}
+        picojson::value obj((std::map<std::string, picojson::value>) {
+            {"...", picojson::value(share.getDisclosureHash())}
+        });
+        v.push_back(obj);
+    }
+    picojson::value aud(v);
+
+	const auto time = jwt::date::clock::now();
+	const auto token = jwt::create()
+						   .set_type("vnd.cdoc2.auth-token.v1+sd-jwt")
+                           .set_algorithm("RS256")
+						   .set_payload_claim("iss", picojson::value(etsiidentifier))
+						   .set_payload_claim("aud", aud)
+						   .set_payload_claim("_sd_alg", picojson::value("sha-256"))
+						   .sign(your_algorithm{});
+    std::cerr << "Token:" << token << std::endl;
+
+	const auto decoded = jwt::decode(token);
+    std::cerr << "Algo:" << decoded.get_algorithm() << std::endl;
+    std::cerr << "aud:" << decoded.get_payload_claim("aud") << std::endl;
+#if 0
+	/* [verify exact claim] */
+	jwt::verify()
+		.allow_algorithm(your_algorithm{})
+		.with_claim("iss", jwt::claim(etsiidentifier)) // Match the exact JSON content
+		.verify(decoded);
+	/* [verify exact claim] */
+
+    std::string disclosed = token + "~";
+    for (auto share : shares) {
+        disclosed = disclosed + share.getDisclosure() + "~";
+    }
+    std::cerr << "Final:" << disclosed << std::endl;
+#endif
+    return token;
+}
+
+std::string
+libcdoc::generateTicket(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares, unsigned int idx)
+{
+    std::string jwt = testSID(etsiidentifier, shares);
+    std::string disclosed = jwt + "~" + shares[idx].getDisclosure() + "~";
+    std::cerr << "Disclosed " << idx << ":" << disclosed << std::endl;
+    return disclosed;
+}
+
+libcdoc::ShareData::ShareData(const std::string& _base_url, const std::string& _share_id, const std::string& _nonce)
+: base_url(_base_url), share_id(_share_id), nonce(_nonce)
+{
+}
+
+std::string
+libcdoc::ShareData::getSalt()
+{
+    if (salt.empty()) {
+        salt = libcdoc::Crypto::random(16);
+    }
+    return libcdoc::toBase64(salt);
+}
+
+std::string
+libcdoc::ShareData::getURL()
+{
+    return base_url + "key-shares/" + share_id + "?nonce=" + nonce;
+}
+
+std::string
+libcdoc::ShareData::getDisclosure()
+{
+    std::vector<picojson::value> v;
+    v.push_back(picojson::value(getSalt()));
+    v.push_back(picojson::value(getURL()));
+    std::string utf8 = picojson::value(v).serialize();
+    LOG_DBG("UTF8: {}", utf8);
+    std::string b64 = libcdoc::toBase64((const uint8_t *) utf8.data(), utf8.size());
+    LOG_DBG("Base64: {}", b64);
+    return b64;
+}
+
+std::string
+libcdoc::ShareData::getDisclosureHash()
+{
+    std::string disclosure = getDisclosure();
+    std::vector<uint8_t> b(32);
+    SHA256((uint8_t *) disclosure.c_str(), disclosure.size(), b.data());
+    std::string hash = libcdoc::toBase64(b);
+    LOG_DBG("Hash: {}", hash);
+    return hash;
 }
