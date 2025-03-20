@@ -182,12 +182,13 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
     std::string certificateLevel = "QUALIFIED";
     std::string nonce = "SID_NONCE";
 
-    picojson::value query((std::map<std::string, picojson::value>) {
+    picojson::object obj = {
         {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
         {"relyingPartyName", picojson::value(relyingPartyName)},
         {"certificateLevel", picojson::value(certificateLevel)},
         {"nonce", picojson::value(nonce)}
-    });
+    };
+    picojson::value query(obj);
     LOG_DBG("JSON:{}", query.serialize());
 
     // RIA proxy for SmartID
@@ -267,9 +268,16 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
     // Generate code
     uint8_t b[32];
     SHA256(digest.data(), digest.size(), b);
-	uint code = ((b[30] << 8) | b[31]) % 10000;
-    LOG_DBG("Code: {}", code);
+	unsigned int code = ((b[30] << 8) | b[31]) % 10000;
+    LOG_DBG("Code: %04d", code);
 
+    picojson::object aio1 = {
+        {"type", picojson::value("confirmationMessageAndVerificationCodeChoice")},
+        {"displayText200", picojson::value("Do you want to decrypt the document")}
+    };
+    picojson::array aio = {
+        picojson::value(aio1)
+    };
     query.set((picojson::object) {
         {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
         {"relyingPartyName", picojson::value(relyingPartyName)},
@@ -277,12 +285,7 @@ libcdoc::signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const st
 		{"hash", picojson::value(libcdoc::toBase64(digest))},
 		{"hashType", picojson::value(algo_name)},
         {"allowedInteractionsOrder",
-            picojson::value((picojson::array) {
-                picojson::value((picojson::object) {
-                    {"type", picojson::value("confirmationMessageAndVerificationCodeChoice")},
-                    {"displayText200", picojson::value("Do you want to decrypt the document")}
-                })
-            })
+            picojson::value(aio)
         }
     });
     LOG_DBG("JSON:{}", query.serialize());
@@ -392,10 +395,10 @@ libcdoc::testSID(const std::string& etsiidentifier, std::vector<libcdoc::ShareDa
     std::vector<picojson::value> v;
     for (auto share : shares) {
         // {"..." : HASH}
-        picojson::value obj((std::map<std::string, picojson::value>) {
+        picojson::object obj = {
             {"...", picojson::value(share.getDisclosureHash())}
-        });
-        v.push_back(obj);
+        };
+        v.push_back(picojson::value(obj));
     }
     picojson::value aud(v);
 

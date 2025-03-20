@@ -102,11 +102,12 @@ struct Private {
 libcdoc::result_t
 libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
 {
-    picojson::value req_json((std::map<std::string, picojson::value>) {
+    picojson::object obj = {
         {"recipient_id", picojson::value(libcdoc::toBase64(rcpt_key))},
         {"ephemeral_key_material", picojson::value(libcdoc::toBase64(key_material))},
         {"capsule_type", picojson::value(type)}
-    });
+    };
+    picojson::value req_json(obj);
     std::string req_str = req_json.get<std::string>();
 
     std::string host, path;
@@ -173,10 +174,11 @@ libcdoc::result_t
 libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
 {
     // Create KeyShare container
-    picojson::value req_json((std::map<std::string, picojson::value>) {
+    picojson::object obj = {
         {"share", picojson::value(libcdoc::toBase64(share))},
         {"recipient", picojson::value(recipient)}
-    });
+    };
+    picojson::value req_json(obj);
     std::string req_str = req_json.get<std::string>();
     LOG_DBG("POST keyshare to: {}", url);
     LOG_DBG("{}", req_str);
