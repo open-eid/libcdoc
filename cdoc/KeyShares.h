@@ -33,25 +33,42 @@ struct ShareData {
     
     ShareData(const std::string& base_url, const std::string& share_id, const std::string& nonce);
 
-    ShareData(const ShareData& other) = default;
-
-    std::string getSalt();
     std::string getURL();
-    // Get base64(utf8(json([salt,url])))
-    std::string getDisclosure();
-    // Get base64(sha256(disclosure))
-    std::string getDisclosureHash();
-private:
-    std::vector<uint8_t> salt;
+};
+
+struct Disclosure {
+    // Disclosure salt (base64url)
+    std::string salt64;
+    // Disclosure JSON
+    std::string json;
+
+    Disclosure(const std::string name, const std::string& val);
+    Disclosure(const std::string name, std::vector<Disclosure>& val);
+
+    std::string getHash();
+};
+
+struct Signer {
+    virtual std::string sign(const std::string& data, std::error_code& ec) const = 0;
+    virtual void verify(const std::string& data, const std::string& signature, std::error_code& ec) const = 0;
+    std::string name() const { return "RS256"; }
+};
+
+struct SIDSigner : public Signer {
+    SIDSigner(const std::string& _id, std::vector<uint8_t>& _cert) : id(_id), cert(_cert) {}
+    std::string sign(const std::string& data, std::error_code& ec) const final;
+    void verify(const std::string& data, const std::string& signature, std::error_code& ec) const final;
+    std::string id;
+    std::vector<uint8_t> &cert;
 };
 
 void fetchKeyShare(const ShareData& acc);
 
-result_t signSID(std::vector<uint8_t>& dst, const std::string& rcpt_id, const std::vector<uint8_t>& digest);
+result_t signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, const std::vector<uint8_t>& digest);
 
-std::string testSID(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares);
+std::string testSID(const std::string& etsiidentifier, Disclosure& aud, Signer& signer);
 
-std::string generateTicket(const std::string& etsiidentifier, std::vector<libcdoc::ShareData> shares, unsigned int idx);
+result_t generateTickets(std::vector<std::string>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, std::vector<libcdoc::ShareData>& shares);
 
 } // namespace libcdoc
 

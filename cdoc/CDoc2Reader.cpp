@@ -248,21 +248,27 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			ShareData acc(url, id, std::string(nonce.cbegin(), nonce.cend()));
 			aud.push_back(std::move(acc));
 		}
-
-		for (unsigned int i = 0; i < shares.size(); i++) {
-			std::string ticket = libcdoc::generateTicket(rcpt_id, aud, i);
+		std::vector<std::string> tickets;
+		std::vector<uint8_t> cert;
+		result_t result = libcdoc::generateTickets(tickets, cert, rcpt_id, aud);
+		if (result != libcdoc::OK) {
+			setLastError(t_("Cannot generate share tickets"));
+			LOG_ERROR("Cannot generate share tickets");
+			return result;
 		}
-#if 0	
-		std::vector<uint8_t> digest(32);
-		std::vector<uint8_t> sig;
-		signSID(sig, rcpt_id, digest);
-
-		for (auto acc : aud) {
-			fetchKeyShare(acc);
+		kek.resize(32);
+		std::fill(kek.begin(), kek.end(), 0);
+		for (unsigned int i = 0; i < tickets.size(); i++) {
+			NetworkBackend::ShareInfo share;
+			result = network->fetchShare(share, shares[i].first, shares[i].second, tickets[i], cert);
+			if (result != libcdoc::OK) {
+				setLastError(t_("Cannot fetch share"));
+				LOG_ERROR("Cannot fetch share {}", i);
+				return result;
+			}
+			Crypto::xor_data(kek, kek, share.share);
 		}
-#endif
-		return libcdoc::NOT_IMPLEMENTED;
-
+		LOG_INFO("Fetched all shares");
 	} else {
 		setLastError(t_("Unknown lock type"));
 		LOG_ERROR("Unknown lock type: %d", (int) lock.type);

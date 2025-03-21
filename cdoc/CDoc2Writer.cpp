@@ -462,6 +462,13 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
             LOG_DBG("Info: {}", info_str);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()));
+            LOG_TRACE_KEY("kek: {}", kek);
+            if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+			if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
+				setLastError("Internal error");
+                LOG_ERROR("{}", last_error);
+				return libcdoc::CRYPTO_ERROR;
+			}
 
             // # Splitting KEK_i into shares
             // for j in (2, 3, ..., n):

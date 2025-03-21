@@ -108,7 +108,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         {"capsule_type", picojson::value(type)}
     };
     picojson::value req_json(obj);
-    std::string req_str = req_json.get<std::string>();
+    std::string req_str = req_json.serialize();
 
     std::string host, path;
     int port;
@@ -179,7 +179,7 @@ libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, con
         {"recipient", picojson::value(recipient)}
     };
     picojson::value req_json(obj);
-    std::string req_str = req_json.get<std::string>();
+    std::string req_str = req_json.serialize();
     LOG_DBG("POST keyshare to: {}", url);
     LOG_DBG("{}", req_str);
 
@@ -340,9 +340,67 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 }
 
 libcdoc::result_t
-libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id)
+libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id, const std::string& ticket, const std::vector<uint8_t>& cert)
 {
-    return libcdoc::NOT_IMPLEMENTED;
+    LOG_DBG("Get share from: {}", url);
+
+    std::string host, path;
+    int port;
+    int result = libcdoc::parseURL(url, host, port, path);
+    if (result != libcdoc::OK) return result;
+    if (path == "/") path.clear();
+
+    LOG_DBG("Starting client: {} {}", host, port);
+    httplib::SSLClient cli(host, port);
+
+    std::vector<std::vector<uint8_t>> certs;
+    LOG_DBG("Fetching certs");
+    getPeerTLSCertificates(certs);
+    if (!certs.empty()) {
+        LOG_DBG("Loading certs");
+        SSL_CTX *ctx = cli.ssl_context();
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
+        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
+        for (const std::vector<uint8_t>& c : certs) {
+            auto x509 = Crypto::toX509(c);
+            if (!x509) return CRYPTO_ERROR;
+            X509_STORE_add_cert(store, x509.get());
+        }
+        cli.enable_server_certificate_verification(true);
+        cli.enable_server_hostname_verification(true);
+    } else {
+        LOG_WARN("Share servers' certificate list is empty");
+        cli.enable_server_certificate_verification(false);
+        cli.enable_server_hostname_verification(false);
+    }
+
+    // Build url and send request
+    std::string full = path + "/key-shares/" + share_id;
+    LOG_DBG("Share url: {}", full);
+    httplib::Headers hdrs;
+    hdrs.insert({"x-cdoc2-auth-ticket", ticket});
+    hdrs.insert({"x-cdoc2-auth-x5c", std::string("-----BEGIN CERTIFICATE-----") + toBase64(cert) + "-----END CERTIFICATE-----"});
+    for (auto i = hdrs.cbegin(); i != hdrs.cend(); i++) {
+        std::cerr << i->first << ": " << i->second << std::endl;
+    }
+    httplib::Result res = cli.Get(full, hdrs);
+    if (!res) return NETWORK_ERROR;
+    auto status = res->status;
+    LOG_DBG("Status: {}", status);
+    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+    httplib::Response rsp = res.value();
+    LOG_DBG("Response: {}", rsp.body);
+    picojson::value rsp_json;
+    picojson::parse(rsp_json, rsp.body);
+    std::string share64 = rsp_json.get("share").get<std::string>();
+    LOG_DBG("Share64: {}", share64);
+    std::string recipient = rsp_json.get("recipient").get<std::string>();
+    std::vector<uint8_t> shareval = fromBase64(share64);
+    shareval.resize(32);
+    LOG_DBG("Share: {}", toHex(shareval));
+    share = {shareval, recipient};
+    return OK;
 }
 
 ECDSA_SIG *

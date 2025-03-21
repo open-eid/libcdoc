@@ -95,7 +95,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param share_id share id (transaction id)
      * @return error code or OK
      */
-    virtual result_t fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id);
+    virtual result_t fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id, const std::string& ticket, const std::vector<uint8_t>& cert);
 
 
     /**
