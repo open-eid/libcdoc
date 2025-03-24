@@ -71,10 +71,8 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
 	rcpt.label = std::move(label);
     rcpt.cert = std::move(cert);
 	Certificate ssl(rcpt.cert);
-	std::vector<uint8_t> pkey = ssl.getPublicKey();
-	Certificate::Algorithm algo = ssl.getAlgorithm();
-    rcpt.rcpt_key = pkey;
-	rcpt.pk_type = (algo == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
+    rcpt.rcpt_key = ssl.getPublicKey();
+    rcpt.pk_type = (ssl.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
 	return rcpt;
 }
 

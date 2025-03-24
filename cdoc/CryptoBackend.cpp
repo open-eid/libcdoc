@@ -32,7 +32,7 @@
 namespace libcdoc {
 
 std::string
-CryptoBackend::getLastErrorStr(int code) const
+CryptoBackend::getLastErrorStr(result_t code) const
 {
 	switch (code) {
     case OK:

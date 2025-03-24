@@ -381,6 +381,10 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
         return;
     }
 	uint32_t header_len = (c[0] << 24) | (c[1] << 16) | c[2] << 8 | c[3];
+	if (constexpr uint32_t MAX_LEN = (1 << 20); header_len > MAX_LEN) {
+		LOG_ERROR("{}", last_error);
+		return;
+	}
 	priv->header_data.resize(header_len);
     if (priv->_src->read(priv->header_data.data(), header_len) != header_len) {
         LOG_ERROR("{}", last_error);

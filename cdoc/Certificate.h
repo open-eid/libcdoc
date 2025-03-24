@@ -39,7 +39,7 @@ public:
 
     unique_free_t<X509> cert;
 
-    explicit Certificate(const std::vector<uint8_t>& cert) noexcept;
+    explicit Certificate(const std::vector<uint8_t>& cert);
 
 	std::string getCommonName() const;
 	std::string getGivenName() const;

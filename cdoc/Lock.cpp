@@ -48,7 +48,7 @@ Lock::setInt(Params key, int32_t val)
 		bytes[3 - i] = (val & 0xff);
 		val = val >> 8;
 	}
-	params[key] = bytes;
+	params[key] = std::move(bytes);
 }
 
 bool

@@ -58,7 +58,7 @@ struct CDOC_EXPORT CryptoBackend {
     CryptoBackend& operator=(const CryptoBackend&) = delete;
     CDOC_DISABLE_MOVE(CryptoBackend);
 
-	virtual std::string getLastErrorStr(int code) const;
+	virtual std::string getLastErrorStr(result_t code) const;
 
 	/**
 	 * @brief Fill vector with random bytes
