@@ -90,9 +90,11 @@ struct CDOC_EXPORT NetworkBackend {
     virtual result_t fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id);
     /**
      * @brief fetch key share from share server
-     * @param share acontainer for result
+     * @param share a container for result
      * @param url server url
      * @param share_id share id (transaction id)
+     * @param ticket signed ticket with disclosed url
+     * @param cert a certificate of signing key (PEM without newlines)
      * @return error code or OK
      */
     virtual result_t fetchShare(ShareInfo& share, const std::string& url, const std::string& share_id, const std::string& ticket, const std::vector<uint8_t>& cert);

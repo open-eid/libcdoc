@@ -19,22 +19,63 @@
 #ifndef __KEYSHARES_H__
 #define __KEYSHARES_H__
 
+#include <cdoc/CryptoBackend.h>
 #include <cdoc/CDoc.h>
 
 #include <cstdint>
 #include <string>
+#include <system_error>
 
 namespace libcdoc {
 
+/**
+ * @brief Share information from CDoc capsule
+ * 
+ * Contains the full share information, including session nonce queried from the server
+ * 
+ */
 struct ShareData {
     std::string base_url;
     std::string share_id;
     std::string nonce;
     
+    /**
+     * @brief Construct a new Share Data object for authentication
+     * 
+     * @param base_url share server base url (e.g. https://cdoc2.my.domain/v1/)
+     * @param share_id share id from capsule
+     * @param nonce session nonce from server
+     */
     ShareData(const std::string& base_url, const std::string& share_id, const std::string& nonce);
 
     std::string getURL();
 };
+
+struct Signer {
+    virtual result_t generateTickets(std::vector<std::string>& dst, std::vector<libcdoc::ShareData>& shares) = 0;
+};
+
+struct SIDSigner : public Signer {
+    SIDSigner(const std::string& _id) : rcpt_id(_id) {}
+    std::string rcpt_id;
+    /* After successful authentication holds the user certificate value */
+    std::vector<uint8_t> cert;
+
+    result_t generateTickets(std::vector<std::string>& dst, std::vector<libcdoc::ShareData>& shares) final;
+};
+
+struct MIDSigner : public Signer {
+    MIDSigner(const std::string& _id) : rcpt_id(_id) {}
+    std::string rcpt_id;
+    /* After successful authentication holds the user certificate value */
+    std::vector<uint8_t> cert;
+
+    result_t generateTickets(std::vector<std::string>& dst, std::vector<libcdoc::ShareData>& shares) final;
+};
+
+result_t signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert,
+    const std::string& url, const std::string& rp_uuid, const std::string& rp_name,
+    const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo);
 
 struct Disclosure {
     // Disclosure salt (base64url)
@@ -47,28 +88,6 @@ struct Disclosure {
 
     std::string getHash();
 };
-
-struct Signer {
-    virtual std::string sign(const std::string& data, std::error_code& ec) const = 0;
-    virtual void verify(const std::string& data, const std::string& signature, std::error_code& ec) const = 0;
-    std::string name() const { return "RS256"; }
-};
-
-struct SIDSigner : public Signer {
-    SIDSigner(const std::string& _id, std::vector<uint8_t>& _cert) : id(_id), cert(_cert) {}
-    std::string sign(const std::string& data, std::error_code& ec) const final;
-    void verify(const std::string& data, const std::string& signature, std::error_code& ec) const final;
-    std::string id;
-    std::vector<uint8_t> &cert;
-};
-
-void fetchKeyShare(const ShareData& acc);
-
-result_t signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, const std::vector<uint8_t>& digest);
-
-std::string testSID(const std::string& etsiidentifier, Disclosure& aud, Signer& signer);
-
-result_t generateTickets(std::vector<std::string>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, std::vector<libcdoc::ShareData>& shares);
 
 } // namespace libcdoc
 

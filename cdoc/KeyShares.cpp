@@ -187,31 +187,28 @@ toBase64URL(const std::vector<uint8_t>& data)
 }
 
 libcdoc::result_t
-libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, const std::vector<uint8_t>& digest)
+libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert,
+    const std::string& url, const std::string& rp_uuid, const std::string& rp_name,
+    const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo)
 {
-    std::string relyingPartyUUID = "00000000-0000-0000-0000-000000000000";
-    std::string relyingPartyName = "RIA DigiDoc";
     std::string certificateLevel = "QUALIFIED";
     std::string nonce = toBase64URL(Crypto::random(16));
 
     picojson::object obj = {
-        {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
-        {"relyingPartyName", picojson::value(relyingPartyName)},
+        {"relyingPartyUUID", picojson::value(rp_uuid)},
+        {"relyingPartyName", picojson::value(rp_name)},
         {"certificateLevel", picojson::value(certificateLevel)},
         {"nonce", picojson::value(nonce)}
     };
     picojson::value query(obj);
     LOG_DBG("JSON:{}", query.serialize());
 
-    // RIA proxy for SmartID
-    std::string url ="https://eid-dd.ria.ee/sid/v2";
-    LOG_DBG("URL:{}", url);
-
     std::string host, path;
     int port;
     int result = libcdoc::parseURL(url, host, port, path);
     if (result != libcdoc::OK) return result;
     if (path == "/") path.clear();
+    LOG_DBG("URL:{}", url);
     LOG_DBG("HOST:{}", host);
     LOG_DBG("PORT:{}", port);
     LOG_DBG("PATH:{}", path);
@@ -273,7 +270,6 @@ libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const st
     //
     // Sign
     //
-    CryptoBackend::HashAlgorithm algo = CryptoBackend::SHA_256;
     std::string algo_names[] = {"SHA224", "SHA256", "SHA384", "SHA512"};
     std::string algo_name = algo_names[(int) algo];
 
@@ -291,9 +287,8 @@ libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const st
         picojson::value(aio1)
     };
     picojson::object qobj = {
-        {"relyingPartyUUID", picojson::value(relyingPartyUUID)},
-        {"relyingPartyName", picojson::value(relyingPartyName)},
-        {"certificateLevel", picojson::value(certificateLevel)},
+        {"relyingPartyUUID", picojson::value(rp_uuid)},
+        {"relyingPartyName", picojson::value(rp_name)},
 		{"hash", picojson::value(toBase64(digest))},
 		{"hashType", picojson::value(algo_name)},
         {"allowedInteractionsOrder",
@@ -305,7 +300,7 @@ libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const st
     //
     // Sign digest
     //
-    full = path + "/signature/document/" + sidrsp.documentNumber;
+    full = path + "/authentication/" + rcpt_id;
     LOG_DBG("SmartID path: {}", full);
     res = cli.Post(full, query.serialize(), "application/json");
     if (!res) {
@@ -338,28 +333,46 @@ libcdoc::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert, const st
     return OK;
 }
 
+using namespace libcdoc;
+
+
+struct SIDJWTSigner {
+    libcdoc::SIDSigner *parent;
+
+    SIDJWTSigner(libcdoc::SIDSigner *_parent) : parent(_parent) {}
+
+    std::string sign(const std::string& data, std::error_code& ec) const;
+    void verify(const std::string& data, const std::string& signature, std::error_code& ec) const;
+    std::string name() const { return "RS256"; }
+};
+
 std::string
-libcdoc::SIDSigner::sign(const std::string& data, std::error_code& ec) const
+SIDJWTSigner::sign(const std::string& data, std::error_code& ec) const
 {
+    // RIA proxy for SmartID
+    std::string url ="https://sid.demo.sk.ee/smart-id-rp/v2";
+    std::string relyingPartyUUID = "00000000-0000-0000-0000-000000000000";
+    std::string relyingPartyName = "DEMO";
+    libcdoc::CryptoBackend::HashAlgorithm algo = libcdoc::CryptoBackend::SHA_256;
+
     LOG_DBG("Signing: {} {}", data.size(), data);
     ec.clear();
 
     std::vector<uint8_t> dst;
-    std::vector<uint8_t> cert;
     std::vector<uint8_t> b(32);
     SHA256((uint8_t *) data.c_str(), data.size(), b.data());
-    signSID(dst, cert, id, std::vector<uint8_t>(b.cbegin(), b.cend()));
+    // The const cast is nasty, think about it
+    signSID(dst, parent->cert, url, relyingPartyUUID, relyingPartyName, parent->rcpt_id, b, algo);
 
     ///std::vector<uint8_t> b(32);
     //SHA256((uint8_t *) data.c_str(), data.size(), b.data());
     LOG_DBG("Signature:{}", toHex(dst));
     LOG_DBG("SignatureB64:{}", toBase64URL(dst));
-    this->cert = cert;
     return std::string((const char *) dst.data(), dst.size());
 }
 
 void
-libcdoc::SIDSigner::verify(const std::string& data, const std::string& signature, std::error_code& ec) const
+SIDJWTSigner::verify(const std::string& data, const std::string& signature, std::error_code& ec) const
 {
     ec.clear();
     std::vector<uint8_t> b(32);
@@ -372,75 +385,44 @@ libcdoc::SIDSigner::verify(const std::string& data, const std::string& signature
     }
 }
 
-using namespace libcdoc;
-
-struct TestSigner : public Signer {
-    std::string sign(const std::string& data, std::error_code& ec) const final
-    {
-        std::vector<uint8_t> b(32);
-        SHA256((uint8_t *) data.c_str(), data.size(), b.data());
-        std::string signature = toBase64URL(b);
-        LOG_DBG("TestSigner::sign()");
-        LOG_DBG("data: {}", data);
-        LOG_DBG("signature: {}", signature);
-        return signature;
-    }
-    void verify(const std::string& data, const std::string& signature, std::error_code& ec) const final
-    {
-        LOG_DBG("TestSigner::verify()");
-    }
-};
-
-std::string
-libcdoc::testSID(const std::string& etsiidentifier, Disclosure& aud, Signer& signer)
-{
-    picojson::array _sd({picojson::value(aud.getHash())});
-
-	const auto time = jwt::date::clock::now();
-	const auto token = jwt::create()
-						   .set_type("vnd.cdoc2.auth-token.v1+sd-jwt")
-                           .set_algorithm("RS256")
-						   .set_payload_claim("iss", picojson::value(etsiidentifier))
-						   .set_payload_claim("_sd", picojson::value(_sd))
-						   .set_payload_claim("_sd_alg", picojson::value("sha-256"))
-						   .sign(signer);
-    std::cerr << "Token:" << token << std::endl;
-
-	const auto decoded = jwt::decode(token);
-    std::cerr << "Header:" << decoded.get_header() << std::endl;
-    std::cerr << "Algo:" << decoded.get_algorithm() << std::endl;
-    std::cerr << "_sd:" << decoded.get_payload_claim("_sd") << std::endl;
-    return token;
-}
-
 result_t
-libcdoc::generateTickets(std::vector<std::string>& dst, std::vector<uint8_t>& cert, const std::string& rcpt_id, std::vector<libcdoc::ShareData>& shares)
+libcdoc::SIDSigner::generateTickets(std::vector<std::string>& dst, std::vector<libcdoc::ShareData>& shares)
 {
-    // Individual disclosures
+    SIDJWTSigner jwtsig(this);
+
+    // Create list of individual disclosures
     std::vector<Disclosure> disclosures;
     for (auto share : shares) {
         Disclosure d({}, share.getURL());
         std::cerr << "Disclosure:" << d.json << std::endl;
         disclosures.push_back(d);
     }
-    // Disclosure list
+    // Disclosure of the whole list
     Disclosure aud("aud", disclosures);
     std::cerr << "aud:" << aud.json << std::endl;
 
-    SIDSigner signer(rcpt_id, cert);
-    //TestSigner signer;
-
-    std::string jwt = testSID(rcpt_id, aud, signer);
+    // Create JWT container
+    picojson::array _sd({picojson::value(aud.getHash())});
+	std::string token = jwt::create()
+						   .set_type("vnd.cdoc2.auth-token.v1+sd-jwt")
+                           .set_algorithm("RS256")
+						   .set_payload_claim("iss", picojson::value(rcpt_id))
+						   .set_payload_claim("_sd", picojson::value(_sd))
+						   .set_payload_claim("_sd_alg", picojson::value("sha-256"))
+						   .sign(jwtsig);
+    std::cerr << "Token:" << token << std::endl;
 
     // Append aud disclosure
-    jwt = jwt + "~" + toBase64URL(aud.json);
+    std::string jwt = token + "~" + toBase64URL(aud.json);
 
+    // Create individual tickets by appending corresponding disclosures
     for (unsigned int i = 0; i < disclosures.size(); i++) {
         std::string disclosed = jwt + "~" + toBase64URL(disclosures[i].json) + "~";
         dst.push_back(disclosed);
         std::cerr << "disclosed:" << disclosed << std::endl;
     }
-    cert = signer.cert;
+
+    //cert = signer.cert;
     return OK;
 }
 

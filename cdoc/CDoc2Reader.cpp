@@ -214,29 +214,23 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
 		}
 	} else  if (lock.type == libcdoc::Lock::Type::SHARE_SERVER) {
+		/* SALT */
+		std::vector<uint8_t> salt = lock.getBytes(Lock::SALT);
+		/* RECIPIENT_ID */
+		std::string rcpt_id = lock.getString(Lock::RECIPIENT_ID);
 		/* SHARE_URLS */
+		/* url,share_id;url,share_id... */
 		std::string all = lock.getString(Lock::SHARE_URLS);
 		std::vector<std::string> strs = split(all, ';');
 		if (strs.empty()) return libcdoc::DATA_FORMAT_ERROR;
-		std::vector<std::pair<std::string, std::string>> shares;
+		std::vector<ShareData> shares;
 		for (auto& str : strs) {
 			std::vector<std::string> parts = split(str, ',');
 			if (parts.size() != 2) return libcdoc::DATA_FORMAT_ERROR;
 			std::string url = parts[0];
 			std::string id = parts[1];
 			LOG_DBG("Share {} url {}", id, url);
-			shares.push_back({url, id});
-		}
-		/* SALT */
-		std::vector<uint8_t> salt = lock.getBytes(Lock::SALT);
-		/* RECIPIENT_ID */
-		std::string rcpt_id = lock.getString(Lock::RECIPIENT_ID);
 
-		std::vector<ShareData> aud;
-		for (auto& share : shares) {
-			std::string url = share.first;
-			std::string id = share.second;
-			LOG_DBG("Url {} share {}", url, id);
 			std::vector<uint8_t> nonce;
 			int64_t result = network->fetchNonce(nonce, url, id);
 			if (result != libcdoc::OK) {
@@ -246,11 +240,21 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			}
 			LOG_DBG("Nonce: {}", std::string(nonce.cbegin(), nonce.cend()));
 			ShareData acc(url, id, std::string(nonce.cbegin(), nonce.cend()));
-			aud.push_back(std::move(acc));
+			shares.push_back(std::move(acc));
 		}
+		/* Create tickets from shares */
 		std::vector<std::string> tickets;
 		std::vector<uint8_t> cert;
-		result_t result = libcdoc::generateTickets(tickets, cert, rcpt_id, aud);
+		result_t result = NOT_IMPLEMENTED;
+		if (conf->getValue(Configuration::SHARE_SIGNER) == "SMART_ID") {
+			SIDSigner signer(rcpt_id);
+			result = signer.generateTickets(tickets, shares);
+			if (result == OK) cert = std::move(signer.cert);
+		} else {
+			setLastError(t_("Unknown or missing signer type"));
+			LOG_ERROR("Unknown or missing signer type");
+			return result;
+		}
 		if (result != libcdoc::OK) {
 			setLastError(t_("Cannot generate share tickets"));
 			LOG_ERROR("Cannot generate share tickets");
@@ -260,7 +264,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		std::fill(kek.begin(), kek.end(), 0);
 		for (unsigned int i = 0; i < tickets.size(); i++) {
 			NetworkBackend::ShareInfo share;
-			result = network->fetchShare(share, shares[i].first, shares[i].second, tickets[i], cert);
+			result = network->fetchShare(share, shares[i].base_url, shares[i].share_id, tickets[i], cert);
 			if (result != libcdoc::OK) {
 				setLastError(t_("Cannot fetch share"));
 				LOG_ERROR("Cannot fetch share {}", i);
