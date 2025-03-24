@@ -21,16 +21,21 @@
 
 #include "Configuration.h"
 
+#include <sstream>
+
 namespace libcdoc {
 
 /**
  * @brief The class implements libcdoc::Configuration and holds configuration for cdoc_tool.
  */
-struct ToolConf : public Configuration {
+struct ToolConf : public JSONConfiguration {
     struct ServerData {
         std::string ID;
         std::string url;
     };
+
+    ToolConf() : JSONConfiguration() {};
+    ToolConf(std::istream& ifs) : JSONConfiguration(ifs) {}
 
     /**
      * @brief Version of CDOC container to be created, either 1 or 2.
@@ -81,7 +86,7 @@ struct ToolConf : public Configuration {
                 }
             }
         }
-        return {};
+        return JSONConfiguration::getValue(domain, param);
     }
 };
 

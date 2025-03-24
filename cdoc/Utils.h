@@ -86,6 +86,19 @@ join(const std::vector<std::string> parts, const std::string_view sep)
 double getTime();
 
 static std::vector<uint8_t>
+readAllBytes(std::istream& ifs)
+{
+	std::vector<uint8_t> dst;
+	uint8_t b[4096];
+	while (!ifs.eof()) {
+		ifs.read((char *) b, 4096);
+		if (ifs.bad()) return {};
+		dst.insert(dst.end(), b, b + ifs.gcount());
+	}
+    return dst;
+}
+
+static std::vector<uint8_t>
 readAllBytes(std::string_view filename)
 {
     std::filesystem::path keyFilePath(filename);
@@ -98,11 +111,7 @@ readAllBytes(std::string_view filename)
         std::cerr << "readAllBytes(): Opening '" << filename << "' failed." << std::endl;
         return {};
     }
-
-    // Read the file
-    std::vector<uint8_t> dst(std::filesystem::file_size(keyFilePath));
-    keyStream.read(reinterpret_cast<std::ifstream::char_type *>(dst.data()), dst.size());
-    return dst;
+	return readAllBytes(keyStream);
 }
 
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path);

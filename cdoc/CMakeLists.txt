@@ -34,6 +34,7 @@ add_library(cdoc
     Io.cpp
     Recipient.cpp
     Lock.cpp
+    Configuration.cpp
     CryptoBackend.cpp
     NetworkBackend.cpp
     PKCS11Backend.cpp

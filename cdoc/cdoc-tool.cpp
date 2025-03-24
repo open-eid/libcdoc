@@ -101,6 +101,9 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
     } else if ((arg == "--accept") && ((arg_idx + 1) < argc)) {
         conf.accept_certs.push_back(readAllBytes(argv[arg_idx + 1]));
         return 2;
+    } else if ((arg == "--conf") && ((arg_idx + 1) < argc)) {
+        conf.parse(argv[arg_idx + 1]);
+        return 2;
     }
     return 0;
 }
