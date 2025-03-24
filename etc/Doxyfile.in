@@ -957,6 +957,7 @@ INPUT = @CMAKE_SOURCE_DIR@/cdoc/CDoc.h \
     @CMAKE_SOURCE_DIR@/cdoc/WinBackend.h \
     @CMAKE_SOURCE_DIR@/cdoc/ILogger.h \
     @CMAKE_SOURCE_DIR@/cdoc/ConsoleLogger.h \
+    @CMAKE_SOURCE_DIR@/doc/overview.md \
     @CMAKE_SOURCE_DIR@/doc/usage.md
 
 # This tag can be used to specify the character encoding of the source files
