@@ -23,7 +23,7 @@
 
 namespace libcdoc {
 
-Certificate::Certificate(const std::vector<uint8_t>& cert) noexcept
+Certificate::Certificate(const std::vector<uint8_t>& cert)
     : cert(Crypto::toX509(cert))
 {
 }

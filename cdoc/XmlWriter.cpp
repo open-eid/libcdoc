@@ -21,6 +21,7 @@
 #include "Crypto.h"
 #include "Utils.h"
 
+#include <openssl/evp.h>
 #include <libxml/xmlwriter.h>
 
 using namespace libcdoc;
@@ -132,10 +133,14 @@ void XMLWriter::writeStartElement(const NS &ns, const std::string &name, const s
 		pos = d->nsmap.insert({ns.prefix, 1}).first;
 	if(!d->w)
 		return;
-	xmlTextWriterStartElementNS(d->w, ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
-		pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str()));
+	if(xmlTextWriterStartElementNS(d->w, ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
+		pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) < 0)
+		return;
 	for(auto i = attr.cbegin(), end = attr.cend(); i != end; ++i)
-		xmlTextWriterWriteAttribute(d->w, pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str()));
+	{
+		if(xmlTextWriterWriteAttribute(d->w, pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) < 0)
+			break;
+	}
 }
 
 void XMLWriter::writeEndElement(const NS &ns)
@@ -167,12 +172,16 @@ void XMLWriter::writeBase64Element(const NS &ns, const std::string &name, const 
 {
 	if (!d->w)
 		return;
-	writeStartElement(ns, name, attr);
 	static const size_t bufLen = 48 * 10240;
+	std::vector<xmlChar> result(((bufLen + 2) / 3) * 4, 0);
+	writeStartElement(ns, name, attr);
 	for (size_t i = 0; i < data.size(); i += bufLen)
 	{
-        std::string b64 = libcdoc::toBase64(&data[i], std::min<size_t>(data.size() - i, bufLen));
-		xmlTextWriterWriteRaw(d->w, (const xmlChar*)b64.c_str());
+		int size = EVP_EncodeBlock(result.data(), &data[i], std::min(data.size() - i, bufLen));
+		if(size == 0)
+			break;
+		if(xmlTextWriterWriteRawLen(d->w, result.data(), size) < 0)
+			break;
 	}
 	writeEndElement(ns);
 }
@@ -181,6 +190,6 @@ void XMLWriter::writeTextElement(const NS &ns, const std::string &name, const st
 {
 	writeStartElement(ns, name, attr);
 	if(d->w)
-		xmlTextWriterWriteString(d->w, pcxmlChar(data.c_str()));
+		(void)xmlTextWriterWriteString(d->w, pcxmlChar(data.c_str()));
 	writeEndElement(ns);
 }

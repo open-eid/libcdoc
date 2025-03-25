@@ -67,7 +67,7 @@ struct CDOC_EXPORT DataConsumer {
 	 * @param code the last returned error code
 	 * @return error text
 	 */
-	virtual std::string getLastErrorStr(int code) const;
+	virtual std::string getLastErrorStr(result_t code) const;
     /**
      * @brief write all bytes in vector
      * @param src a vector
@@ -147,7 +147,7 @@ struct CDOC_EXPORT DataSource {
      * @param code the last returned error code
      * @return error text
      */
-    virtual std::string getLastErrorStr(int code) const;
+    virtual std::string getLastErrorStr(result_t code) const;
 
     /**
      * @brief skip specified number of bytes

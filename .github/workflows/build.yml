@@ -94,7 +94,7 @@ jobs:
     - name: Install dependencies
       run: |
         brew update
-        brew install --formula ninja flatbuffers swig doxygen boost openssl@3.0
+        brew install --formula flatbuffers swig doxygen boost openssl@3.0
         brew unlink python@3.12 || true
         brew unlink python@3.13 || true
     - name: Prepare vcpkg
@@ -211,7 +211,8 @@ jobs:
         cmake -B build -S . \
           -DCMAKE_DISABLE_FIND_PACKAGE_SWIG=YES \
           -DCMAKE_DISABLE_FIND_PACKAGE_Boost=YES \
-          -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=YES
+          -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=YES \
+          -DBUILD_TOOLS=NO
         export PATH=$PWD/cov-analysis-linux64/bin:$PATH
         cov-build --dir cov-int cmake --build build
     - name: Submit the result to Coverity Scan
@@ -227,7 +228,6 @@ jobs:
           https://scan.coverity.com/builds?project=$PROJECTNAME
   codeql:
     name: Run CodeQL tests
-    if: github.repository == 'lauris71/libcdoc'
     runs-on: ubuntu-24.04
     permissions:
       security-events: write
