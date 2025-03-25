@@ -129,6 +129,50 @@ struct CDOC_EXPORT NetworkBackend {
         return NOT_IMPLEMENTED;
     }
 
+    /**
+     * @brief show MID/SID verification code
+     * 
+     * Show SID/MID verification code. The default implementation logs it with level INFO.
+     * @param code verification code
+     * @return error code or OK
+     */
+    virtual result_t showVerificationCode(unsigned int code);
+
+    /**
+     * @brief Sign digest with SmartID authentication key
+     * 
+     * @param dst a container for signature
+     * @param cert a container for certificate
+     * @param url SmartID gateway base URL
+     * @param rp_uuid relying party UUID
+     * @param rp_name relying party name
+     * @param rcpt_id recipient id (etsi/PNOEE-XYZXYZXYZXY)
+     * @param digest digest to sign
+     * @param algo algorithm type (SHA256, SHA385, SHA512)
+     * @return error code or OK
+     */
+    result_t signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert,
+        const std::string& url, const std::string& rp_uuid, const std::string& rp_name,
+        const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo);
+
+    /**
+     * @brief Sign digest with Mobile ID authentication key
+     * 
+     * @param dst a container for signature
+     * @param cert a container for certificate
+     * @param url Mobile ID gateway base URL
+     * @param rp_uuid relying party UUID
+     * @param rp_name relying party name
+     * @param phone recipient's phone number
+     * @param rcpt_id recipient id (etsi/PNOEE-XYZXYZXYZXY)
+     * @param digest digest to sign
+     * @param algo algorithm type (SHA256, SHA385, SHA512)
+     * @return error code or OK
+     */
+    result_t signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert,
+        const std::string& url, const std::string& rp_uuid, const std::string& rp_name, const std::string& phone,
+        const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo);
+
 #if LIBCDOC_TESTING
     virtual int64_t test(std::vector<std::vector<uint8_t>> &dst);
 #endif

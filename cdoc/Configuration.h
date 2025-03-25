@@ -55,17 +55,25 @@ struct CDOC_EXPORT Configuration {
      */
     static constexpr char const *SID_DOMAIN = "SMART_ID";
     /**
-     * @brief SmartID base url (domain is SMART_ID)
+     * @brief Domain of Mobile ID settings
+     */
+    static constexpr char const *MID_DOMAIN = "MOBILE_ID";
+    /**
+     * @brief MID/SID base url (domain is SMART_ID or MOBILE_ID)
      */
     static constexpr char const *BASE_URL = "BASE_URL";
     /**
-     * @brief SmartID relying party UUID (domain is SMART_ID)
+     * @brief MID/SID relying party UUID (domain is SMART_ID or MOBILE_ID)
      */
     static constexpr char const *RP_UUID = "RP_UUID";
     /**
-     * @brief SmartID relying party name (domain is SMART_ID)
+     * @brief MID/SID relying party name (domain is SMART_ID or MOBILE_ID)
      */
     static constexpr char const *RP_NAME = "RP_NAME";
+    /**
+     * @brief Mobile ID phone number (domain is MOBILE_ID)
+     */
+    static constexpr char const *PHONE_NUMBER = "PHONE_NUMBER";
 
 	Configuration() = default;
 	virtual ~Configuration() noexcept = default;
@@ -109,15 +117,53 @@ struct CDOC_EXPORT Configuration {
 #endif
 };
 
+/**
+ * @brief A Configuration object implementation that reads values from JSON file
+ * 
+ * The file should represent a single object with key/value pairs
+ * Domain should contain sub-objects with corresponding key/value pairs
+ * Strings are returned unquoted, everything else is returned as JSON
+ * 
+ */
 struct CDOC_EXPORT JSONConfiguration : public Configuration {
     struct Private;
 
+    /**
+     * @brief Construct a new empty JSONConfiguration object
+     * 
+     */
     JSONConfiguration();
+    /**
+     * @brief Construct a new JSONConfiguration object from input stream
+     * 
+     * @param ifs 
+     */
     JSONConfiguration(std::istream& ifs);
+    /**
+     * @brief Construct a new JSONConfiguration object from file
+     * 
+     * @param file 
+     */
     JSONConfiguration(std::string_view file);
     ~JSONConfiguration();
 
+    /**
+     * @brief Read configuration data from input stream
+     * 
+     * Existing values are replaced
+     * 
+     * @param ifs input stream
+     * @return true if successful
+     */
     bool parse(std::istream& ifs);
+    /**
+     * @brief Read configuration data from file
+     * 
+     * Existing values are replaced
+     * 
+     * @param file file name
+     * @return true if successful
+     */
     bool parse(std::string_view file);
 
     std::string getValue(std::string_view domain, std::string_view param) const override;

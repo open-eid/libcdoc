@@ -247,7 +247,25 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		std::vector<uint8_t> cert;
 		result_t result = NOT_IMPLEMENTED;
 		if (conf->getValue(Configuration::SHARE_SIGNER) == "SMART_ID") {
-			SIDSigner signer(rcpt_id);
+			// "https://sid.demo.sk.ee/smart-id-rp/v2"
+			std::string url = conf->getValue(Configuration::SID_DOMAIN, Configuration::BASE_URL);
+			// "00000000-0000-0000-0000-000000000000"
+			std::string relyingPartyUUID = conf->getValue(Configuration::SID_DOMAIN, Configuration::RP_UUID);
+			// "DEMO"
+			std::string relyingPartyName = conf->getValue(Configuration::SID_DOMAIN, Configuration::RP_NAME);
+			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
+			result = signer.generateTickets(tickets, shares);
+			if (result == OK) cert = std::move(signer.cert);
+		} else if (conf->getValue(Configuration::SHARE_SIGNER) == "MOBILE_ID") {
+			// "https://sid.demo.sk.ee/smart-id-rp/v2"
+			std::string url = conf->getValue(Configuration::MID_DOMAIN, Configuration::BASE_URL);
+			// "00000000-0000-0000-0000-000000000000"
+			std::string relyingPartyUUID = conf->getValue(Configuration::MID_DOMAIN, Configuration::RP_UUID);
+			// "DEMO"
+			std::string relyingPartyName = conf->getValue(Configuration::MID_DOMAIN, Configuration::RP_NAME);
+			// "37200000566"
+			std::string phone = conf->getValue(Configuration::MID_DOMAIN, Configuration::PHONE_NUMBER);
+			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result == OK) cert = std::move(signer.cert);
 		} else {

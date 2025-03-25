@@ -101,24 +101,27 @@ JSONConfiguration::parse(std::string_view file)
 std::string
 JSONConfiguration::getValue(std::string_view domain, std::string_view param) const
 {
-    picojson::object& obj = d->root;
+    LOG_DBG("getValue {} {}", domain, param);
     if (!domain.empty()) {
         if (d->root.contains(std::string(domain))) {
-            LOG_DBG("Fetching {}", domain);
-            picojson::value& val = d->root.at(std::string(domain));
-            if (!val.is<picojson::object>()) return {};
-            LOG_DBG("IS object");
-            obj = val.get<picojson::object>();
+            picojson::value val = d->root.at(std::string(domain));
+            if (!val.is<picojson::object>()) {
+                LOG_ERROR("Configuration entry {} is not an object", domain);
+                return {};
+            }
+            val = val.get(std::string(param));
+            LOG_DBG("Value {}", val.serialize());
+            if (val.is<std::string>()) return val.get<std::string>();
+            return val.serialize();
         } else {
             return {};
         }
     }
-    LOG_DBG("Querying {}", param);
-    if (!obj.contains(std::string(param))) return {};
-    LOG_DBG("Obj contains {}", param);
-    picojson::value val = obj.at(std::string(param));
-    if (!val.is<std::string>()) return {};
-    return val.get<std::string>();
+    if (!d->root.contains(std::string(param))) return {};
+    picojson::value val = d->root.at(std::string(param));
+    LOG_DBG("Value {}", val.serialize());
+    if (val.is<std::string>()) return val.get<std::string>();
+    return val.serialize();
 }
 
 }
