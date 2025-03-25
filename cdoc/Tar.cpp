@@ -179,7 +179,7 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 		size_t total_written = 0;
 		while (!src.isEof()) {
 			uint8_t buf[256];
-			uint64_t n_read = src.read(buf, 256);
+			auto n_read = src.read(buf, 256);
 			if (n_read < 0) return false;
 			dst.write(buf, n_read);
 			total_written += n_read;
@@ -193,7 +193,7 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 }
 
 libcdoc::TarConsumer::TarConsumer(DataConsumer *dst, bool take_ownership)
-	: _dst(dst), _owned(take_ownership), _current_size(0)
+	: _dst(dst), _owned(take_ownership)
 {
 
 }
@@ -377,7 +377,7 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			}
 		}
 		if(h.typeflag == '0' || h.typeflag == 0) {
-			name = h_name;
+			name = std::move(h_name);
 			size = h_size;
 			_pos = 0;
 			_data_size = h_size;

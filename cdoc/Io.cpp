@@ -23,7 +23,7 @@ namespace libcdoc {
 static constexpr size_t BLOCK_SIZE = 65536;
 
 std::string
-DataConsumer::getLastErrorStr(int code) const
+DataConsumer::getLastErrorStr(result_t code) const
 {
 	switch (code) {
     case OK:
@@ -39,7 +39,7 @@ DataConsumer::getLastErrorStr(int code) const
 }
 
 std::string
-DataSource::getLastErrorStr(int code) const
+DataSource::getLastErrorStr(result_t code) const
 {
 	switch (code) {
     case OK:

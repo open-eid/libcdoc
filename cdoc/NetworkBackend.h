@@ -45,7 +45,7 @@ struct CDOC_EXPORT NetworkBackend {
     NetworkBackend& operator=(const NetworkBackend&) = delete;
     CDOC_DISABLE_MOVE(NetworkBackend);
 
-	virtual std::string getLastErrorStr(int code) const;
+	virtual std::string getLastErrorStr(result_t code) const;
 
 	/**
 	 * @brief send key material to keyserver

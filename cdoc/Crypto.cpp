@@ -461,9 +461,10 @@ std::vector<uint8_t>
 Crypto::pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>& salt, uint32_t iter)
 {
 	std::vector<uint8_t> key(32, 0);
-    SSL_FAILED(PKCS5_PBKDF2_HMAC(reinterpret_cast<const char *>(pw.data()), pw.size(),
-					  (const unsigned char *) salt.data(), int(salt.size()),
-                      iter, EVP_sha256(), int(key.size()), (unsigned char *)key.data()), "PKCS5_PBKDF2_HMAC");
+    if(SSL_FAILED(PKCS5_PBKDF2_HMAC(reinterpret_cast<const char *>(pw.data()), pw.size(),
+                                    (const unsigned char *) salt.data(), int(salt.size()),
+                                    iter, EVP_sha256(), int(key.size()), (unsigned char *)key.data()), "PKCS5_PBKDF2_HMAC"))
+        key.clear();
 	return key;
 }
 

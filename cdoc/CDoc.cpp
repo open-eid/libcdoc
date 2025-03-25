@@ -96,40 +96,13 @@ libcdoc::Configuration::test(std::vector<uint8_t>& dst)
 }
 #endif
 
-std::string
-libcdoc::NetworkBackend::getLastErrorStr(int code) const
-{
-	switch (code) {
-	case OK:
-		return "";
-	case NOT_IMPLEMENTED:
-		return "NetworkBackend: Method not implemented";
-	case INVALID_PARAMS:
-		return "NetworkBackend: Invalid parameters";
-	case NETWORK_ERROR:
-		return "NetworkBackend: Network error";
-	default:
-		break;
-	}
-	return "Internal error";
-}
-
-#if LIBCDOC_TESTING
-int64_t
-libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
-{
-    LOG_TRACE("NetworkBackend::test::Native superclass");
-    return OK;
-}
-#endif
-
 
 int
 libcdoc::CDocReader::getCDocFileVersion(DataSource *src)
 {
     if (src->seek(0) != libcdoc::OK) return libcdoc::IO_ERROR;
     if (CDoc2Reader::isCDoc2File(src)) return 2;
-    src->seek(0);
+    if (src->seek(0) != libcdoc::OK) return libcdoc::IO_ERROR;
     if (CDoc1Reader::isCDoc1File(src)) return 1;
     return libcdoc::NOT_SUPPORTED;
 }
