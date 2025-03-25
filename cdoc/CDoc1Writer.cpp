@@ -241,7 +241,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 			libcdoc::VectorConsumer vcons(data);
             result = src.readAll(vcons);
             if (result < 0) return;
-            files.push_back({name, (size_t) result});
+            files.push_back({std::move(name), (size_t) result});
         }
         d->_xml->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, data));
     });

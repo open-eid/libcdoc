@@ -151,7 +151,7 @@ CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<u
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createRSACapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> encrypted_kek, const std::vector<uint8_t>& xor_key)
+createRSACapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& encrypted_kek, const std::vector<uint8_t>& xor_key)
 {
     auto capsule = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
                                                                  builder.CreateVector(rcpt.rcpt_key),
@@ -183,7 +183,7 @@ createRSAServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::R
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> eph_public_key, const std::vector<uint8_t>& xor_key)
+createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& eph_public_key, const std::vector<uint8_t>& xor_key)
 {
     auto capsule = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
                                                                  cdoc20::recipients::EllipticCurve::secp384r1,
@@ -198,7 +198,7 @@ createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipie
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string transaction_id, const std::vector<uint8_t>& xor_key)
+createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, const std::vector<uint8_t>& xor_key)
 {
     auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
                                                                 cdoc20::recipients::EllipticCurve::secp384r1,
@@ -217,7 +217,7 @@ createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::R
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createSymmetricKeyCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> salt, const std::vector<uint8_t>& xor_key)
+createSymmetricKeyCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& xor_key)
 {
     auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder,
                                                                  builder.CreateVector(salt));
@@ -230,7 +230,7 @@ createSymmetricKeyCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createPasswordCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t> salt, const std::vector<uint8_t> pw_salt, const std::vector<uint8_t>& xor_key)
+createPasswordCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, const std::vector<uint8_t>& xor_key)
 {
     auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder,
                                                            builder.CreateVector(salt),
@@ -384,18 +384,18 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 			std::vector<uint8_t> salt;
             int64_t result = crypto->random(salt, 32);
             if (result < 0) {
-                setLastError(crypto->getLastErrorStr((int) result));
+                setLastError(crypto->getLastErrorStr(result));
                 return result;
             }
 			std::vector<uint8_t> pw_salt;
             result = crypto->random(pw_salt, 32);
             if (result < 0) {
-                setLastError(crypto->getLastErrorStr((int) result));
+                setLastError(crypto->getLastErrorStr(result));
                 return result;
             }
             result = crypto->extractHKDF(kek_pm, salt, pw_salt, rcpt.kdf_iter, rcpt_idx);
             if (result < 0) {
-                setLastError(crypto->getLastErrorStr((int) result));
+                setLastError(crypto->getLastErrorStr(result));
                 return result;
             }
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
@@ -478,9 +478,13 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 crypto->random(kek_shares[i], 32);
             }
             // KEK_i_share_1 = XOR(KEK_i, KEK_i_share_2, KEK_i_share_3,..., KEK_i_share_n)
-            kek_shares[0] = kek;
+            kek_shares[0] = std::move(kek);
             for (int i = 1; i < N_SHARES; i++) {
-                libcdoc::Crypto::xor_data(kek_shares[0], kek_shares[0], kek_shares[i]);
+                if (libcdoc::Crypto::xor_data(kek_shares[0], kek_shares[0], kek_shares[i]) != libcdoc::OK) {
+                    setLastError("Internal error");
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::CRYPTO_ERROR;
+                }
             }
             //   # Client uploads all shares of KEK_i to CSS servers and
             //   # gets corresponding Capsule_i_Share_j_ID for each KEK_i_share_j

@@ -99,6 +99,34 @@ struct Private {
     }
 };
 
+
+std::string
+libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
+{
+	switch (code) {
+	case OK:
+		return "";
+	case NOT_IMPLEMENTED:
+		return "NetworkBackend: Method not implemented";
+	case INVALID_PARAMS:
+		return "NetworkBackend: Invalid parameters";
+	case NETWORK_ERROR:
+		return "NetworkBackend: Network error";
+	default:
+		break;
+	}
+	return "Internal error";
+}
+
+#if LIBCDOC_TESTING
+int64_t
+libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
+{
+    LOG_TRACE("NetworkBackend::test::Native superclass");
+    return OK;
+}
+#endif
+
 libcdoc::result_t
 libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
 {

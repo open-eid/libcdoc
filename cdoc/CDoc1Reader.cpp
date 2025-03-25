@@ -124,9 +124,8 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
     setLastError({});
-	std::vector<uint8_t> decrypted_key;
     if (lock->isRSA()) {
-        int result = crypto->decryptRSA(decrypted_key, lock->encrypted_fmk, false, lock_idx);
+        int result = crypto->decryptRSA(fmk, lock->encrypted_fmk, false, lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
@@ -134,7 +133,8 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		}
 	} else {
         std::vector<uint8_t> eph_key = lock->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-        int result = crypto->deriveConcatKDF(decrypted_key, eph_key, std::string(lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST)),
+        std::vector<uint8_t> key;
+        int result = crypto->deriveConcatKDF(key, eph_key, std::string(lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST)),
                                              lock->getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
                                              lock->getBytes(libcdoc::Lock::Params::PARTY_UINFO),
                                              lock->getBytes(libcdoc::Lock::Params::PARTY_VINFO),
@@ -144,16 +144,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             LOG_ERROR("{}", last_error);
 			return libcdoc::CRYPTO_ERROR;
 		}
-	}
-	if(decrypted_key.empty()) {
-		setLastError("Failed to decrypt/derive key");
-        LOG_ERROR("{}", last_error);
-		return libcdoc::CRYPTO_ERROR;
-	}
-    if(lock->isRSA()) {
-		fmk = decrypted_key;
-	} else {
-        fmk = libcdoc::Crypto::AESWrap(decrypted_key, lock->encrypted_fmk, false);
+        fmk = libcdoc::Crypto::AESWrap(key, lock->encrypted_fmk, false);
 	}
 	if (fmk.empty()) {
 		setLastError("Failed to decrypt/derive fmk");
@@ -282,7 +273,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 libcdoc::result_t
 CDoc1Reader::finishDecryption()
 {
-    d->src.release();
+    d->src.reset();
     d->files.clear();
     return libcdoc::OK;
 }
@@ -351,11 +342,7 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 			d->method = reader.attribute("Algorithm");
 		// EncryptedData/EncryptionProperties/EncryptionProperty
 		else if(reader.isElement("EncryptionProperty"))
-		{
-			std::string attr = reader.attribute("Name");
-			std::string value = reader.readText();
-            d->properties[attr] = value;
-		}
+            d->properties[reader.attribute("Name")] = reader.readText();
 		// EncryptedData/KeyInfo/EncryptedKey
 		else if(reader.isElement("EncryptedKey"))
 		{

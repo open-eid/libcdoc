@@ -44,8 +44,8 @@ public:
 private:
 	DataConsumer *_dst;
 	bool _owned;
-	int64_t _current_size;
-	int64_t _current_written;
+	int64_t _current_size = 0;
+	int64_t _current_written = 0;
 };
 
 struct TarSource : public MultiDataSource

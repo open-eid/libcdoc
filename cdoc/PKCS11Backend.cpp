@@ -333,12 +333,11 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
     LOG_DBG("PKCS11: getCertificate id={}; label={}; found {} certificates", toHex(id), label, handles.size());
     if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
     CK_OBJECT_HANDLE handle = handles[0];
-    std::vector<uint8_t> v = d->attribute(d->session, handle, CKA_VALUE);
-    if (v.empty()) {
+    val = d->attribute(d->session, handle, CKA_VALUE);
+    if (val.empty()) {
         LOG_DBG("PKCS11: getCertificate CKA_VALUE error");
         return CRYPTO_ERROR;
     }
-    val = v;
     return OK;
 }
 
@@ -445,12 +444,10 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 		return CRYPTO_ERROR;
 	}
 
-    std::vector<uint8_t> val = d->attribute(d->session, newkey, CKA_VALUE);
-    LOG_DBG("PKCS11:deriveECDH1() derived key: {}", toHex(val));
+    dst = d->attribute(d->session, newkey, CKA_VALUE);
+    LOG_DBG("PKCS11:deriveECDH1() derived key: {}", toHex(dst));
 	d->logout();
-	if (val.empty()) return CRYPTO_ERROR;
-	dst = val;
-    return OK;
+    return dst.empty() ? CRYPTO_ERROR : OK;
 }
 
 libcdoc::result_t
@@ -497,12 +494,10 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 		return CRYPTO_ERROR;
 	}
 
-	std::vector<uint8_t> val = d->attribute(d->session, newkey, CKA_VALUE);
-    LOG_DBG("PKCS11:extractHKDF() derived key: {}", toHex(val));
+    kek = d->attribute(d->session, newkey, CKA_VALUE);
+    LOG_DBG("PKCS11:extractHKDF() derived key: {}", toHex(kek));
 	d->logout();
-	if (val.empty()) return CRYPTO_ERROR;
-	kek = val;
-    return OK;
+    return kek.empty() ? CRYPTO_ERROR : OK;
 }
 
 libcdoc::result_t
