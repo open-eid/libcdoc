@@ -65,9 +65,9 @@ For more information refer [doc/intro.md](doc/intro.md) document.
 
         brew install flatbuffers openssl opensc
 
-    * flatbuffers - Required
-    * openssl - Required, version 3.0.0 or later
-    * opensc - Required, for smart-card operations
+ 	* flatbuffers - Required
+	* openssl - Required, version 3.0.0 or later
+	* opensc - Optional, for smart-card operations
 	* doxygen - Optional, for API documentation
 	* boost - Optional, for unit tests
 	* swig - Optional, for C# and Java bindings
