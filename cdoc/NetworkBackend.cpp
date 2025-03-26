@@ -838,8 +838,8 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     picojson::object qobj = {
         {"relyingPartyUUID", picojson::value(rp_uuid)},
         {"relyingPartyName", picojson::value(rp_name)},
-		{"hash", picojson::value(toBase64(digest))},
-		{"hashType", picojson::value(algo_name)},
+        {"hash", picojson::value(toBase64(digest))},
+        {"hashType", picojson::value(algo_name)},
         {"allowedInteractionsOrder",
             picojson::value(aio)
         }
