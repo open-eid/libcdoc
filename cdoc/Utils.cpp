@@ -133,7 +133,7 @@ JsonToStringArray(std::string_view json)
     std::vector<std::string> values;
     picojson::value val;
     std::string err;
-    const char* json_end = picojson::parse(val, json.cbegin(), json.cend(), &err);
+    const char* json_end = picojson::parse(val, json.data(), json.data() + json.size(), &err);
     if (!err.empty()) {
         LOG_WARN("String is not valid JSON: {}", std::string(json));
         return values;
