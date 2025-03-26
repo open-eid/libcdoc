@@ -24,7 +24,7 @@ symmetric keys, at least one of the following methods has to be implemented:
 int getSecret(std::vector<uint8_t>& dst, unsigned int idx)
 ```
 
-The method copies into _dst_ vector either the password (for PBKDF based keys) or plain AES key. It is the simplest method, but
+The method copies into `dst` vector either the password (for PBKDF based keys) or plain AES key. It is the simplest method, but
 potentially exposes password or key in memory.
 
 ```cpp
