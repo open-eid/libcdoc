@@ -25,6 +25,8 @@
 
 #include "json/picojson/picojson.h"
 
+#include <sstream>
+
 namespace libcdoc {
 
 bool
@@ -58,10 +60,16 @@ JSONConfiguration::JSONConfiguration(std::istream& ifs)
     parse(ifs);
 }
 
-JSONConfiguration::JSONConfiguration(std::string_view file)
+JSONConfiguration::JSONConfiguration(const std::string& file)
 : d(new Private())
 {
     parse(file);
+}
+
+JSONConfiguration::JSONConfiguration(const std::vector<uint8_t>& data)
+: d(new Private())
+{
+    parse(data);
 }
 
 JSONConfiguration::~JSONConfiguration()
@@ -88,7 +96,7 @@ JSONConfiguration::parse(std::istream& ifs)
 }
 
 bool
-JSONConfiguration::parse(std::string_view file)
+JSONConfiguration::parse(const std::string& file)
 {
     std::ifstream ifs(file, std::ios::binary);
     if (ifs.bad()) {
@@ -96,6 +104,13 @@ JSONConfiguration::parse(std::string_view file)
         return false;
     }
     return parse(ifs);
+}
+
+bool
+JSONConfiguration::parse(const std::vector<uint8_t>& data)
+{
+    std::stringstream ss(std::string((const char *)data.data(), data.size()));
+    return parse(ss);
 }
 
 std::string

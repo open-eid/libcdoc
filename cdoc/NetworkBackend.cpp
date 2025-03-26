@@ -147,7 +147,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     httplib::SSLClient cli(host, port);
 
     std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         SSL_CTX *ctx = cli.ssl_context();
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
@@ -199,7 +199,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
 }
 
 libcdoc::result_t
-libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
+libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
 {
     // Create KeyShare container
     picojson::object obj = {
@@ -222,7 +222,7 @@ libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, con
 
     std::vector<std::vector<uint8_t>> certs;
     LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         LOG_DBG("Loading certs");
         SSL_CTX *ctx = cli.ssl_context();
@@ -256,8 +256,8 @@ libcdoc::NetworkBackend::sendShare(std::string& dst, const std::string& url, con
     LOG_DBG("Location: {}", location);
     if (location.empty()) return libcdoc::IO_ERROR;
     /* Remove /key-shares/ */
-    dst = location.substr(12);
-    LOG_DBG("Share: {}", dst);
+    dst.assign(location.cbegin() + 12, location.cend());
+    LOG_DBG("Share: {}", std::string((const char *) dst.data(), dst.size()));
 
     return OK;
 }
@@ -280,7 +280,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     httplib::SSLClient cli(host, port, d->x509.get(), d->pkey);
 
     std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         SSL_CTX *ctx = cli.ssl_context();
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
@@ -329,7 +329,7 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     std::vector<std::vector<uint8_t>> certs;
     LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         LOG_DBG("Loading certs");
         SSL_CTX *ctx = cli.ssl_context();
@@ -383,7 +383,7 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
 
     std::vector<std::vector<uint8_t>> certs;
     LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         LOG_DBG("Loading certs");
         SSL_CTX *ctx = cli.ssl_context();
@@ -759,7 +759,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     std::vector<std::vector<uint8_t>> certs;
     LOG_DBG("Fetching certs");
-    //getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         LOG_DBG("Loading certs");
         SSL_CTX *ctx = cli.ssl_context();
@@ -914,7 +914,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     std::vector<std::vector<uint8_t>> certs;
     LOG_DBG("Fetching certs");
-    //getPeerTLSCertificates(certs);
+    getPeerTLSCertificates(certs, buildURL(host, port));
     if (!certs.empty()) {
         LOG_DBG("Loading certs");
         SSL_CTX *ctx = cli.ssl_context();

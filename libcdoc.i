@@ -492,6 +492,9 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 // Configuration
 //
 
+%ignore libcdoc::JSONConfiguration::JSONConfiguration(std::istream& ifs);
+%ignore libcdoc::JSONConfiguration::parse(std::istream& ifs);
+
 %typemap(javacode) libcdoc::Configuration %{
     public static final String KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
     public static final String KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
@@ -505,6 +508,16 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 //
 // NetworkBackend
 //
+
+%ignore libcdoc::NetworkBackend::ShareInfo::share;
+%extend libcdoc::NetworkBackend::ShareInfo {
+    std::vector<uint8_t> getShare() {
+        return $self->share;
+    }
+    void setShare(const std::vector<uint8_t>& share) {
+        $self->share = share;
+    }
+};
 
 %typemap(javaimports) ArrayList<byte[]> %{
     import java.util.ArrayList;

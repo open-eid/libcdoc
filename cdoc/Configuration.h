@@ -43,7 +43,7 @@ struct CDOC_EXPORT Configuration {
      */
     static constexpr char const *KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
     /**
-     * @brief Comma-separated list of share server base urls (Domain is server id)
+     * @brief JSON array of share server base urls (Domain is server id)
      */
     static constexpr char const *SHARE_SERVER_URLS = "SHARE_SERVER_URLS";
     /**
@@ -136,15 +136,21 @@ struct CDOC_EXPORT JSONConfiguration : public Configuration {
     /**
      * @brief Construct a new JSONConfiguration object from input stream
      * 
-     * @param ifs 
+     * @param ifs input stream
      */
     JSONConfiguration(std::istream& ifs);
     /**
      * @brief Construct a new JSONConfiguration object from file
      * 
-     * @param file 
+     * @param file file name
      */
-    JSONConfiguration(std::string_view file);
+    JSONConfiguration(const std::string& file);
+    /**
+     * @brief Construct a new JSONConfiguration object from bytes
+     * 
+     * @param data input data
+     */
+    JSONConfiguration(const std::vector<uint8_t>& data);
     ~JSONConfiguration();
 
     /**
@@ -164,7 +170,16 @@ struct CDOC_EXPORT JSONConfiguration : public Configuration {
      * @param file file name
      * @return true if successful
      */
-    bool parse(std::string_view file);
+    bool parse(const std::string& file);
+    /**
+     * @brief Read configuration data from byte vector
+     * 
+     * Existing values are replaced
+     * 
+     * @param data input data
+     * @return true if successful
+     */
+    bool parse(const std::vector<uint8_t>& data);
 
     std::string getValue(std::string_view domain, std::string_view param) const override;
 private:

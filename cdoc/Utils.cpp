@@ -18,6 +18,10 @@
 
 #include "Utils.h"
 
+#include "ILogger.h"
+
+#include "json/picojson/picojson.h"
+
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/evp.h>
@@ -78,6 +82,12 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
 }
 
 std::string
+buildURL(const std::string& host, int port)
+{
+    return std::string("https://") + host + ":" + std::to_string(port) + "/";
+}
+
+std::string
 urlEncode(std::string_view src)
 {
     std::ostringstream escaped;
@@ -115,6 +125,32 @@ urlDecode(std::string &src)
         }
     }
     return ret;
+}
+
+std::vector<std::string>
+JsonToStringArray(std::string_view json)
+{
+    std::vector<std::string> values;
+    picojson::value val;
+    std::string err;
+    const char* json_end = picojson::parse(val, json.cbegin(), json.cend(), &err);
+    if (!err.empty()) {
+        LOG_WARN("String is not valid JSON: {}", std::string(json));
+        return values;
+    }
+    if (!val.is<picojson::array>()) {
+        LOG_WARN("String is not valid JSON array: {}", std::string(json));
+        return values;
+    }
+    picojson::array arr = val.get<picojson::array>();
+    for (auto s : arr) {
+        if (!s.is<std::string>()) {
+            LOG_WARN("Value is not valid JSON string: {}", s.serialize());
+            return values;
+        }
+        values.push_back(s.get<std::string>());
+    }
+    return values;
 }
 
 } // Namespace libcdoc

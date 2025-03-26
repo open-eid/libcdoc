@@ -69,7 +69,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param share base64 encoded Key Share
      * @return error code or OK
      */
-    virtual result_t sendShare(std::string& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share);
+    virtual result_t sendShare(std::vector<uint8_t>& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share);
 	/**
 	 * @brief fetch key material from keyserver
      *
@@ -117,6 +117,17 @@ struct CDOC_EXPORT NetworkBackend {
     virtual result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) {
         return NOT_IMPLEMENTED;
     }
+
+    /**
+     * @brief get a list of peer TLS certificates in der format
+     * @param dst a destination container for certificate
+     * @param url the base url ("https://servername:port/")
+     * @return error code or OK
+     */
+    virtual result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst, const std::string& url) {
+        return getPeerTLSCertificates(dst);
+    }
+
 
     /**
      * @brief sign TLS digest with client's private key

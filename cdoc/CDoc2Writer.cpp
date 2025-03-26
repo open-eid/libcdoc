@@ -429,7 +429,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 return libcdoc::CONFIGURATION_ERROR;
             }
             LOG_DBG("Share servers: {}", url_list);
-            std::vector<std::string> urls = split(url_list, ',');
+            std::vector<std::string> urls = libcdoc::JsonToStringArray(url_list);
             if (urls.size() < 1) {
                 setLastError("No server URLs in " + rcpt.server_id);
                 LOG_ERROR("{}", last_error);
@@ -490,7 +490,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             //   # gets corresponding Capsule_i_Share_j_ID for each KEK_i_share_j
             //   RecipientInfo_i = "etsi/PNOEE-48010010101"
             //   DistributedKEKInfo_i = {CSS_ID, Capsule_i_Share_j_ID}
-            std::vector<std::string> transaction_ids(N_SHARES);
+            std::vector<std::vector<uint8_t>> transaction_ids(N_SHARES);
             for (int i = 0; i < N_SHARES; i++) {
                 std::string send_url = urls[i];// + "key-shares";
                 LOG_DBG("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
@@ -502,11 +502,11 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     return libcdoc::IO_ERROR;
                 }
 #endif
-                LOG_DBG("Share {} Transaction Id: {}", i, transaction_ids[i]);
+                LOG_DBG("Share {} Transaction Id: {}", i, std::string((const char *) transaction_ids[i].data(), transaction_ids[i].size()));
             }
             std::vector<flatbuffers::Offset<cdoc20::recipients::KeyShare>> shares;
             for (int i = 0; i < N_SHARES; i++) {
-                auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString(transaction_ids[i]));
+                auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString(std::string((const char *)transaction_ids[i].data(), transaction_ids[i].size())));
                 shares.push_back(share);
             }
             auto fb_shares = builder.CreateVector(shares);

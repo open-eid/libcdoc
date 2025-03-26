@@ -82,6 +82,8 @@ join(const std::vector<std::string> parts, const std::string_view sep)
 	return std::move(result);
 }
 
+std::vector<std::string> JsonToStringArray(std::string_view json);
+
 // Get time in seconds since the Epoch
 
 double getTime();
@@ -116,6 +118,7 @@ readAllBytes(std::string_view filename)
 }
 
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
+std::string buildURL(const std::string& host, int port);
 
 std::string urlEncode(std::string_view src);
 std::string urlDecode(std::string &src);
