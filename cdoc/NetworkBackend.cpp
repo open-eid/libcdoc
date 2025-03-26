@@ -951,8 +951,8 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
         {"relyingPartyName", picojson::value(rp_name)},
         {"phoneNumber", picojson::value(phone)},
         {"nationalIdentityNumber", picojson::value(id_num)},
-		{"hash", picojson::value(toBase64(digest))},
-		{"hashType", picojson::value(algo_name)},
+        {"hash", picojson::value(toBase64(digest))},
+        {"hashType", picojson::value(algo_name)},
         {"language", picojson::value("ENG")},
         {"displayText", picojson::value("Tahad dekryptida?")},
         {"displayTextFormat", picojson::value("GSM-7")}
