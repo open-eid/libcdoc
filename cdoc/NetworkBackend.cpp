@@ -824,7 +824,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     // Generate code
     uint8_t b[32];
     SHA256(digest.data(), digest.size(), b);
-	unsigned int code = ((b[30] << 8) | b[31]) % 10000;
+    unsigned int code = ((b[30] << 8) | b[31]) % 10000;
     result = showVerificationCode(code);
     if (result != OK) return result;
 
