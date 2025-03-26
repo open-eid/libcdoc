@@ -65,6 +65,13 @@
 %ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
 %ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
 %ignore libcdoc::Configuration::SHARE_SERVER_URLS;
+%ignore libcdoc::Configuration::SHARE_SIGNER;
+%ignore libcdoc::Configuration::SID_DOMAIN;
+%ignore libcdoc::Configuration::MID_DOMAIN;
+%ignore libcdoc::Configuration::BASE_URL;
+%ignore libcdoc::Configuration::RP_UUID;
+%ignore libcdoc::Configuration::RP_NAME;
+%ignore libcdoc::Configuration::PHONE_NUMBER;
 
 %ignore libcdoc::PKCS11Backend::Handle;
 %ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label);
