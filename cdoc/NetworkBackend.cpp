@@ -522,16 +522,16 @@ struct SIDResponse {
 
     static EndResult parseEndResult(std::string_view val) {
         if (val == "OK") return OK;
-        else if (val == "USER_REFUSED") return USER_REFUSED;
-        else if (val == "TIMEOUT") return TIMEOUT;
-        else if (val == "DOCUMENT_UNUSABLE") return DOCUMENT_UNUSABLE;
-        else if (val == "WRONG_VC") return WRONG_VC;
-        else if (val == "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP") return REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP;
-        else if (val == "USER_REFUSED_CERT_CHOICE") return USER_REFUSED_CERT_CHOICE;
-        else if (val == "USER_REFUSED_DISPLAYTEXTANDPIN") return USER_REFUSED_DISPLAYTEXTANDPIN;
-        else if (val == "USER_REFUSED_VC_CHOICE") return USER_REFUSED_VC_CHOICE;
-        else if (val == "USER_REFUSED_CONFIRMATIONMESSAGE") return USER_REFUSED_CONFIRMATIONMESSAGE;
-        else if (val == "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE") return USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE;
+        if (val == "USER_REFUSED") return USER_REFUSED;
+        if (val == "TIMEOUT") return TIMEOUT;
+        if (val == "DOCUMENT_UNUSABLE") return DOCUMENT_UNUSABLE;
+        if (val == "WRONG_VC") return WRONG_VC;
+        if (val == "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP") return REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP;
+        if (val == "USER_REFUSED_CERT_CHOICE") return USER_REFUSED_CERT_CHOICE;
+        if (val == "USER_REFUSED_DISPLAYTEXTANDPIN") return USER_REFUSED_DISPLAYTEXTANDPIN;
+        if (val == "USER_REFUSED_VC_CHOICE") return USER_REFUSED_VC_CHOICE;
+        if (val == "USER_REFUSED_CONFIRMATIONMESSAGE") return USER_REFUSED_CONFIRMATIONMESSAGE;
+        if (val == "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE") return USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE;
         return NONE;
     }
 
