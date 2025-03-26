@@ -940,7 +940,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     std::string algo_name = algo_names[(int) algo];
 
     // Generate code
-	unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
+        unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
     result = showVerificationCode(code);
     if (result != OK) return result;
 
