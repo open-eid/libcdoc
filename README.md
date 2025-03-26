@@ -27,7 +27,7 @@ For more information refer [doc/intro.md](doc/intro.md) document.
         sudo dnf install cmake gcc-c++ libtool-ltdl-devel libxml2-devel openssl-devel zlib-devel
 
 	* flatbuffers - required
-    * doxygen - Optional, for API documentation
+	* doxygen - Optional, for API documentation
 	* libboost-test-dev - Optional, for unit tests
 	* swig - Optional, for C# and Java bindings
 	* openjdk-17-jdk-headless - Optional, for Java bindings
