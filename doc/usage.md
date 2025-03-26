@@ -410,7 +410,7 @@ Following options are supported:
 - `--pin PIN` - PKCS11 (smart-card's) pin code.
 - `--key-id` - PKCS11 key ID.
 - `--key-label` - PKCS11 key label.
-- `--library PKCS11_LIBRARY` - path to the PKCS11 library. Same as in encryption case.
+- `--library PKCS11_LIBRARY` - path to the PKCS11 library. Same as in encryption case.
 - `--server ID URL(s)` - specifies a key or share server. Same as in encryption case.
 - `--accept SERVER_CERT_FILENAME` - path to server's TLS certificate file. Same as in encryption case.
 - `FILE` - encrypted file to be decrypted.
