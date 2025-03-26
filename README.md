@@ -24,7 +24,7 @@ For more information refer [doc/intro.md](doc/intro.md) document.
         # Ubuntu
         sudo apt install cmake libxml2-dev zlib1g-dev
         # Fedora
-        sudo dnf install cmake gcc-c++ libtool-ltdl-devel libxml2-devel minizip-ng-compat-devel openssl-devel zlib-devel
+        sudo dnf install cmake gcc-c++ libtool-ltdl-devel libxml2-devel openssl-devel zlib-devel
 
 	* flatbuffers - required
     * doxygen - Optional, for API documentation
