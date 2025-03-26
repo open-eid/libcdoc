@@ -114,7 +114,7 @@ readAllBytes(std::string_view filename)
         std::cerr << "readAllBytes(): Opening '" << filename << "' failed." << std::endl;
         return {};
     }
-	return readAllBytes(keyStream);
+    return readAllBytes(keyStream);
 }
 
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
