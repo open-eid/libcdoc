@@ -362,7 +362,6 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
     picojson::value rsp_json;
     picojson::parse(rsp_json, rsp.body);
     std::string nonce_str = rsp_json.get("nonce").get<std::string>();
-    //std::vector<uint8_t> nonce = fromBase64(nonce_str);
     dst.assign(nonce_str.cbegin(), nonce_str.cend());
     return OK;
 }
