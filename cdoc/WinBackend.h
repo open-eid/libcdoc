@@ -33,6 +33,14 @@ namespace libcdoc {
  * then call useKey to load the key.
  */
 struct CDOC_EXPORT WinBackend : public CryptoBackend {
+    /**
+     * @brief Load the actual private key
+     * 
+     * Loads the key internally for subsequent cryptographic operations.
+     * @param name the name of key
+     * @param pin key pin
+     * @return result_t error code ot OK
+     */
     result_t useKey(const std::string& name, const std::string& pin);
 
     /**
