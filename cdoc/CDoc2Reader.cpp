@@ -259,7 +259,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				setLastError(signer.error);
+				last_error = signer.error;
 			} else {
 				cert = std::move(signer.cert);
 			}
@@ -275,7 +275,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				setLastError(signer.error);
+				last_error = signer.error;
 			} else {
 				cert = std::move(signer.cert);
 			}
