@@ -58,7 +58,7 @@ public:
     libcdoc::DataSource *dsrc = nullptr;
     bool src_owned = false;
     std::string mime, method;
-	std::vector<libcdoc::Lock *> locks;
+    std::vector<Lock> locks;
     std::map<std::string,std::string> properties;
 
     std::vector<DDOCReader::File> files;
@@ -67,21 +67,14 @@ public:
 
     ~Private()
     {
-        // Free memory allocated for locks
-        for (libcdoc::Lock* lock : locks) {
-            delete lock;
-        }
-        locks.clear();
         if (src_owned) delete dsrc;
     }
 };
 
-const std::vector<libcdoc::Lock>
+const std::vector<Lock>&
 CDoc1Reader::getLocks()
 {
-	std::vector<libcdoc::Lock> locks;
-	for (libcdoc::Lock *l : d->locks) locks.push_back(*l);
-	return locks;
+    return d->locks;
 }
 
 libcdoc::result_t
@@ -90,19 +83,19 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
     if (!SUPPORTED_METHODS.contains(d->method)) return libcdoc::NOT_SUPPORTED;
 	libcdoc::Certificate cc(cert);
     for (size_t i = 0; i < d->locks.size(); i++) {
-        const libcdoc::Lock *ll = d->locks.at(i);
-		if (!ll->isCDoc1()) continue;
-		std::vector<uint8_t> l_cert = ll->getBytes(libcdoc::Lock::Params::CERT);
-        if(l_cert != cert || ll->encrypted_fmk.empty()) continue;
+        const Lock &ll = d->locks.at(i);
+        if (!ll.isCDoc1()) continue;
+        std::vector<uint8_t> l_cert = ll.getBytes(Lock::Params::CERT);
+        if(l_cert != cert || ll.encrypted_fmk.empty()) continue;
         switch(cc.getAlgorithm()) {
         case libcdoc::Certificate::RSA:
-            if (ll->getString(libcdoc::Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
+            if (ll.getString(Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
             }
             break;
         case libcdoc::Certificate::ECC:
-            if(std::vector<uint8_t> eph_key = ll->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-                !eph_key.empty() && SUPPORTED_KWAES.contains(ll->getString(libcdoc::Lock::Params::METHOD))) {
+            if(std::vector<uint8_t> eph_key = ll.getBytes(Lock::Params::KEY_MATERIAL);
+                !eph_key.empty() && SUPPORTED_KWAES.contains(ll.getString(Lock::Params::METHOD))) {
                 return i;
             }
             break;
@@ -117,34 +110,34 @@ libcdoc::result_t
 CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
     if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
-    const libcdoc::Lock *lock = d->locks.at(lock_idx);
-    if (lock->type != libcdoc::Lock::Type::CDOC1) {
+    const Lock &lock = d->locks.at(lock_idx);
+    if (lock.type != Lock::Type::CDOC1) {
 		setLastError("Not a CDoc1 key");
         LOG_ERROR("{}", last_error);
 		return libcdoc::UNSPECIFIED_ERROR;
 	}
     setLastError({});
-    if (lock->isRSA()) {
-        int result = crypto->decryptRSA(fmk, lock->encrypted_fmk, false, lock_idx);
+    if (lock.isRSA()) {
+        int result = crypto->decryptRSA(fmk, lock.encrypted_fmk, false, lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
 			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
-        std::vector<uint8_t> eph_key = lock->getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
+        std::vector<uint8_t> eph_key = lock.getBytes(Lock::Params::KEY_MATERIAL);
         std::vector<uint8_t> key;
-        int result = crypto->deriveConcatKDF(key, eph_key, std::string(lock->getString(libcdoc::Lock::Params::CONCAT_DIGEST)),
-                                             lock->getBytes(libcdoc::Lock::Params::ALGORITHM_ID),
-                                             lock->getBytes(libcdoc::Lock::Params::PARTY_UINFO),
-                                             lock->getBytes(libcdoc::Lock::Params::PARTY_VINFO),
+        int result = crypto->deriveConcatKDF(key, eph_key, std::string(lock.getString(Lock::Params::CONCAT_DIGEST)),
+                                             lock.getBytes(Lock::Params::ALGORITHM_ID),
+                                             lock.getBytes(Lock::Params::PARTY_UINFO),
+                                             lock.getBytes(Lock::Params::PARTY_VINFO),
                                              lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
 			return libcdoc::CRYPTO_ERROR;
 		}
-        fmk = libcdoc::Crypto::AESWrap(key, lock->encrypted_fmk, false);
+        fmk = libcdoc::Crypto::AESWrap(key, lock.encrypted_fmk, false);
 	}
 	if (fmk.empty()) {
 		setLastError("Failed to decrypt/derive fmk");
@@ -346,9 +339,9 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 		// EncryptedData/KeyInfo/EncryptedKey
 		else if(reader.isElement("EncryptedKey"))
 		{
-			libcdoc::Lock *key =new libcdoc::Lock(libcdoc::Lock::Type::CDOC1);
+            Lock &key = d->locks.emplace_back(Lock::Type::CDOC1);
 			//key.id = reader.attribute("Id");
-			key->label = reader.attribute("Recipient");
+            key.label = reader.attribute("Recipient");
 			while(reader.read())
 			{
 				if(reader.isElement("EncryptedKey") && reader.isEndElement())
@@ -360,7 +353,7 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 				//	key.name = reader.readText();
 				// EncryptedData/KeyInfo/EncryptedKey/EncryptionMethod
 				else if(reader.isElement("EncryptionMethod"))
-					key->setString(libcdoc::Lock::Params::METHOD, reader.attribute("Algorithm"));
+                    key.setString(Lock::Params::METHOD, reader.attribute("Algorithm"));
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod
 				//else if(reader.isElement("AgreementMethod"))
 				//	key.agreement = reader.attribute("Algorithm");
@@ -370,24 +363,23 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod/ConcatKDFParams
 				else if(reader.isElement("ConcatKDFParams"))
 				{
-					key->setBytes(libcdoc::Lock::Params::ALGORITHM_ID, hex2bin(reader.attribute("AlgorithmID")));
-					key->setBytes(libcdoc::Lock::Params::PARTY_UINFO, hex2bin(reader.attribute("PartyUInfo")));
-					key->setBytes(libcdoc::Lock::Params::PARTY_VINFO, hex2bin(reader.attribute("PartyVInfo")));
+                    key.setBytes(Lock::Params::ALGORITHM_ID, hex2bin(reader.attribute("AlgorithmID")));
+                    key.setBytes(Lock::Params::PARTY_UINFO, hex2bin(reader.attribute("PartyUInfo")));
+                    key.setBytes(Lock::Params::PARTY_VINFO, hex2bin(reader.attribute("PartyVInfo")));
 				}
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod/ConcatKDFParams/DigestMethod
 				else if(reader.isElement("DigestMethod"))
-					key->setString(libcdoc::Lock::Params::CONCAT_DIGEST, reader.attribute("Algorithm"));
+                    key.setString(Lock::Params::CONCAT_DIGEST, reader.attribute("Algorithm"));
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/OriginatorKeyInfo/KeyValue/ECKeyValue/PublicKey
 				else if(reader.isElement("PublicKey"))
-					key->setBytes(libcdoc::Lock::Params::KEY_MATERIAL, reader.readBase64());
+                    key.setBytes(Lock::Params::KEY_MATERIAL, reader.readBase64());
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/X509Data/X509Certificate
 				else if(reader.isElement("X509Certificate"))
-					key->setCertificate(reader.readBase64());
+                    key.setCertificate(reader.readBase64());
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/CipherData/CipherValue
 				else if(reader.isElement("CipherValue"))
-					key->encrypted_fmk = reader.readBase64();
+                    key.encrypted_fmk = reader.readBase64();
 			}
-			d->locks.push_back(key);
 		}
 	}
 }

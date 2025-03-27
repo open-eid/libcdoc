@@ -203,7 +203,7 @@ objects, so they should be deleted by caller.
 The list of locks in file can be obtained by method:
 
 ```cpp
-const std::vector<Lock> getLocks()
+const std::vector<Lock>& getLocks()
 ```
 
 The order of locks is the same as in CDoc container and the 0-based index is used to refer to the lock in decryption methods.

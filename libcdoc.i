@@ -391,7 +391,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 // Custom wrapper do away with const qualifiers
 %extend libcdoc::CDocReader {
     std::vector<libcdoc::Lock> getLocks() {
-        static const std::vector<libcdoc::Lock> locks = $self->getLocks();
+        const std::vector<libcdoc::Lock> &locks = $self->getLocks();
         std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
         return std::move(p);
     }
