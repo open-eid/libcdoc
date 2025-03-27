@@ -499,28 +499,28 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 					return libcdoc::IO_ERROR;
 				}
 #endif
-				LOG_DBG("Share {} Transaction Id: {}", i, std::string((const char *) transaction_ids[i].data(), transaction_ids[i].size()));
-			}
-			std::vector<flatbuffers::Offset<cdoc20::recipients::KeyShare>> shares;
-			for (int i = 0; i < N_SHARES; i++) {
-				auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString((const char *)transaction_ids[i].data(), transaction_ids[i].size()));
-				shares.push_back(share);
-			}
-			auto fb_shares = builder.CreateVector(shares);
-			auto fb_capsule = cdoc20::recipients::CreateKeySharesCapsule(builder,
-																	  fb_shares,
-																	  builder.CreateVector(key_material_salt),
-																	  cdoc20::recipients::KeyShareRecipientType::SID_MID,
-																	  cdoc20::recipients::SharesScheme::N_OF_N,
-																	  builder.CreateString(RecipientInfo_i));
-			auto offset = cdoc20::header::CreateRecipientRecord(builder,
-														 cdoc20::header::Capsule::recipients_KeySharesCapsule,
-														 fb_capsule.Union(),
-														 builder.CreateString(rcpt.label),
-														 builder.CreateVector(xor_key),
-														 cdoc20::header::FMKEncryptionMethod::XOR);
-			fb_rcpts.push_back(offset);
-		} else {
+                LOG_DBG("Share {} Transaction Id: {}", i, std::string((const char *) transaction_ids[i].data(), transaction_ids[i].size()));
+            }
+            std::vector<flatbuffers::Offset<cdoc20::recipients::KeyShare>> shares;
+            for (int i = 0; i < N_SHARES; i++) {
+                auto share = cdoc20::recipients::CreateKeyShare(builder, builder.CreateString(urls[i]), builder.CreateString((const char *)transaction_ids[i].data(), transaction_ids[i].size()));
+                shares.push_back(share);
+            }
+            auto fb_shares = builder.CreateVector(shares);
+            auto fb_capsule = cdoc20::recipients::CreateKeySharesCapsule(builder,
+                                                                      fb_shares,
+                                                                      builder.CreateVector(key_material_salt),
+                                                                      cdoc20::recipients::KeyShareRecipientType::SID_MID,
+                                                                      cdoc20::recipients::SharesScheme::N_OF_N,
+                                                                      builder.CreateString(RecipientInfo_i));
+            auto offset = cdoc20::header::CreateRecipientRecord(builder,
+                                                         cdoc20::header::Capsule::recipients_KeySharesCapsule,
+                                                         fb_capsule.Union(),
+                                                         builder.CreateString(rcpt.label),
+                                                         builder.CreateVector(xor_key),
+                                                         cdoc20::header::FMKEncryptionMethod::XOR);
+            fb_rcpts.push_back(offset);
+        } else {
 			setLastError("Invalid recipient type");
 			LOG_ERROR("{}", last_error);
 			return libcdoc::UNSPECIFIED_ERROR;
