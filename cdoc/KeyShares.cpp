@@ -65,13 +65,15 @@ namespace libcdoc {
 /* Helper for JWT signing */
 struct JWTSigner {
     Signer *parent;
+    result_t *result;
+
     JWTSigner(Signer *_parent) : parent(_parent) {}
     std::string sign(const std::string& data, std::error_code& ec) const {
         LOG_DBG("Sign JWT: {}", data);
         std::vector<uint8_t> digest(32);
         SHA256((uint8_t *) data.c_str(), data.size(), digest.data());
         std::vector<uint8_t> dst;
-        parent->signDigest(dst, digest);
+        *result = parent->signDigest(dst, digest);
         return std::string((const char *) dst.data(), dst.size());
     }
     void verify(const std::string& data, const std::string& signature, std::error_code& ec) const {};
@@ -156,6 +158,8 @@ result_t
 Signer::generateTickets(std::vector<std::string>& dst, std::vector<ShareData>& shares)
 {
     JWTSigner jwtsig(this);
+    result_t result = OK;
+    jwtsig.result = &result;
 
     // Create list of individual disclosures
     std::vector<Disclosure> disclosures;
@@ -169,6 +173,7 @@ Signer::generateTickets(std::vector<std::string>& dst, std::vector<ShareData>& s
     LOG_DBG("Full disclosure: {}", aud.json);
 
     // Create and sign JWT container
+    error = {};
     picojson::array _sd({picojson::value(aud.getSHA256())});
 	std::string token = jwt::create()
 						   .set_type("vnd.cdoc2.auth-token.v1+sd-jwt")
@@ -178,6 +183,10 @@ Signer::generateTickets(std::vector<std::string>& dst, std::vector<ShareData>& s
 						   .set_payload_claim("_sd_alg", picojson::value("sha-256"))
 						   .sign(jwtsig);
     LOG_DBG("Token: {}", token);
+    if (result != OK) {
+        LOG_DBG("Jwt signing failed with code {}", result);
+        return result;
+    }
 
     // Append aud disclosure
     std::string jwt = token + "~" + toBase64URL(aud.json);
@@ -197,13 +206,16 @@ SIDSigner::signDigest(std::vector<uint8_t>& dst, const std::vector<uint8_t>& dig
 {
     LOG_DBG("SID signing: {}", toHex(digest));
 
-    network->signSID(dst, cert, url, rp_uuid, rp_name, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
+    result_t result = network->signSID(dst, cert, url, rp_uuid, rp_name, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
+    if (result != OK) {
+        error = network->getLastErrorStr(result);
+    }
 
     LOG_DBG("SID dignature:{}", toHex(dst));
     LOG_DBG("SID signatureB64:{}", toBase64URL(dst));
     LOG_DBG("SID certificateB64:{}", toBase64(cert));
     
-    return OK;
+    return result;
 }
 
 result_t
@@ -212,13 +224,16 @@ libcdoc::MIDSigner::signDigest(std::vector<uint8_t>& dst, const std::vector<uint
 
     LOG_DBG("MID signing: {}", toHex(digest));
 
-    network->signMID(dst, cert, url, rp_uuid, rp_name, phone, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
+    result_t result = network->signMID(dst, cert, url, rp_uuid, rp_name, phone, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
+    if (result != OK) {
+        error = network->getLastErrorStr(result);
+    }
 
     LOG_DBG("MID signature:{}", toHex(dst));
     LOG_DBG("MID signatureB64:{}", toBase64URL(dst));
     LOG_DBG("MID certificateB64:{}", toBase64(cert));
     
-    return OK;
+    return result;
 }
 
 } // namespace libcdoc

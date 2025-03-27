@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Collection;
 import java.util.HexFormat;
 import java.util.concurrent.locks.Lock;
@@ -34,7 +35,7 @@ public class CDocTool {
     public static void main(String[] args) {
         System.out.println("Starting app...");
 
-        String library = "../../build/libcdoc/libcdoc_java.jnilib";
+        String library = "../../build/macos/cdoc/libcdoc_javad.jnilib";
         Action action = Action.INVALID;
         ArrayList<String> files = new ArrayList<>();
         String label = null;
@@ -47,6 +48,10 @@ public class CDocTool {
         byte[] p11pin = null;
         byte[] p11id = null;
         String p11label = null;
+        // Keyshare parameters
+        String personal_code = null;
+        String server_id = null;
+        String[] servers = null;
     
         for (int i = 0; i < args.length; i++) {
             if (args[i].equals("test")) {
@@ -88,6 +93,26 @@ public class CDocTool {
                     System.exit(1);
                 }
                 password = args[i];
+            } else if (args[i].equals("--personal-code")) {
+                i += 1;
+                if (i >= args.length) {
+                    System.err.println("Invalid arguments");
+                    System.exit(1);
+                }
+                personal_code = args[i];
+            } else if (args[i].equals("--servers")) {
+                i += 1;
+                if (i >= args.length) {
+                    System.err.println("Invalid arguments");
+                    System.exit(1);
+                }
+                server_id = args[i];
+                i += 1;
+                if (i >= args.length) {
+                    System.err.println("Invalid arguments");
+                    System.exit(1);
+                }
+                servers = args[i].split(",");
             } else if (!args[i].startsWith("--")) {
                 files.add(args[i]);
             }
@@ -101,8 +126,10 @@ public class CDocTool {
             case ENCRYPT:
             if (certfile != null) {
                 encryptCertFile(out, label, certfile, files);
-            } else {
+            } else if (password != null) {
                 encrypt(out, label, password, files);
+            } else if (servers != null) {
+                encryptShares(out, label, personal_code, server_id, servers, files);
             }
                 break;
             case DECRYPT:
@@ -173,6 +200,49 @@ public class CDocTool {
             // Caught CDoc exception
         } catch (IOException exc) {
             // Caught CDoc exception
+        }
+    }
+
+    static void encryptShares(String file, String label, String personal_code, String server_id, String[] servers, Collection<String> files) {
+        System.out.println("Creating file " + file);
+        ToolConf conf = new ToolConf();
+        HashMap<String,Object> map = new HashMap<>();
+        // Put JSON list of server urls
+        StringBuilder bldr = new StringBuilder();
+        bldr.append("[");
+        for (int i = 0; i < servers.length; i++) {
+            if (i > 0) bldr.append(",");
+            bldr.append("\"");
+            bldr.append(servers[i]);
+            bldr.append("\"");
+        }
+        bldr.append("]");
+        map.put(Configuration.SHARE_SERVER_URLS, bldr.toString());
+        conf.values.put(server_id, map);
+        ToolCrypto crypto = new ToolCrypto();
+        NetworkBackend network = new NetworkBackend();
+        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, null);
+        try {
+            Recipient rcpt = Recipient.makeShare(label, server_id, "PNOEE-" + personal_code);
+            long result = wrtr.addRecipient(rcpt);
+            result = wrtr.beginEncryption();
+            System.out.format("beginEncryption: %d\n", result);
+            System.out.format("addRecipient: %d\n", result);
+            for (String name : files) {
+                System.out.format("Adding file %s\n", name);
+                InputStream ifs = new FileInputStream(name);
+                byte[] bytes = ifs.readAllBytes();
+                result = wrtr.addFile(name, bytes.length);
+                System.out.format("addFile: %d\n", result);
+                result = wrtr.writeData(bytes);
+                System.out.format("writeData: %d\n", result);
+            }
+            result = wrtr.finishEncryption();
+            System.out.format("finishEncryption: %d\n", result);
+        } catch (IOException exc) {
+            System.err.println("IO Exception: " + exc.getMessage());
+        } catch (CDocException exc) {
+                System.err.format("CDoc Exception %d: %s\n", exc.code, exc.getMessage());
         }
     }
 
@@ -290,6 +360,38 @@ public class CDocTool {
     }
 
     private static class ToolConf extends Configuration  {
+        public final HashMap<String,Object> values = new HashMap<>();
+
+        @Override
+        public String getValue(String domain, String param) {
+            HashMap<String,Object> map = values;
+            for (String str : map.keySet()) {
+                System.err.println("Key:" + str);
+            }
+            if ((domain != null) && !domain.isEmpty()) {
+                Object obj = map.get(domain);
+                if ((obj == null) || !(obj instanceof HashMap)) {
+                    System.err.format("%s is not a valid configuration domain\n", domain);
+                    System.exit(1);
+                }
+                map = (HashMap<String,Object>) obj;
+                for (String str : map.keySet()) {
+                    System.err.println("Key:" + str + " value " + map.get(str));
+                }
+            }
+            if (!map.containsKey(param)) {
+                System.err.format("No such parameter: %s\n", param);
+                return null;
+            }
+            Object obj = map.get(param);
+            if ((obj == null) || !(obj instanceof String)) {
+                System.err.format("%s is not a valid configuration entry\n", param);
+                System.exit(1);
+            }
+            String str = (String) obj;
+            System.err.format("Conf value: %s\n", str);
+            return str;
+        }
 
         public long test(DataBuffer dst) {
             System.err.println("ToolConf.test: Java subclass implementation");
