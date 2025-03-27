@@ -88,7 +88,7 @@ For more information refer [doc/intro.md](doc/intro.md) document.
 ### Windows
 
 1. Install dependencies and necessary tools from
-	* [Visual Studio Community 2019/2022](https://www.visualstudio.com/downloads/)
+	* [Visual Studio Community 2022](https://www.visualstudio.com/downloads/)
 	* [CMake](http://www.cmake.org)
 	* [vcpkg](https://vcpkg.io/)
 	* [Swig](http://swig.org/download.html) - Optional, for C#, Python and Java bindings
@@ -108,14 +108,6 @@ For more information refer [doc/intro.md](doc/intro.md) document.
         git clone https://github.com/open-eid/libcdoc.git
         cd libcdoc
 
-4. Configure
+4. Configure and Build
 
-        cmake --toolchain vcpkg/scripts/buildsystems/vcpkg.cmake `
-              -DVCPKG_TARGET_TRIPLET=x64-windows `
-              -DVCPKG_MANIFEST_FEATURES=tests `
-              -B build -S .
-
-    
-5. Build
-
-        cmake --build build
+        .\build.ps1
