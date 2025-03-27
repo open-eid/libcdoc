@@ -233,9 +233,9 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			LOG_DBG("Share {} url {}", id, url);
 
 			std::vector<uint8_t> nonce;
-            result_t result = network->fetchNonce(nonce, url, id);
+			result_t result = network->fetchNonce(nonce, url, id);
 			if (result != libcdoc::OK) {
-                setLastError(network->getLastErrorStr(result));
+				setLastError(network->getLastErrorStr(result));
 				LOG_ERROR("Cannot fetch nonce from server {}", url);
 				return result;
 			}
@@ -258,11 +258,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			std::string relyingPartyName = conf->getValue(Configuration::SID_DOMAIN, Configuration::RP_NAME);
 			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
-            if (result != OK) {
-                setLastError(signer.error);
-            } else {
-                cert = std::move(signer.cert);
-            }
+			if (result != OK) {
+				last_error = signer.error;
+			} else {
+				cert = std::move(signer.cert);
+			}
 		} else if (signer == "MOBILE_ID") {
 			// "https://sid.demo.sk.ee/smart-id-rp/v2"
 			std::string url = conf->getValue(Configuration::MID_DOMAIN, Configuration::BASE_URL);
@@ -274,11 +274,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			std::string phone = conf->getValue(Configuration::MID_DOMAIN, Configuration::PHONE_NUMBER);
 			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
-            if (result != OK) {
-                setLastError(signer.error);
-            } else {
-                cert = std::move(signer.cert);
-            }
+			if (result != OK) {
+				last_error = signer.error;
+			} else {
+				cert = std::move(signer.cert);
+			}
 		} else {
 			setLastError(t_("Unknown or missing signer type"));
 			LOG_ERROR("Unknown or missing signer type");
@@ -294,7 +294,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			NetworkBackend::ShareInfo share;
 			result = network->fetchShare(share, shares[i].base_url, shares[i].share_id, tickets[i], cert);
 			if (result != libcdoc::OK) {
-                setLastError(network->getLastErrorStr(result));
+				setLastError(network->getLastErrorStr(result));
 				LOG_ERROR("Cannot fetch share {}", i);
 				return result;
 			}
