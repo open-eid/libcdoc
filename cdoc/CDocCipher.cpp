@@ -352,7 +352,7 @@ int CDocCipher::Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipien
     }
 
     // Acquire the locks and get the labels according to the index
-    const vector<Lock> locks(rdr->getLocks());
+    const vector<Lock> &locks = rdr->getLocks();
     int lock_idx = idx_base_1 - 1;
     if (lock_idx < 0) {
         LOG_ERROR("Indexing of labels starts from 1");
@@ -394,7 +394,7 @@ int CDocCipher::Decrypt(ToolConf& conf, const std::string& label, const RcptInfo
 
     // Acquire the locks and get the labels according to the index
     int lock_idx = -1;
-    const vector<Lock> locks(rdr->getLocks());
+    const vector<Lock>& locks = rdr->getLocks();
     if (!label.empty()) {
         LOG_DBG("Looking for lock by label");
         for (unsigned int i = 0; i < locks.size(); i++) {
@@ -533,7 +533,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lo
     }
     LOG_DBG("Reader created");
 
-    const vector<Lock> locks(rdr->getLocks());
+    const vector<Lock>& locks = rdr->getLocks();
 
     int lock_idx = lock_idx_base_1 - 1;
     if (lock_idx < 0) {
@@ -665,10 +665,9 @@ void CDocCipher::Locks(const char* file) const
         LOG_ERROR("{} is not a valid CDoc file", file);
         return;
     }
-    const vector<Lock> locks(rdr->getLocks());
 
     int lock_id = 1;
-    for (const Lock& lock : locks) {
+    for (const Lock& lock : rdr->getLocks()) {
         map<string, string> parsed_label(Recipient::parseLabel(lock.label));
         if (parsed_label.empty()) {
             // Human-readable label
