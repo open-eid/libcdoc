@@ -112,7 +112,7 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
             return lock_idx;
 		}
 	}
-    setLastError("No lock found with certificate key");
+	setLastError("No lock found with certificate key");
     return libcdoc::NOT_FOUND;
 }
 
@@ -215,19 +215,19 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		/* url,share_id;url,share_id... */
         std::string all = lock.getString(Lock::SHARE_URLS);
 		std::vector<std::string> strs = split(all, ';');
-        if (strs.empty()){
-            setLastError("Lock does not contain server info");
-            LOG_ERROR("{}", last_error);
-            return libcdoc::DATA_FORMAT_ERROR;
-        }
+		if (strs.empty()){
+			setLastError("Lock does not contain server info");
+			LOG_ERROR("{}", last_error);
+			return libcdoc::DATA_FORMAT_ERROR;
+		}
 		std::vector<ShareData> shares;
 		for (auto& str : strs) {
 			std::vector<std::string> parts = split(str, ',');
-            if (parts.size() != 2) {
-                setLastError("Invalid server info in lock");
-                LOG_ERROR("{}", last_error);
-                return libcdoc::DATA_FORMAT_ERROR;
-            }
+			if (parts.size() != 2) {
+				setLastError("Invalid server info in lock");
+				LOG_ERROR("{}", last_error);
+				return libcdoc::DATA_FORMAT_ERROR;
+			}
 			std::string url = parts[0];
 			std::string id = parts[1];
 			LOG_DBG("Share {} url {}", id, url);
@@ -259,7 +259,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				last_error = signer.error;
+				setLastError(signer.error);
 			} else {
 				cert = std::move(signer.cert);
 			}
@@ -275,7 +275,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				last_error = signer.error;
+				setLastError(signer.error);
 			} else {
 				cert = std::move(signer.cert);
 			}
@@ -311,7 +311,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
 
 	if(kek.empty()) {
-        setLastError(t_("Failed to derive KEK"));
+		setLastError(t_("Failed to derive KEK"));
         LOG_ERROR("{}", last_error);
         return CRYPTO_ERROR;
 	}
@@ -416,31 +416,31 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 libcdoc::result_t
 CDoc2Reader::nextFile(std::string& name, int64_t& size)
 {
-    if (!priv->tar) {
+	if (!priv->tar) {
         setLastError("nextFile() called before beginDecryption()");
         LOG_ERROR("{}", last_error);
-            return libcdoc::WORKFLOW_ERROR;
-        }
-        result_t result = priv->tar->next(name, size);
-    if (result != OK) {
-        setLastError(priv->tar->getLastErrorStr(result));
-    }
-    return result;
+		return libcdoc::WORKFLOW_ERROR;
+	}
+	result_t result = priv->tar->next(name, size);
+	if (result != OK) {
+		setLastError(priv->tar->getLastErrorStr(result));
+	}
+	return result;
 }
 
 libcdoc::result_t
 CDoc2Reader::readData(uint8_t *dst, size_t size)
 {
-    if (!priv->tar) {
+	if (!priv->tar) {
         setLastError("readData() called before beginDecryption()");
         LOG_ERROR("{}", last_error);
-        return libcdoc::WORKFLOW_ERROR;
-    }
-    result_t result = priv->tar->read(dst, size);
-    if (result != OK) {
-        setLastError(priv->tar->getLastErrorStr(result));
-    }
-    return result;
+		return libcdoc::WORKFLOW_ERROR;
+	}
+	result_t result = priv->tar->read(dst, size);
+	if (result != OK) {
+		setLastError(priv->tar->getLastErrorStr(result));
+	}
+	return result;
 }
 
 libcdoc::result_t
@@ -455,9 +455,9 @@ CDoc2Reader::finishDecryption()
 
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
-        setLastError("Stream tag is invalid");
+		setLastError("Stream tag is invalid");
         LOG_ERROR("{}", last_error);
-        return HASH_MISMATCH;
+		return HASH_MISMATCH;
 	}
 	setLastError({});
 	priv->tar.reset();
