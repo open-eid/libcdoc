@@ -174,14 +174,14 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create a new symmetric key based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param kdf_iter the number of PBKDF iterations (0 if full key is provided)
      * @return a new Recipient structure
      */
 	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
     /**
      * @brief Create a new public key based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param public_key the public key value
      * @param pk_type the algorithm type (either ECC or RSA)
      * @return a new Recipient structure
@@ -189,7 +189,7 @@ struct CDOC_EXPORT Recipient {
     static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
     /**
      * @brief Create a new certificate based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param cert the certificate value (der-encoded)
      * @return a new Recipient structure
      */
@@ -203,7 +203,7 @@ struct CDOC_EXPORT Recipient {
     static Recipient makeEID(std::vector<uint8_t> cert);
     /**
      * @brief Create new server based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param public_key the public key value
      * @param pk_type the algorithm type (either ECC or RSA)
      * @param server_id the keyserver id
@@ -218,14 +218,23 @@ struct CDOC_EXPORT Recipient {
      * @return a new Recipient structure
      */
     static Recipient makeEIDServer(std::vector<uint8_t> cert, std::string server_id);
+    /**
+     * @brief Create new keyshare recipient
+     * 
+     * @param label the label text
+     * @param server_id the id of share server group
+     * @param recipient_id the recipient id (PNOEE-01234567890)
+     * @return Recipient a new Recipient structure
+     */
     static Recipient makeShare(const std::string& label, const std::string& server_id, const std::string& recipient_id);
 
     /**
      * @brief build machine-readable CDoc2 label
      * @param components a list of string pairs
+     * @param exp a expire date to added to label (if 0, no expire date is added)
      * @return a composed label
      */
-    static std::string buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components);
+    static std::string buildLabel(const std::vector<std::pair<std::string_view, std::string_view>> &components, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for EID recipient
      * @param version the label version
@@ -234,16 +243,18 @@ struct CDOC_EXPORT Recipient {
      * @param serial_number the serial number
      * @param last_name the last name
      * @param first_name the first name
+     * @param exp a expire date to added to label (if 0, no expire date is added)
      * @return a composed label
      */
-    static std::string BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name);
+    static std::string BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for EID recipient filling info from certificate
      * @see BuildLabelEID
      * @param cert the certificate value (der-encoded)
+     * @param exp a expire date to added to label (if 0, expire date is taken from certificate)
      * @return a composed label
      */
-    static std::string BuildLabelEID(const std::vector<uint8_t> &cert);
+    static std::string BuildLabelEID(const std::vector<uint8_t> &cert, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for certificate-based recipient
      * @param version the label version

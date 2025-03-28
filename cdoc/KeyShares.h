@@ -100,6 +100,11 @@ struct Signer {
      * 
      */
     std::vector<uint8_t> cert;
+    /**
+     * @brief The text of last error
+     * 
+     */
+    std::string error;
 protected:
     NetworkBackend *network;
     /**

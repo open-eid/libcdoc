@@ -181,9 +181,26 @@ libcdoc::CDocWriter::~CDocWriter()
 	if (owned) delete(dst);
 }
 
+static NetworkBackend *
+getDefaultNetworkBackend()
+{
+    static NetworkBackend *network = nullptr;
+    if (!network) network = new NetworkBackend();
+    return network;
+}
+
+static CryptoBackend *
+getDefaultCryptoBackend()
+{
+    static CryptoBackend *crypto = nullptr;
+    if (!crypto) crypto = new CryptoBackend();
+    return crypto;
+}
+
 libcdoc::CDocWriter *
 libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
+
 	CDocWriter *writer;
 	if (version == 1) {
 		writer = new CDoc1Writer(dst, take_ownership);
@@ -193,8 +210,8 @@ libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_owne
 		return nullptr;
 	}
     writer->conf = conf;
-	writer->crypto = crypto;
-	writer->network = network;
+	writer->crypto = crypto ? crypto : getDefaultCryptoBackend();
+	writer->network = network ? network : getDefaultNetworkBackend();
 	return writer;
 }
 
