@@ -113,17 +113,17 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 		}
 	}
 	setLastError("No lock found with certificate key");
-	return libcdoc::NOT_FOUND;
+    return libcdoc::NOT_FOUND;
 }
 
 libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
-	LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
-	LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
-	const Lock& lock = priv->locks.at(lock_idx);
-	std::vector<uint8_t> kek;
-	if (lock.type == Lock::Type::PASSWORD) {
+    LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
+    LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
+    const Lock& lock = priv->locks.at(lock_idx);
+    std::vector<uint8_t> kek;
+    if (lock.type == Lock::Type::PASSWORD) {
 		// Password
 		LOG_DBG("password");
 		std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
@@ -151,26 +151,26 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 	} else if ((lock.type == Lock::Type::PUBLIC_KEY) || (lock.type == Lock::Type::SERVER)) {
 		// Public/private key
 		std::vector<uint8_t> key_material;
-		if(lock.type == Lock::Type::SERVER) {
-			if(!conf) {
-				setLastError("Configuration is missing");
-				LOG_ERROR("{}", last_error);
-				return libcdoc::CONFIGURATION_ERROR;
-			}
-			if(!network) {
-				setLastError("Network backend is missing");
-				LOG_ERROR("{}", last_error);
-				return libcdoc::CONFIGURATION_ERROR;
-			}
-			std::string server_id = lock.getString(Lock::Params::KEYSERVER_ID);
-			std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
-			if (fetch_url.empty()) {
-				setLastError(FORMAT("No FETCH_URL found for server {}", server_id));
-				LOG_ERROR("{}", last_error);
-				return libcdoc::CONFIGURATION_ERROR;
-			}
-			std::string transaction_id = lock.getString(Lock::Params::TRANSACTION_ID);
-			int result = network->fetchKey(key_material, fetch_url, transaction_id);
+        if(lock.type == Lock::Type::SERVER) {
+            if(!conf) {
+                setLastError("Configuration is missing");
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            if(!network) {
+                setLastError("Network backend is missing");
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            std::string server_id = lock.getString(Lock::Params::KEYSERVER_ID);
+            std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
+            if (fetch_url.empty()) {
+                setLastError(fmt::format("No FETCH_URL found for server {}", server_id));
+                LOG_ERROR("{}", last_error);
+                return libcdoc::CONFIGURATION_ERROR;
+            }
+            std::string transaction_id = lock.getString(Lock::Params::TRANSACTION_ID);
+            int result = network->fetchKey(key_material, fetch_url, transaction_id);
 			if (result < 0) {
 				setLastError(network->getLastErrorStr(result));
 				return result;
@@ -259,7 +259,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				last_error = signer.error;
+				setLastError(signer.error);
 			} else {
 				cert = std::move(signer.cert);
 			}
@@ -275,7 +275,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
 			if (result != OK) {
-				last_error = signer.error;
+				setLastError(signer.error);
 			} else {
 				cert = std::move(signer.cert);
 			}
@@ -312,8 +312,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
 	if(kek.empty()) {
 		setLastError(t_("Failed to derive KEK"));
-		LOG_ERROR("{}", last_error);
-		return CRYPTO_ERROR;
+        LOG_ERROR("{}", last_error);
+        return CRYPTO_ERROR;
 	}
 	if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
 		setLastError(t_("Failed to decrypt/derive fmk"));
@@ -417,11 +417,11 @@ libcdoc::result_t
 CDoc2Reader::nextFile(std::string& name, int64_t& size)
 {
 	if (!priv->tar) {
-		setLastError("nextFile() called before beginDecryption()");
-		LOG_ERROR("{}", last_error);
-			return libcdoc::WORKFLOW_ERROR;
-		}
-		result_t result = priv->tar->next(name, size);
+        setLastError("nextFile() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
+		return libcdoc::WORKFLOW_ERROR;
+	}
+	result_t result = priv->tar->next(name, size);
 	if (result != OK) {
 		setLastError(priv->tar->getLastErrorStr(result));
 	}
@@ -432,8 +432,8 @@ libcdoc::result_t
 CDoc2Reader::readData(uint8_t *dst, size_t size)
 {
 	if (!priv->tar) {
-		setLastError("readData() called before beginDecryption()");
-		LOG_ERROR("{}", last_error);
+        setLastError("readData() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
 		return libcdoc::WORKFLOW_ERROR;
 	}
 	result_t result = priv->tar->read(dst, size);
@@ -456,7 +456,7 @@ CDoc2Reader::finishDecryption()
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
 		setLastError("Stream tag is invalid");
-		LOG_ERROR("{}", last_error);
+        LOG_ERROR("{}", last_error);
 		return HASH_MISMATCH;
 	}
 	setLastError({});
