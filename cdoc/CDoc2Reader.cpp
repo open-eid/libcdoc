@@ -112,6 +112,7 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
             return lock_idx;
 		}
 	}
+    setLastError("No lock found with certificate key");
     return libcdoc::NOT_FOUND;
 }
 
@@ -119,7 +120,7 @@ libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
     LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
-    LOG_DBG("CDoc2Reader::locks: {}", priv->locks.size());
+    LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
     const Lock& lock = priv->locks.at(lock_idx);
     std::vector<uint8_t> kek;
     if (lock.type == Lock::Type::PASSWORD) {
@@ -164,7 +165,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             std::string server_id = lock.getString(Lock::Params::KEYSERVER_ID);
             std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
             if (fetch_url.empty()) {
-                setLastError("Missing keyserver URL");
+                setLastError(FORMAT("No FETCH_URL found for server {}", server_id));
                 LOG_ERROR("{}", last_error);
                 return libcdoc::CONFIGURATION_ERROR;
             }
@@ -214,19 +215,27 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 		/* url,share_id;url,share_id... */
         std::string all = lock.getString(Lock::SHARE_URLS);
 		std::vector<std::string> strs = split(all, ';');
-		if (strs.empty()) return libcdoc::DATA_FORMAT_ERROR;
+        if (strs.empty()){
+            setLastError("Lock does not contain server info");
+            LOG_ERROR("{}", last_error);
+            return libcdoc::DATA_FORMAT_ERROR;
+        }
 		std::vector<ShareData> shares;
 		for (auto& str : strs) {
 			std::vector<std::string> parts = split(str, ',');
-			if (parts.size() != 2) return libcdoc::DATA_FORMAT_ERROR;
+            if (parts.size() != 2) {
+                setLastError("Invalid server info in lock");
+                LOG_ERROR("{}", last_error);
+                return libcdoc::DATA_FORMAT_ERROR;
+            }
 			std::string url = parts[0];
 			std::string id = parts[1];
 			LOG_DBG("Share {} url {}", id, url);
 
 			std::vector<uint8_t> nonce;
-			int64_t result = network->fetchNonce(nonce, url, id);
+            result_t result = network->fetchNonce(nonce, url, id);
 			if (result != libcdoc::OK) {
-				setLastError(t_("Cannot fetch nonce from server"));
+                setLastError(network->getLastErrorStr(result));
 				LOG_ERROR("Cannot fetch nonce from server {}", url);
 				return result;
 			}
@@ -249,7 +258,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			std::string relyingPartyName = conf->getValue(Configuration::SID_DOMAIN, Configuration::RP_NAME);
 			SIDSigner signer(url, relyingPartyUUID, relyingPartyName, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
-			if (result == OK) cert = std::move(signer.cert);
+            if (result != OK) {
+                setLastError(signer.error);
+            } else {
+                cert = std::move(signer.cert);
+            }
 		} else if (signer == "MOBILE_ID") {
 			// "https://sid.demo.sk.ee/smart-id-rp/v2"
 			std::string url = conf->getValue(Configuration::MID_DOMAIN, Configuration::BASE_URL);
@@ -261,14 +274,17 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			std::string phone = conf->getValue(Configuration::MID_DOMAIN, Configuration::PHONE_NUMBER);
 			MIDSigner signer(url, relyingPartyUUID, relyingPartyName, phone, rcpt_id, network);
 			result = signer.generateTickets(tickets, shares);
-			if (result == OK) cert = std::move(signer.cert);
+            if (result != OK) {
+                setLastError(signer.error);
+            } else {
+                cert = std::move(signer.cert);
+            }
 		} else {
 			setLastError(t_("Unknown or missing signer type"));
 			LOG_ERROR("Unknown or missing signer type");
 			return result;
 		}
 		if (result != libcdoc::OK) {
-			setLastError(t_("Cannot generate share tickets"));
 			LOG_ERROR("Cannot generate share tickets");
 			return result;
 		}
@@ -278,7 +294,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			NetworkBackend::ShareInfo share;
 			result = network->fetchShare(share, shares[i].base_url, shares[i].share_id, tickets[i], cert);
 			if (result != libcdoc::OK) {
-				setLastError(t_("Cannot fetch share"));
+                setLastError(network->getLastErrorStr(result));
 				LOG_ERROR("Cannot fetch share {}", i);
 				return result;
 			}
@@ -295,7 +311,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
 
 	if(kek.empty()) {
-		setLastError(t_("Failed to derive key"));
+        setLastError(t_("Failed to derive KEK"));
         LOG_ERROR("{}", last_error);
         return CRYPTO_ERROR;
 	}
@@ -400,15 +416,31 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 libcdoc::result_t
 CDoc2Reader::nextFile(std::string& name, int64_t& size)
 {
-	if (!priv->tar) return libcdoc::WORKFLOW_ERROR;
-	return priv->tar->next(name, size);
+    if (!priv->tar) {
+        setLastError("nextFile() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
+            return libcdoc::WORKFLOW_ERROR;
+        }
+        result_t result = priv->tar->next(name, size);
+    if (result != OK) {
+        setLastError(priv->tar->getLastErrorStr(result));
+    }
+    return result;
 }
 
 libcdoc::result_t
 CDoc2Reader::readData(uint8_t *dst, size_t size)
 {
-	if (!priv->tar) return libcdoc::WORKFLOW_ERROR;
-	return priv->tar->read(dst, size);
+    if (!priv->tar) {
+        setLastError("readData() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    result_t result = priv->tar->read(dst, size);
+    if (result != OK) {
+        setLastError(priv->tar->getLastErrorStr(result));
+    }
+    return result;
 }
 
 libcdoc::result_t
@@ -416,20 +448,20 @@ CDoc2Reader::finishDecryption()
 {
 	if (!priv->zsrc->isEof()) {
 		setLastError(t_("CDoc contains additional payload data that is not part of content"));
-        LOG_ERROR("{}", last_error);
+        LOG_WARN("{}", last_error);
 	}
 
     LOG_TRACE_KEY("tag: {}", priv->tgs->tag);
 
 	priv->cipher->setTag(priv->tgs->tag);
 	if (!priv->cipher->result()) {
-		setLastError("Stream tag id invalid");
+        setLastError("Stream tag is invalid");
         LOG_ERROR("{}", last_error);
-		return libcdoc::HASH_MISMATCH;
+        return HASH_MISMATCH;
 	}
 	setLastError({});
 	priv->tar.reset();
-    return libcdoc::OK;
+    return OK;
 }
 
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)

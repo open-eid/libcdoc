@@ -39,7 +39,7 @@ public:
     LogEngine(const LogEngine&) = delete;
     LogEngine(LogEngine&&) noexcept = delete;
 
-    void LogMessage(libcdoc::LogLevel level, const char* file, int line, const std::string& message) override
+    void LogMessage(libcdoc::ILogger::LogLevel level, const char* file, int line, const std::string& message) override
     {
         lock_guard<mutex> guard(loggers_protector);
         for (map<int, ILogger*>::const_reference logger : loggers)
@@ -82,17 +82,20 @@ static ILogger* cdoc_logger = &defaultLogEngine;
 
 // It is essential to define shared functions and variables with namespace. Otherwise, the linker won't find them.
 
-int STDCALL add_logger(ILogger* logger)
+int
+ILogger::addLogger(ILogger* logger)
 {
     return defaultLogEngine.AddLogger(logger);
 }
 
-ILogger* STDCALL remove_logger(int cookie)
+ILogger*
+ILogger::removeLogger(int cookie)
 {
     return defaultLogEngine.RemoveLogger(cookie);
 }
 
-ILogger* STDCALL get_logger()
+ILogger*
+ILogger::getLogger()
 {
     return cdoc_logger;
 }

@@ -24,18 +24,75 @@
 namespace libcdoc {
 
 struct CDOC_EXPORT NetworkBackend {
-	static constexpr int OK = 0;
-	static constexpr int NOT_IMPLEMENTED = -300;
-	static constexpr int INVALID_PARAMS = -301;
-	static constexpr int NETWORK_ERROR = -302;
+    /**
+     * @brief Generic network error
+     * 
+     */
+	static constexpr int NETWORK_ERROR = -300;
+    // MID/SID error codes
+    // User refused the session
+    static constexpr int MIDSID_USER_REFUSED = -350;
+    // There was a timeout, i.e. end user did not confirm or refuse the operation within given timeframe
+    static constexpr int MIDSID_TIMEOUT = -351;
+    // For some reason, this RP request cannot be completed. User must either check his/her Smart-ID mobile application or turn to customer support for getting the exact reason
+    static constexpr int MIDSID_DOCUMENT_UNUSABLE = -352;
+    // In case the multiple-choice verification code was requested, the user did not choose the correct verification code
+    static constexpr int MIDSID_WRONG_VC = -353;
+    // User app version does not support any of the allowedInteractionsOrder interactions
+    static constexpr int MIDSID_REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP = -354;
+    // User has multiple accounts and pressed Cancel on device choice screen on any device
+    static constexpr int MIDSID_USER_REFUSED_CERT_CHOICE = -355;
+    // User pressed Cancel on PIN screen. Can be from the most common displayTextAndPIN flow or from verificationCodeChoice flow when user chosen the right code and then pressed cancel on PIN screen
+    static constexpr int MIDSID_USER_REFUSED_DISPLAYTEXTANDPIN = -356;
+    // User cancelled verificationCodeChoice screen
+    static constexpr int MIDSID_USER_REFUSED_VC_CHOICE = -357;
+    // User cancelled on confirmationMessage screen
+    static constexpr int MIDSID_USER_REFUSED_CONFIRMATIONMESSAGE = -358;
+    // User cancelled on confirmationMessageAndVerificationCodeChoice screen
+    static constexpr int MIDSID_USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE = -359;
+    // Given user has no active certificates and is not MID client.
+    static constexpr int MIDSID_NOT_MID_CLIENT = -360;
+    // User cancelled the operation
+    static constexpr int MIDSID_USER_CANCELLED = -361;
+    // Mobile-ID configuration on user's SIM card differs from what is configured on service provider's side. User needs to contact his/her mobile operator.
+    static constexpr int MIDSID_SIGNATURE_HASH_MISMATCH = -362;
+    // Sim not available
+    static constexpr int MIDSID_PHONE_ABSENT = -363;
+    // SMS sending error
+    static constexpr int MIDSID_DELIVERY_ERROR = -364;
+    // Invalid response from card
+    static constexpr int MIDSID_SIM_ERROR = -365;
 
+    /**
+     * @brief Share information returned by server
+     * 
+     */
     struct CapsuleInfo {
+        /**
+         * @brief Transaction id needed to retrieve the key later
+         * 
+         */
         std::string transaction_id;
+        /**
+         * @brief Capsule exipry time on server
+         * 
+         */
         uint64_t expiry_time;
     };
-
+    /**
+     * @brief Share information returned by server
+     * 
+     */
     struct ShareInfo {
+        /**
+         * @brief Share value
+         * 
+         */
         std::vector<uint8_t> share;
+        /**
+         * @brief Recipoient id (etsi/PNOEE-01234567890)
+         * 
+         */
         std::string recipient;
     };
 
@@ -44,7 +101,13 @@ struct CDOC_EXPORT NetworkBackend {
     NetworkBackend(const NetworkBackend&) = delete;
     NetworkBackend& operator=(const NetworkBackend&) = delete;
     CDOC_DISABLE_MOVE(NetworkBackend);
-
+    /**
+     * @brief Get the textual description of the last error
+     * 
+     * The result is undefined if the error code does not match the most recent error
+     * @param code The error code
+     * @return std::string error description
+     */
 	virtual std::string getLastErrorStr(result_t code) const;
 
 	/**
@@ -127,7 +190,6 @@ struct CDOC_EXPORT NetworkBackend {
     virtual result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst, const std::string& url) {
         return getPeerTLSCertificates(dst);
     }
-
 
     /**
      * @brief sign TLS digest with client's private key

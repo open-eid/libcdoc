@@ -174,14 +174,14 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create a new symmetric key based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param kdf_iter the number of PBKDF iterations (0 if full key is provided)
      * @return a new Recipient structure
      */
 	static Recipient makeSymmetric(const std::string& label, int32_t kdf_iter);
     /**
      * @brief Create a new public key based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param public_key the public key value
      * @param pk_type the algorithm type (either ECC or RSA)
      * @return a new Recipient structure
@@ -189,7 +189,7 @@ struct CDOC_EXPORT Recipient {
     static Recipient makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type);
     /**
      * @brief Create a new certificate based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param cert the certificate value (der-encoded)
      * @return a new Recipient structure
      */
@@ -203,7 +203,7 @@ struct CDOC_EXPORT Recipient {
     static Recipient makeEID(std::vector<uint8_t> cert);
     /**
      * @brief Create new server based Recipient
-     * @param label a label value
+     * @param label the label text
      * @param public_key the public key value
      * @param pk_type the algorithm type (either ECC or RSA)
      * @param server_id the keyserver id
@@ -218,6 +218,14 @@ struct CDOC_EXPORT Recipient {
      * @return a new Recipient structure
      */
     static Recipient makeEIDServer(std::vector<uint8_t> cert, std::string server_id);
+    /**
+     * @brief Create new keyshare recipient
+     * 
+     * @param label the label text
+     * @param server_id the id of share server group
+     * @param recipient_id the recipient id (PNOEE-01234567890)
+     * @return Recipient a new Recipient structure
+     */
     static Recipient makeShare(const std::string& label, const std::string& server_id, const std::string& recipient_id);
 
     /**

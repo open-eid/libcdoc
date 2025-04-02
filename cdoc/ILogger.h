@@ -36,49 +36,48 @@ namespace libcdoc
 {
 
 /**
- * @brief Log-level enumeration to indicate severity of the log message.
- */
-enum LogLevel
-{
-    /**
-     * @brief Most critical level. Application is about to abort.
-     */
-    LogLevelFatal,
-
-    /**
-     * @brief Errors where functionality has failed or an exception have been caught.
-     */
-    LogLevelError,
-
-    /**
-     * @brief Warnings about validation issues or temporary failures that can be recovered.
-     */
-    LogLevelWarning,
-
-    /**
-     * @brief Information that highlights progress or application lifetime events.
-     */
-    LogLevelInfo,
-
-    /**
-     * @brief Debugging the application behavior from internal events of interest.
-     */
-    LogLevelDebug,
-
-    /**
-     * @brief Most verbose level. Used for development, NOP in production code.
-     */
-    LogLevelTrace
-};
-
-
-/**
  * @brief Generic interface to implement a logger.
  */
 class CDOC_EXPORT ILogger
 {
 public:
-    ILogger() : minLogLevel(LogLevelWarning) {}
+    /**
+     * @brief Log-level enumeration to indicate severity of the log message.
+     */
+    enum LogLevel
+    {
+        /**
+         * @brief Most critical level. Application is about to abort.
+         */
+        LEVEL_FATAL,
+
+        /**
+         * @brief Errors where functionality has failed or an exception have been caught.
+         */
+        LEVEL_ERROR,
+
+        /**
+         * @brief Warnings about validation issues or temporary failures that can be recovered.
+         */
+        LEVEL_WARNING,
+
+        /**
+         * @brief Information that highlights progress or application lifetime events.
+         */
+        LEVEL_INFO,
+
+        /**
+         * @brief Debugging the application behavior from internal events of interest.
+         */
+        LEVEL_DEBUG,
+
+        /**
+         * @brief Most verbose level. Used for development, NOP in production code.
+         */
+        LEVEL_TRACE
+    };
+
+    ILogger() : minLogLevel(LEVEL_WARNING) {}
     virtual ~ILogger() {}
 
     /**
@@ -109,6 +108,26 @@ public:
      */
     void SetMinLogLevel(LogLevel level) noexcept { minLogLevel = level; }
 
+    /**
+     * @brief Adds ILogger implementation to logging queue.
+     * @param logger Logger's instance to be added.
+     * @return Unique cookie identifying the logger's instance in the logging queue.
+     */
+    static int addLogger(ILogger* logger);
+
+    /**
+     * @brief Removes logger's instance from the logging queue.
+     * @param cookie Unique cookie returned by the add_logger function when the logger was added.
+     * @return Pointer to ILogger object that is removed. It's up to user to free the resources.
+     */
+    static ILogger* removeLogger(int cookie);
+
+    /**
+     * @brief Returns global logger's instance.
+     * @return Global logger's instance.
+     */
+    static ILogger* getLogger();
+
 protected:
     /**
      * @brief Minimum level of log messages to log.
@@ -116,38 +135,18 @@ protected:
     LogLevel minLogLevel;
 };
 
-/**
- * @brief Adds ILogger implementation to logging queue.
- * @param logger Logger's instance to be added.
- * @return Unique cookie identifying the logger's instance in the logging queue.
- */
-CDOC_EXPORT int STDCALL add_logger(ILogger* logger);
-
-/**
- * @brief Removes logger's instance from the logging queue.
- * @param cookie Unique cookie returned by the add_logger function when the logger was added.
- * @return Pointer to ILogger object that is removed. It's up to user to free the resources.
- */
-CDOC_EXPORT ILogger* STDCALL remove_logger(int cookie);
-
-/**
- * @brief Returns global logger's instance.
- * @return Global logger's instance.
- */
-CDOC_EXPORT ILogger* STDCALL get_logger();
-
-#define LOG(l,...) get_logger()->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_ERROR(...) get_logger()->LogMessage(libcdoc::LogLevelError, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_WARN(...) get_logger()->LogMessage(libcdoc::LogLevelWarning, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_INFO(...) get_logger()->LogMessage(libcdoc::LogLevelInfo, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_DBG(...) get_logger()->LogMessage(libcdoc::LogLevelDebug, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG(l,...) ILogger::getLogger()->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_ERROR(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_ERROR, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_WARN(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_WARNING, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_INFO(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_INFO, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_DBG(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_DEBUG, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
 #define LOG_TRACE_KEY(MSG, KEY)
 #else
-#define LOG_TRACE(...) get_logger()->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_TRACE_KEY(MSG, KEY) get_logger()->LogMessage(libcdoc::LogLevelTrace, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
+#define LOG_TRACE(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_TRACE_KEY(MSG, KEY) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
 #endif
 
 }

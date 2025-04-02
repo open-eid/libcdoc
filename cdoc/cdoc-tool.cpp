@@ -585,8 +585,8 @@ int main(int argc, char *argv[])
 
     // Add console logger by default
     ConsoleLogger console_logger;
-    console_logger.SetMinLogLevel(LogLevelDebug);
-    int cookie = add_logger(&console_logger);
+    console_logger.SetMinLogLevel(ILogger::LEVEL_DEBUG);
+    int cookie = ILogger::addLogger(&console_logger);
 
     string_view command(argv[1]);
     LOG_INFO("Command: {}", command);
@@ -610,6 +610,6 @@ int main(int argc, char *argv[])
         print_usage(cout);
     }
 
-    remove_logger(cookie);
+    ILogger::removeLogger(cookie);
     return retVal;
 }

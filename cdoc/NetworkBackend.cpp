@@ -41,12 +41,6 @@
 #include <Windows.h>
 #endif
 
-#define keyserver_id "00000000-0000-0000-0000-000000000000";
-#define GET_HOST "cdoc2-keyserver.test.riaint.ee"
-#define GET_PORT 8444
-#define POST_HOST "cdoc2-keyserver.test.riaint.ee"
-#define POST_PORT 8443
-
 using namespace std::literals::chrono_literals;
 
 using EC_KEY_sign = int (*)(int type, const unsigned char *dgst, int dlen, unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey);
@@ -99,23 +93,67 @@ struct Private {
     }
 };
 
+struct MIDSIDResultData {
+    int code;
+    std::string_view str;
+    std::string_view desc;
+};
+
+static constexpr auto midsid_results = std::to_array<MIDSIDResultData>({
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED, "USER_REFUSED", "User refused the session"},
+    {libcdoc::NetworkBackend::MIDSID_TIMEOUT, "TIMEOUT", "User did not confirm action within the timeframe"},
+    {libcdoc::NetworkBackend::MIDSID_DOCUMENT_UNUSABLE, "DOCUMENT_UNUSABLE", "Smart document unusable, please contact Smart ID customer support"},
+    {libcdoc::NetworkBackend::MIDSID_WRONG_VC, "WRONG_VC", "User chose a wrong Smart ID verification code"},
+    {libcdoc::NetworkBackend::MIDSID_REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP, "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP", "Smart ID app does not support current protocol"},
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED_CERT_CHOICE, "USER_REFUSED_CERT_CHOICE", "User refused certificate choice"},
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED_DISPLAYTEXTANDPIN, "USER_REFUSED_DISPLAYTEXTANDPIN", "User canceled the PIN choice"},
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED_VC_CHOICE, "USER_REFUSED_VC_CHOICE", "User canceled the verification code choice"},
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED_CONFIRMATIONMESSAGE, "USER_REFUSED_CONFIRMATIONMESSAGE", "User refused the confirmation message"},
+    {libcdoc::NetworkBackend::MIDSID_USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE, "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE", "User refused the confirmation message and verification code choice"},
+    {libcdoc::NetworkBackend::MIDSID_NOT_MID_CLIENT, "NOT_MID_CLIENT", "User is not a Mobile ID client"},
+    {libcdoc::NetworkBackend::MIDSID_USER_CANCELLED, "USER_CANCELLED", "User canceled the Mobile ID operation"},
+    {libcdoc::NetworkBackend::MIDSID_SIGNATURE_HASH_MISMATCH, "SIGNATURE_HASH_MISMATCH", "SIM card signature mismatch, please contact the mobile provider"},
+    {libcdoc::NetworkBackend::MIDSID_PHONE_ABSENT, "PHONE_ABSENT", "SIM card is not available"},
+    {libcdoc::NetworkBackend::MIDSID_DELIVERY_ERROR, "DELIVERY_ERROR", "SMS sending error"},
+    {libcdoc::NetworkBackend::MIDSID_SIM_ERROR, "SIM_ERROR", "Invalid response from SIM card"}
+});
+
+static int
+parseMIDSIDResult(std::string_view str)
+{
+    if (str == "OK") return libcdoc::OK;
+    for (auto v : midsid_results) {
+        if (str == v.str) return v.code;
+    }
+    return libcdoc::UNSPECIFIED_ERROR;
+}
+
+static std::string_view
+getMIDSIDDescription(libcdoc::result_t code)
+{
+    for (auto v : midsid_results) {
+        if (code == v.code) return v.desc;
+    }
+    return {};
+}
+
+thread_local std::string error;
 
 std::string
 libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
 {
+    if (!error.empty()) return error;
 	switch (code) {
-	case OK:
-		return "";
-	case NOT_IMPLEMENTED:
-		return "NetworkBackend: Method not implemented";
-	case INVALID_PARAMS:
-		return "NetworkBackend: Invalid parameters";
+    case OK:
+        return {};
 	case NETWORK_ERROR:
 		return "NetworkBackend: Network error";
 	default:
 		break;
 	}
-	return "Internal error";
+    std::string_view str = getMIDSIDDescription(code);
+    if (!str.empty()) return std::string(str);
+    return libcdoc::getErrorStr(code);
 }
 
 #if LIBCDOC_TESTING
@@ -126,6 +164,83 @@ libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
     return OK;
 }
 #endif
+
+//
+// Set peer certificate(s) for given server url
+//
+static libcdoc::result_t
+setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, const std::string& url)
+{
+    std::vector<std::vector<uint8_t>> certs;
+    libcdoc::result_t result = network->getPeerTLSCertificates(certs, url);
+    if (result != libcdoc::OK) {
+        error = FORMAT("Cannot get peer certificate list: {}", result);
+        return result;
+    }
+    if (!certs.empty()) {
+        SSL_CTX *ctx = cli.ssl_context();
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
+        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
+        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
+        for (const std::vector<uint8_t>& c : certs) {
+            auto x509 = libcdoc::Crypto::toX509(c);
+            if (!x509) return libcdoc::CRYPTO_ERROR;
+            X509_STORE_add_cert(store, x509.get());
+        }
+        cli.enable_server_certificate_verification(true);
+        cli.enable_server_hostname_verification(true);
+    } else {
+        // TODO: Allow only if global parameter is set
+        cli.enable_server_certificate_verification(false);
+        cli.enable_server_hostname_verification(false);
+    }
+    return libcdoc::OK;
+}
+
+//
+// Post request and fetch response
+//
+static libcdoc::result_t
+post(httplib::SSLClient& cli, const std::string& path, const std::string& req, httplib::Response& rsp)
+{
+    // Capture TLS and HTTP errors
+    httplib::Result res = cli.Post(path, req, "application/json");
+    if (!res) {
+        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        return libcdoc::NetworkBackend::NETWORK_ERROR;
+    }
+    int status = res->status;
+    if ((status < 200) || (status >= 300)) {
+        error = FORMAT("Http status {}", status);
+        return libcdoc::NetworkBackend::NETWORK_ERROR;
+    }
+    rsp = res.value();
+    error = {};
+    return libcdoc::OK;
+}
+
+//
+// Get url and fetch JSON response
+//
+static libcdoc::result_t
+get(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path, picojson::value& rsp_json)
+{
+    // Capture TLS and HTTP errors
+    httplib::Result res = cli.Get(path, hdrs);
+    if (!res) {
+        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        return libcdoc::NetworkBackend::NETWORK_ERROR;
+    }
+    httplib::Response rsp = res.value();
+    auto status = rsp.status;
+    if ((status < 200) || (status >= 300)) {
+        error = FORMAT("Http status {}", status);
+        return libcdoc::NetworkBackend::NETWORK_ERROR;
+    }
+    picojson::parse(rsp_json, rsp.body);
+    error = {};
+    return libcdoc::OK;
+}
 
 libcdoc::result_t
 libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
@@ -145,38 +260,25 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     if (path == "/") path.clear();
 
     httplib::SSLClient cli(host, port);
-
-    std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
     std::string full = path + "/key-capsules";
-    httplib::Result res = cli.Post(full, req_str, "application/json");
-    if (!res) return NETWORK_ERROR;
-    auto status = res->status;
-    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+    httplib::Response rsp;
+    result = post(cli, full, req_str, rsp);
+    if (result != libcdoc::OK) return result;
 
-    httplib::Response rsp = res.value();
     std::string location = rsp.get_header_value("Location");
-    if (location.empty()) return libcdoc::IO_ERROR;
+    if (location.empty()) {
+        error = FORMAT("No Location header in response");
+        return NETWORK_ERROR;
+    }
+    error = {};
+
     /* Remove /key-capsules/ */
     dst.transaction_id = location.substr(14);
 
+    // Calculate expiry time
     auto now = std::chrono::system_clock::now();
     // Get a days-precision chrono::time_point
     auto sd = floor<std::chrono::days>(now);
@@ -217,44 +319,22 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
     if (result != libcdoc::OK) return result;
     if (path == "/") path.clear();
 
-    LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
-    std::vector<std::vector<uint8_t>> certs;
-    LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        LOG_DBG("Loading certs");
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        LOG_WARN("Share servers' certificate list is empty");
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
-
-    // Build url and send request
     std::string full = path + "/key-shares";
-    LOG_DBG("Full url: {}", full);
-    httplib::Result res = cli.Post(full, req_str, "application/json");
-    if (!res) return NETWORK_ERROR;
-    auto status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+    httplib::Response rsp;
+    result = post(cli, full, req_str, rsp);
+    if (result != libcdoc::OK) return result;
 
-    httplib::Response rsp = res.value();
     std::string location = rsp.get_header_value("Location");
-    LOG_DBG("Location: {}", location);
-    if (location.empty()) return libcdoc::IO_ERROR;
+    if (location.empty()) {
+        error = FORMAT("No Location header in response");
+        return NETWORK_ERROR;
+    }
+    error = {};
+
     /* Remove /key-shares/ */
     dst.assign(location.cbegin() + 12, location.cend());
     LOG_DBG("Share: {}", std::string((const char *) dst.data(), dst.size()));
@@ -278,36 +358,23 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     if (!cert.empty() && (!d->x509 || !d->pkey)) return CRYPTO_ERROR;
 
     httplib::SSLClient cli(host, port, d->x509.get(), d->pkey);
-
-    std::vector<std::vector<uint8_t>> certs;
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
     std::string full = path + "/key-capsules/" + transaction_id;
-    httplib::Result res = cli.Get(full);
-    if (!res) return NETWORK_ERROR;
-    httplib::Response rsp = res.value();
-    auto status = rsp.status;
-    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
+    httplib::Headers hdrs;
     picojson::value rsp_json;
-    picojson::parse(rsp_json, rsp.body);
-    std::string ks = rsp_json.get("ephemeral_key_material").get<std::string>();
-    std::vector<uint8_t> key_material = Crypto::decodeBase64((const uint8_t *) ks.c_str());
+    result = get(cli, hdrs, full, rsp_json);
+    if (result != libcdoc::OK) return result;
+
+    picojson::value v = rsp_json.get("ephemeral_key_material");
+    if (!v.is<std::string>()) {
+        error = FORMAT("No 'ephemeral_key_material' in response");
+        return NETWORK_ERROR;
+    }
+    error = {};
+    std::string ks = v.get<std::string>();
+    std::vector<uint8_t> key_material = fromBase64(ks);
     dst.assign(key_material.cbegin(), key_material.cend());
 
     return libcdoc::OK;
@@ -326,42 +393,23 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
-    std::vector<std::vector<uint8_t>> certs;
-    LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        LOG_DBG("Loading certs");
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        LOG_WARN("Share servers' certificate list is empty");
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
-
-    // Build url and send request
     std::string full = path + "/key-shares/" + share_id + "/nonce";
-    LOG_DBG("Nonce url: {}", full);
-    httplib::Result res = cli.Post(full, "", "application/json");
-    if (!res) return NETWORK_ERROR;
-    auto status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
-    httplib::Response rsp = res.value();
+    httplib::Response rsp;
+    result = post(cli, full, "", rsp);
+    if (result != libcdoc::OK) return result;
+
     LOG_DBG("Response: {}", rsp.body);
     picojson::value rsp_json;
     picojson::parse(rsp_json, rsp.body);
-    std::string nonce_str = rsp_json.get("nonce").get<std::string>();
+    picojson::value v = rsp_json.get("nonce");
+    if (!v.is<std::string>()) {
+        error = FORMAT("No 'nonce' in response");
+        return NETWORK_ERROR;
+    }
+    std::string nonce_str = v.get<std::string>();
     dst.assign(nonce_str.cbegin(), nonce_str.cend());
     return OK;
 }
@@ -380,29 +428,9 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
 
-    std::vector<std::vector<uint8_t>> certs;
-    LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        LOG_DBG("Loading certs");
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        LOG_WARN("Share servers' certificate list is empty");
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
-    // Build url and send request
     std::string full = path + "/key-shares/" + share_id;
     LOG_DBG("Share url: {}", full);
     httplib::Headers hdrs;
@@ -411,18 +439,23 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     for (auto i = hdrs.cbegin(); i != hdrs.cend(); i++) {
         std::cerr << i->first << ": " << i->second << std::endl;
     }
-    httplib::Result res = cli.Get(full, hdrs);
-    if (!res) return NETWORK_ERROR;
-    auto status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return NETWORK_ERROR;
-    httplib::Response rsp = res.value();
-    LOG_DBG("Response: {}", rsp.body);
     picojson::value rsp_json;
-    picojson::parse(rsp_json, rsp.body);
-    std::string share64 = rsp_json.get("share").get<std::string>();
+    result = get(cli, hdrs, full, rsp_json);
+    if (result != libcdoc::OK) return result;
+
+    picojson::value v = rsp_json.get("share");
+    if (!v.is<std::string>()) {
+        error = FORMAT("No 'share' in response");
+        return NETWORK_ERROR;
+    }
+    std::string share64 = v.get<std::string>();
     LOG_DBG("Share64: {}", share64);
-    std::string recipient = rsp_json.get("recipient").get<std::string>();
+    v = rsp_json.get("recipient");
+    if (!v.is<std::string>()) {
+        error = FORMAT("No 'recipient' in response");
+        return NETWORK_ERROR;
+    }
+    std::string recipient = v.get<std::string>();
     std::vector<uint8_t> shareval = fromBase64(share64);
     shareval.resize(32);
     LOG_DBG("Share: {}", toHex(shareval));
@@ -493,55 +526,6 @@ libcdoc::NetworkBackend::showVerificationCode(unsigned int code)
 //
 
 struct SIDResponse {
-    // End result of the transaction
-    enum EndResult {
-        NONE,
-        // session was completed successfully, there is a certificate, document number and possibly signature in return structure
-        OK,
-        // user refused the session
-        USER_REFUSED,
-        // there was a timeout, i.e. end user did not confirm or refuse the operation within given timeframe
-        TIMEOUT,
-        // for some reason, this RP request cannot be completed. User must either check his/her Smart-ID mobile application or turn to customer support for getting the exact reason
-        DOCUMENT_UNUSABLE,
-        // in case the multiple-choice verification code was requested, the user did not choose the correct verification code
-        WRONG_VC,
-        // user app version does not support any of the allowedInteractionsOrder interactions
-        REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP,
-        // user has multiple accounts and pressed Cancel on device choice screen on any device
-        USER_REFUSED_CERT_CHOICE,
-        // user pressed Cancel on PIN screen. Can be from the most common displayTextAndPIN flow or from verificationCodeChoice flow when user chosen the right code and then pressed cancel on PIN screen
-        USER_REFUSED_DISPLAYTEXTANDPIN,
-        // user cancelled verificationCodeChoice screen
-        USER_REFUSED_VC_CHOICE,
-        // user cancelled on confirmationMessage screen
-        USER_REFUSED_CONFIRMATIONMESSAGE,
-        // user cancelled on confirmationMessageAndVerificationCodeChoice screen
-        USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE
-    };
-
-    static EndResult parseEndResult(std::string_view val) {
-        if (val == "OK") return OK;
-        if (val == "USER_REFUSED") return USER_REFUSED;
-        if (val == "TIMEOUT") return TIMEOUT;
-        if (val == "DOCUMENT_UNUSABLE") return DOCUMENT_UNUSABLE;
-        if (val == "WRONG_VC") return WRONG_VC;
-        if (val == "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP") return REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP;
-        if (val == "USER_REFUSED_CERT_CHOICE") return USER_REFUSED_CERT_CHOICE;
-        if (val == "USER_REFUSED_DISPLAYTEXTANDPIN") return USER_REFUSED_DISPLAYTEXTANDPIN;
-        if (val == "USER_REFUSED_VC_CHOICE") return USER_REFUSED_VC_CHOICE;
-        if (val == "USER_REFUSED_CONFIRMATIONMESSAGE") return USER_REFUSED_CONFIRMATIONMESSAGE;
-        if (val == "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE") return USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE;
-        return NONE;
-    }
-
-    struct Signature {
-        std::string value;
-    };
-
-    // End result of the transaction
-    EndResult endResult = NONE;
-
     // Signature value, base64 encoded
     std::string signature;
     // Signature algorithm, in the form of sha256WithRSAEncryption
@@ -553,174 +537,113 @@ struct SIDResponse {
 namespace libcdoc {
 
 static result_t
-waitForResult(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path, const std::string& session_id, double seconds)
+waitForResult(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path, const std::string& session_id, double seconds, bool is_sid)
 {
+    httplib::Headers hdrs;
+
     double end = libcdoc::getTime() + seconds;
     std::string full = path + session_id + "?timeoutMs=" + std::to_string((int) (seconds * 1000));
-    LOG_DBG("SID dession query path: {}", full);
+    LOG_DBG("SID/MID session query path: {}", full);
     while (libcdoc::getTime() < end) {
-        httplib::Result res = cli.Get(full);
-        if (!res) {
-            LOG_WARN("SID session query failed");
-            return UNSPECIFIED_ERROR;
-        }
-        auto status = res->status;
-        LOG_DBG("SID session query status: {}", status);
-        if ((status < 200) || (status >= 300)) return UNSPECIFIED_ERROR;
-        httplib::Response response = res.value();
-        LOG_DBG("SID session query response: {}", response.body);
-
         picojson::value rsp;
-        picojson::parse(rsp, response.body);
+        result_t result = get(cli, hdrs, full, rsp);
+        if (result != OK) return result;
         if (!rsp.is<picojson::object>()) {
-            LOG_WARN("Response is not a JSON object");
-            return UNSPECIFIED_ERROR;
+            error = "Response is not a JSON object";
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
         }
         // State
         picojson::value v = rsp.get("state");
         if (!v.is<std::string>()) {
-            LOG_WARN("State is not a string");
-            return UNSPECIFIED_ERROR;
+            error = "State is not a string";
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
         }
         std::string str = v.get<std::string>();
         if (str == "RUNNING") {
-            // Puse for 0.5 seconds and repeat
+            // Pause for 0.5 seconds and repeat
             std::chrono::milliseconds duration(500);
             std::this_thread::sleep_for(duration);
             continue;
         } else if (str != "COMPLETE") {
-            LOG_WARN("Invalid SmartID state: {}", str);
-            return UNSPECIFIED_ERROR;
+            error = FORMAT("Invalid SmartID state: {}", str);
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
         }
         // State is complete, check for end result
         v = rsp.get("result");
-        if (!v.is<picojson::object>()) {
-            LOG_WARN("Result is not a JSON object");
-            return UNSPECIFIED_ERROR;
+        picojson::value w;
+        if (is_sid) {
+            if (!v.is<picojson::object>()) {
+                error = "Result is not a JSON object";
+                LOG_WARN("{}", error);
+                return NetworkBackend::NETWORK_ERROR;
+            }
+            w = v.get("endResult");
+        } else {
+            w = v;
         }
-        picojson::value w = v.get("endResult");
         if (!w.is<std::string>()) {
-            LOG_WARN("EndResult is not a string");
-            return UNSPECIFIED_ERROR;
+            error = "EndResult is not a string";
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
         }
         str = w.get<std::string>();
-        dst.endResult = SIDResponse::parseEndResult(str);
-        if (dst.endResult != SIDResponse::OK) {
+        result = parseMIDSIDResult(str);
+        if (result == UNSPECIFIED_ERROR) {
+            // Unknown result
+            error = FORMAT("unknwon endResult value: {}", str);
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
+        } else if (result != OK) {
             LOG_WARN("EndResult is not OK: {}", str);
-            return UNSPECIFIED_ERROR;
+            return result;
         }
-        // End result is OK
+
         // Signature
         v = rsp.get("signature");
         if (v.is<picojson::object>()) {
             w = v.get("value");
             if (!w.is<std::string>()) {
-                LOG_WARN("value is not a string");
-                return UNSPECIFIED_ERROR;
+                error = "Value is not a string";
+                LOG_WARN("{}", error);
+                return NetworkBackend::NETWORK_ERROR;
             }
             dst.signature = w.get<std::string>();
             w = v.get("algorithm");
             if (!w.is<std::string>()) {
-                LOG_WARN("algorithm is not a string");
-                return UNSPECIFIED_ERROR;
+                error = "Algorithm is not a string";
+                LOG_WARN("{}", error);
+                return NetworkBackend::NETWORK_ERROR;
             }
             dst.algorithm = w.get<std::string>();
         }
         // Certificate
         v = rsp.get("cert");
-        if (v.is<picojson::object>()) {
+        if (is_sid) {
+            if (!v.is<picojson::object>()) {
+                error = "Certificate is not a JSON object";
+                LOG_WARN("{}", error);
+                return NetworkBackend::NETWORK_ERROR;
+            }
             w = v.get("value");
-            if (!w.is<std::string>()) {
-                LOG_WARN("value is not a string");
-                return UNSPECIFIED_ERROR;
-            }
-            dst.cert = v.get("value").get<std::string>();
+        } else {
+            w = rsp.get("cert");
         }
-        return OK;
-    }
-    // Timeout
-    return UNSPECIFIED_ERROR;
-}
-
-static result_t
-waitForResultMID(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path, const std::string& session_id, double seconds)
-{
-    double end = libcdoc::getTime() + seconds;
-    std::string full = path + session_id + "?timeoutMs=" + std::to_string((int) (seconds * 1000));
-    LOG_DBG("SID dession query path: {}", full);
-    while (libcdoc::getTime() < end) {
-        httplib::Result res = cli.Get(full);
-        if (!res) {
-            LOG_WARN("SID session query failed");
-            return UNSPECIFIED_ERROR;
-        }
-        auto status = res->status;
-        LOG_DBG("SID session query status: {}", status);
-        if ((status < 200) || (status >= 300)) return UNSPECIFIED_ERROR;
-        httplib::Response response = res.value();
-        LOG_DBG("SID session query response: {}", response.body);
-
-        picojson::value rsp;
-        picojson::parse(rsp, response.body);
-        if (!rsp.is<picojson::object>()) {
-            LOG_WARN("Response is not a JSON object");
-            return UNSPECIFIED_ERROR;
-        }
-        // State
-        picojson::value v = rsp.get("state");
-        if (!v.is<std::string>()) {
-            LOG_WARN("State is not a string");
-            return UNSPECIFIED_ERROR;
-        }
-        std::string str = v.get<std::string>();
-        if (str == "RUNNING") {
-            // Puse for 0.5 seconds and repeat
-            std::chrono::milliseconds duration(500);
-            std::this_thread::sleep_for(duration);
-            continue;
-        } else if (str != "COMPLETE") {
-            LOG_WARN("Invalid SmartID state: {}", str);
-            return UNSPECIFIED_ERROR;
-        }
-        // State is complete, check for end result
-        picojson::value w = rsp.get("result");
         if (!w.is<std::string>()) {
-            LOG_WARN("result is not a string");
-            return UNSPECIFIED_ERROR;
-        }
-        str = w.get<std::string>();
-        dst.endResult = SIDResponse::parseEndResult(str);
-        if (dst.endResult != SIDResponse::OK) {
-            LOG_WARN("Result is not OK: {}", str);
-            return UNSPECIFIED_ERROR;
-        }
-        // End result is OK
-        // Signature
-        v = rsp.get("signature");
-        if (v.is<picojson::object>()) {
-            w = v.get("value");
-            if (!w.is<std::string>()) {
-                LOG_WARN("value is not a string");
-                return UNSPECIFIED_ERROR;
-            }
-            dst.signature = w.get<std::string>();
-            w = v.get("algorithm");
-            if (!w.is<std::string>()) {
-                LOG_WARN("algorithm is not a string");
-                return UNSPECIFIED_ERROR;
-            }
-            dst.algorithm = w.get<std::string>();
-        }
-        // Certificate
-        w = rsp.get("cert");
-        if (!w.is<std::string>()) {
-            LOG_WARN("cert is not a string");
-            return UNSPECIFIED_ERROR;
+            error = "Certificate value is not a string";
+            LOG_WARN("{}", error);
+            return NetworkBackend::NETWORK_ERROR;
         }
         dst.cert = w.get<std::string>();
+        error = {};
+
         return OK;
     }
     // Timeout
+    error = "Timeout waiting SID/MID result";
+    LOG_WARN("{}", error);
     return UNSPECIFIED_ERROR;
 }
 
@@ -755,52 +678,30 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
-
-    std::vector<std::vector<uint8_t>> certs;
-    LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        LOG_DBG("Loading certs");
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        LOG_WARN("SmartID server's certificate list is empty");
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
     //
     // Let user choose certificate (if multiple)
     //
     std::string full = path + "/certificatechoice/" + rcpt_id;
     LOG_DBG("SmartID path: {}", full);
-    httplib::Result res = cli.Post(full, query.serialize(), "application/json");
-    if (!res) {
-        LOG_WARN("SmartID query failed");
-        return NetworkBackend::NETWORK_ERROR;
-    }
-    auto status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return UNSPECIFIED_ERROR;
-    httplib::Response rsp = res.value();
+    httplib::Response rsp;
+    result = post(cli, full, query.serialize(), rsp);
+    if (result != libcdoc::OK) return result;
+
+
     LOG_DBG("Response: {}", rsp.body);
     picojson::value v;
     picojson::parse(v, rsp.body);
     if (!v.is<picojson::object>()) {
+        error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
         return NetworkBackend::NETWORK_ERROR;
     }
     picojson::value w = v.get("sessionID");
     if (!w.is<std::string>()) {
+        error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
         return NetworkBackend::NETWORK_ERROR;
     }
@@ -808,11 +709,8 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("SessionID: {}", sessionID);
 
     SIDResponse sidrsp;
-    result = waitForResult(sidrsp, cli, path + "/session/", sessionID, 60);
-    if (result != OK) {
-        LOG_WARN("Wait for response failed: {}", result);
-        return result;
-    }
+    result = waitForResult(sidrsp, cli, path + "/session/", sessionID, 60, true);
+    if (result != OK) return result;
     LOG_DBG("Certificate: {}", sidrsp.cert);
 
     //
@@ -851,23 +749,18 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     full = path + "/authentication/" + rcpt_id;
     LOG_DBG("SmartID path: {}", full);
-    res = cli.Post(full, query.serialize(), "application/json");
-    if (!res) {
-        LOG_WARN("SmartID query failed");
-        return UNSPECIFIED_ERROR;
-    }
-    status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return UNSPECIFIED_ERROR;
-    rsp = res.value();
+    result = post(cli, full, query.serialize(), rsp);
+    if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
     picojson::parse(v, rsp.body);
     if (!v.is<picojson::object>()) {
+        error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
         return NetworkBackend::NETWORK_ERROR;
     }
     w = v.get("sessionID");
     if (!w.is<std::string>()) {
+        error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
         return NetworkBackend::NETWORK_ERROR;
     }
@@ -875,14 +768,10 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("SessionID: {}", sessionID);
 
     sidrsp = {};
-    result = waitForResult(sidrsp, cli, path + "/session/", sessionID, 60);
-    if (result != OK) {
-        LOG_WARN("Wait for response failed: {}", result);
-        return UNSPECIFIED_ERROR;
-    }
+    result = waitForResult(sidrsp, cli, path + "/session/", sessionID, 60, true);
+    if (result != OK) return result;
     LOG_DBG("Certificate: {}", sidrsp.cert);
     LOG_DBG("Signature: {}", sidrsp.signature);
-    LOG_DBG("Algorithm: {}", sidrsp.algorithm);
 
     dst = fromBase64(sidrsp.signature);
     cert = fromBase64(sidrsp.cert);
@@ -910,28 +799,8 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
-
-    std::vector<std::vector<uint8_t>> certs;
-    LOG_DBG("Fetching certs");
-    getPeerTLSCertificates(certs, buildURL(host, port));
-    if (!certs.empty()) {
-        LOG_DBG("Loading certs");
-        SSL_CTX *ctx = cli.ssl_context();
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-        X509_STORE *store = SSL_CTX_get_cert_store(ctx);
-        X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
-        for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = Crypto::toX509(c);
-            if (!x509) return CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
-        }
-        cli.enable_server_certificate_verification(true);
-        cli.enable_server_hostname_verification(true);
-    } else {
-        LOG_WARN("SmartID server's certificate list is empty");
-        cli.enable_server_certificate_verification(false);
-        cli.enable_server_hostname_verification(false);
-    }
+    result = setPeerCertificates(cli, this, buildURL(host, port));
+    if (result != OK) return result;
 
     //
     // Authenticate
@@ -940,7 +809,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     std::string algo_name = algo_names[(int) algo];
 
     // Generate code
-        unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
+    unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
     result = showVerificationCode(code);
     if (result != OK) return result;
 
@@ -963,41 +832,32 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     // Sign digest
     //
     std::string full = path + "/authentication";
-    LOG_DBG("SmartID path: {}", full);
-    httplib::Result res = cli.Post(full, query.serialize(), "application/json");
-    if (!res) {
-        LOG_WARN("SmartID query failed");
-        return UNSPECIFIED_ERROR;
-    }
-    auto status = res->status;
-    LOG_DBG("Status: {}", status);
-    if ((status < 200) || (status >= 300)) return UNSPECIFIED_ERROR;
-    httplib::Response rsp = res.value();
+    LOG_DBG("Mobile ID path: {}", full);
+    httplib::Response rsp;
+    result = post(cli, full, query.serialize(), rsp);
+    if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
+
     picojson::value v;
     picojson::parse(v, rsp.body);
     if (!v.is<picojson::object>()) {
-        LOG_WARN("Invalid SmartID response");
-        return NetworkBackend::NETWORK_ERROR;
+        error = "Invalid Mobile ID response";
+        LOG_WARN("Invalid Monbile ID response");
     }
     picojson::value w = v.get("sessionID");
     if (!w.is<std::string>()) {
-        LOG_WARN("Invalid SmartID response");
-        return NetworkBackend::NETWORK_ERROR;
+        error = "Invalid Mobile ID response";
+        LOG_WARN("Invalid Monbile ID response");
     }
     std::string sessionID  = w.get<std::string>();
     LOG_DBG("SessionID: {}", sessionID);
 
     SIDResponse sidrsp;
-    result = waitForResultMID(sidrsp, cli, path + "/authentication/session/", sessionID, 60);
-    if (result != OK) {
-        LOG_WARN("Wait for response failed: {}", result);
-        return UNSPECIFIED_ERROR;
-    }
+    result = waitForResult(sidrsp, cli, path + "/authentication/session/", sessionID, 60, false);
+    if (result != OK) return result;
 
     LOG_DBG("Certificate: {}", sidrsp.cert);
     LOG_DBG("Signature: {}", sidrsp.signature);
-    LOG_DBG("Algorithm: {}", sidrsp.algorithm);
 
     dst = fromBase64(sidrsp.signature);
     cert = fromBase64(sidrsp.cert);
