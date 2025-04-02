@@ -224,8 +224,8 @@ public class CDocTool {
         map.put(Configuration.SHARE_SERVER_URLS, bldr.toString());
         conf.values.put(server_id, map);
         ToolCrypto crypto = new ToolCrypto();
-        NetworkBackend network = new NetworkBackend();
-        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, null);
+        NetworkBackend network = new ToolNetwork();
+        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, network);
         try {
             Recipient rcpt = Recipient.makeShare(label, server_id, "PNOEE-" + personal_code);
             long result = wrtr.addRecipient(rcpt);
@@ -283,7 +283,8 @@ public class CDocTool {
     static void encryptCertFile(String file, String label, String certfile, Collection<String> files) {
         System.out.println("Creating file " + file);
         ToolConf conf = new ToolConf();
-        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, null);
+        ToolNetwork network = new ToolNetwork();
+        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, network);
         try {
             InputStream ifs = new FileInputStream(certfile);
             byte[] cert = ifs.readAllBytes();
@@ -447,6 +448,12 @@ public class CDocTool {
     }
 
     private static class ToolNetwork extends NetworkBackend {
+        @Override
+        public long getPeerTLSCertificates(CertificateList dst, String url) throws CDocException {
+            System.err.println("ToolNetwork.getPeerTLSCertificates: " + dst);
+            return CDoc.OK;
+        }
+
         @Override
         public long test(CertificateList dst) {
             System.err.println("ToolNetwork.test: Java subclass implementation");
