@@ -153,7 +153,7 @@ libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
 	}
     std::string_view str = getMIDSIDDescription(code);
 	if (!str.empty()) return std::string(str);
-    return "Internal error";
+    return libcdoc::getErrorStr(code);
 }
 
 #if LIBCDOC_TESTING
@@ -173,7 +173,10 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
 {
     std::vector<std::vector<uint8_t>> certs;
     libcdoc::result_t result = network->getPeerTLSCertificates(certs, url);
-    if (result != libcdoc::OK) return result;
+    if (result != libcdoc::OK) {
+        error = fmt::format("Cannot get peer certificate list: {}", result);
+        return result;
+    }
     if (!certs.empty()) {
         SSL_CTX *ctx = cli.ssl_context();
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);

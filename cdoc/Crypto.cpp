@@ -580,7 +580,7 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        get_logger()->LogMessage(LogLevelError, file, line, FORMAT("{} failed: {}", funcName, sslErrorStr));
+        ILogger::getLogger()->LogMessage(ILogger::ERROR, file, line, FORMAT("{} failed: {}", funcName, sslErrorStr));
 
         // Get next error code
         errorCode = ERR_get_error();

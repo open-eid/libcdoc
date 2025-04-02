@@ -122,6 +122,10 @@ public class CDocTool {
         System.load(lib.getAbsolutePath());
         System.out.println("Library loaded");
 
+        ConsoleLogger logger = new ConsoleLogger();
+        logger.SetMinLogLevel(ILogger.LogLevel.TRACE);
+        ILogger.addLogger(logger);
+
         switch (action) {
             case ENCRYPT:
             if (certfile != null) {

@@ -25,6 +25,7 @@
 #include "Configuration.h"
 #include "CDocWriter.h"
 #include "CDocReader.h"
+#include "ConsoleLogger.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "PKCS11Backend.h"
@@ -549,6 +550,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %feature("director") libcdoc::PKCS11Backend;
 %feature("director") libcdoc::NetworkBackend;
 %feature("director") libcdoc::Configuration;
+%feature("director") libcdoc::ILogger;
 #endif
 
 // Swig does not like visibility/declspec attributes
@@ -566,6 +568,8 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "PKCS11Backend.h"
+%include "ILogger.h"
+%include "ConsoleLogger.h"
 
 #ifdef SWIGJAVA
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{
