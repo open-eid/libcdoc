@@ -174,7 +174,7 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
     std::vector<std::vector<uint8_t>> certs;
     libcdoc::result_t result = network->getPeerTLSCertificates(certs, url);
     if (result != libcdoc::OK) {
-        error = fmt::format("Cannot get peer certificate list: {}", result);
+        error = FORMAT("Cannot get peer certificate list: {}", result);
         return result;
     }
     if (!certs.empty()) {
@@ -206,12 +206,12 @@ post(httplib::SSLClient& cli, const std::string& path, const std::string& req, h
     // Capture TLS and HTTP errors
     httplib::Result res = cli.Post(path, req, "application/json");
     if (!res) {
-        error = fmt::format("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     int status = res->status;
     if ((status < 200) || (status >= 300)) {
-        error = fmt::format("Http status {}", status);
+        error = FORMAT("Http status {}", status);
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     rsp = res.value();
@@ -228,13 +228,13 @@ get(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path, pi
     // Capture TLS and HTTP errors
     httplib::Result res = cli.Get(path, hdrs);
     if (!res) {
-        error = fmt::format("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     httplib::Response rsp = res.value();
     auto status = rsp.status;
     if ((status < 200) || (status >= 300)) {
-        error = fmt::format("Http status {}", status);
+        error = FORMAT("Http status {}", status);
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     picojson::parse(rsp_json, rsp.body);
@@ -270,7 +270,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
 
     std::string location = rsp.get_header_value("Location");
     if (location.empty()) {
-        error = fmt::format("No Location header in response");
+        error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
     error = {};
@@ -330,7 +330,7 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
 
     std::string location = rsp.get_header_value("Location");
     if (location.empty()) {
-        error = fmt::format("No Location header in response");
+        error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
     error = {};
@@ -369,7 +369,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
 
     picojson::value v = rsp_json.get("ephemeral_key_material");
     if (!v.is<std::string>()) {
-        error = fmt::format("No 'ephemeral_key_material' in response");
+        error = FORMAT("No 'ephemeral_key_material' in response");
         return NETWORK_ERROR;
     }
     error = {};
@@ -406,7 +406,7 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
     picojson::parse(rsp_json, rsp.body);
     picojson::value v = rsp_json.get("nonce");
     if (!v.is<std::string>()) {
-        error = fmt::format("No 'nonce' in response");
+        error = FORMAT("No 'nonce' in response");
         return NETWORK_ERROR;
     }
     std::string nonce_str = v.get<std::string>();
@@ -445,14 +445,14 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
 
     picojson::value v = rsp_json.get("share");
     if (!v.is<std::string>()) {
-        error = fmt::format("No 'share' in response");
+        error = FORMAT("No 'share' in response");
         return NETWORK_ERROR;
     }
     std::string share64 = v.get<std::string>();
     LOG_DBG("Share64: {}", share64);
     v = rsp_json.get("recipient");
     if (!v.is<std::string>()) {
-        error = fmt::format("No 'recipient' in response");
+        error = FORMAT("No 'recipient' in response");
         return NETWORK_ERROR;
     }
     std::string recipient = v.get<std::string>();
@@ -567,7 +567,7 @@ waitForResult(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path
             std::this_thread::sleep_for(duration);
             continue;
         } else if (str != "COMPLETE") {
-            error = fmt::format("Invalid SmartID state: {}", str);
+            error = FORMAT("Invalid SmartID state: {}", str);
             LOG_WARN("{}", error);
             return NetworkBackend::NETWORK_ERROR;
         }
@@ -593,7 +593,7 @@ waitForResult(SIDResponse& dst, httplib::SSLClient& cli, const std::string& path
         result = parseMIDSIDResult(str);
         if (result == UNSPECIFIED_ERROR) {
             // Unknown result
-            error = fmt::format("unknwon endResult value: {}", str);
+            error = FORMAT("unknwon endResult value: {}", str);
             LOG_WARN("{}", error);
             return NetworkBackend::NETWORK_ERROR;
         } else if (result != OK) {

@@ -165,7 +165,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             std::string server_id = lock.getString(Lock::Params::KEYSERVER_ID);
             std::string fetch_url = conf->getValue(server_id, libcdoc::Configuration::KEYSERVER_FETCH_URL);
             if (fetch_url.empty()) {
-                setLastError(fmt::format("No FETCH_URL found for server {}", server_id));
+                setLastError(FORMAT("No FETCH_URL found for server {}", server_id));
                 LOG_ERROR("{}", last_error);
                 return libcdoc::CONFIGURATION_ERROR;
             }
