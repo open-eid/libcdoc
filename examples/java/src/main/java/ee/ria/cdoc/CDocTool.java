@@ -123,7 +123,7 @@ public class CDocTool {
         System.out.println("Library loaded");
 
         ConsoleLogger logger = new ConsoleLogger();
-        logger.SetMinLogLevel(ILogger.LogLevel.TRACE);
+        logger.SetMinLogLevel(ILogger.LogLevel.LEVEL_TRACE);
         ILogger.addLogger(logger);
 
         switch (action) {

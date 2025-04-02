@@ -39,7 +39,7 @@ public:
         // We ignore by default the file name and line number, and call LogMessage with the level and message.
         if (level <= minLogLevel)
         {
-            std::ostream& ofs = (level == INFO) ? std::cout : std::cerr;
+            std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
             ofs << message << std::endl;
         }
     }

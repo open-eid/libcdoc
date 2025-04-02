@@ -49,35 +49,35 @@ public:
         /**
          * @brief Most critical level. Application is about to abort.
          */
-        FATAL,
+        LEVEL_FATAL,
 
         /**
          * @brief Errors where functionality has failed or an exception have been caught.
          */
-        ERROR,
+        LEVEL_ERROR,
 
         /**
          * @brief Warnings about validation issues or temporary failures that can be recovered.
          */
-        WARNING,
+        LEVEL_WARNING,
 
         /**
          * @brief Information that highlights progress or application lifetime events.
          */
-        INFO,
+        LEVEL_INFO,
 
         /**
          * @brief Debugging the application behavior from internal events of interest.
          */
-        DEBUG,
+        LEVEL_DEBUG,
 
         /**
          * @brief Most verbose level. Used for development, NOP in production code.
          */
-        TRACE
+        LEVEL_TRACE
     };
 
-    ILogger() : minLogLevel(WARNING) {}
+    ILogger() : minLogLevel(LEVEL_WARNING) {}
     virtual ~ILogger() {}
 
     /**
@@ -136,17 +136,17 @@ protected:
 };
 
 #define LOG(l,...) ILogger::getLogger()->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_ERROR(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::ERROR, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_WARN(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::WARNING, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_INFO(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::INFO, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_DBG(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::DEBUG, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_ERROR(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_ERROR, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_WARN(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_WARNING, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_INFO(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_INFO, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_DBG(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_DEBUG, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
 #define LOG_TRACE_KEY(MSG, KEY)
 #else
-#define LOG_TRACE(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::TRACE, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_TRACE_KEY(MSG, KEY) ILogger::getLogger()->LogMessage(libcdoc::ILogger::TRACE, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
+#define LOG_TRACE(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#define LOG_TRACE_KEY(MSG, KEY) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
 #endif
 
 }
