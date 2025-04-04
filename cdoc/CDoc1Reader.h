@@ -44,7 +44,7 @@ public:
 private:
 	CDoc1Reader(const CDoc1Reader &) = delete;
 	CDoc1Reader &operator=(const CDoc1Reader &) = delete;
-	std::vector<unsigned char> decryptData(const std::vector<unsigned char> &key);
+    libcdoc::result_t decryptData(const std::vector<uint8_t>& fmk, std::string& mime, std::vector<uint8_t>& data);
 	class Private;
 	Private *d;
 };
