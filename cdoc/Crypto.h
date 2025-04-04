@@ -57,7 +57,12 @@ public:
 	static constexpr std::string_view KWAES256_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes256";
 
 	static const std::string SHA256_MTH, SHA384_MTH, SHA512_MTH;
-	static const char *AES128CBC_MTH, *AES192CBC_MTH, *AES256CBC_MTH, *AES128GCM_MTH, *AES192GCM_MTH, *AES256GCM_MTH;
+    static constexpr std::string_view AES128CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes128-cbc";
+    static constexpr std::string_view AES192CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes192-cbc";
+    static constexpr std::string_view AES256CBC_MTH = "http://www.w3.org/2001/04/xmlenc#aes256-cbc";
+    static constexpr std::string_view AES128GCM_MTH = "http://www.w3.org/2009/xmlenc11#aes128-gcm";
+    static constexpr std::string_view AES192GCM_MTH = "http://www.w3.org/2009/xmlenc11#aes192-gcm";
+    static constexpr std::string_view AES256GCM_MTH = "http://www.w3.org/2009/xmlenc11#aes256-gcm";
 	static const std::string RSA_MTH, CONCATKDF_MTH, AGREEMENT_MTH;
 
     struct Key {
