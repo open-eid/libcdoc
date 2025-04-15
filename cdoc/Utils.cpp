@@ -56,7 +56,7 @@ getTime()
 }
 
 int
-parseURL(const std::string& url, std::string& host, int& port, std::string& path)
+parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash)
 {
     char *phost, *ppath;
     int pport;
@@ -77,6 +77,11 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
     path = ppath;
     OPENSSL_free(phost);
     OPENSSL_free(ppath);
+    if (end_with_slash) {
+        if (!path.ends_with('/')) path = path + '/';
+    } else {
+        if (!path.ends_with('/')) path.resize(path.size() - 1);
+    }
     return OK;
 }
 
