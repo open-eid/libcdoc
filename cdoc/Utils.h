@@ -117,7 +117,7 @@ readAllBytes(std::string_view filename)
     return readAllBytes(keyStream);
 }
 
-int parseURL(const std::string& url, std::string& host, int& port, std::string& path);
+int parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash = false);
 std::string buildURL(const std::string& host, int port);
 
 std::string urlEncode(std::string_view src);

@@ -46,7 +46,7 @@ enum {
      *
      * A pseudo-error that indicates that there are no more streams in MultiDataSource
      */
-    END_OF_STREAM = -1,
+    END_OF_STREAM = 1,
     /**
      * @brief A method is not implemented
      */
