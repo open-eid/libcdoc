@@ -34,8 +34,6 @@ struct XMLReader::Private
 	libcdoc::DataSource *_src = nullptr;
 	bool _delete_src = false;
 
-	xmlParserInputBufferPtr ibuf = nullptr;
-
 	std::string tostring(const xmlChar *tmp)
 	{
 		std::string result;
@@ -46,29 +44,14 @@ struct XMLReader::Private
 	}
 
 	static int xmlInputReadCallback (void *context, char *buffer, int len);
-	static int xmlInputCloseCallback (void *context);
 };
 
 int
 XMLReader::Private::xmlInputReadCallback (void *context, char *buffer, int len)
 {
-	XMLReader *reader = reinterpret_cast<XMLReader *>(context);
-    int64_t n_read = reader->d->_src->read((uint8_t *) buffer, len);
-    //std::string str(buffer, len);
-    //std::cerr << "XML read (" << n_read << "):" << str << std::endl;
-    return n_read;
-}
-
-int
-XMLReader::Private::xmlInputCloseCallback (void *context)
-{
-	XMLReader *reader = reinterpret_cast<XMLReader *>(context);
-	int result = ((reader->d->_src && !reader->d->_src->isError())) ? 0 : -1;
-	if (reader->d->_src && reader->d->_delete_src) {
-		delete reader->d->_src;
-		reader->d->_src = nullptr;
-	}
-	return result;
+    auto *d = reinterpret_cast<XMLReader::Private *>(context);
+    auto result = d->_src->read((uint8_t *) buffer, len);
+    return result >= 0 ? result : -1;
 }
 
 XMLReader::XMLReader(libcdoc::DataSource *src, bool delete_on_close)
@@ -76,8 +59,7 @@ XMLReader::XMLReader(libcdoc::DataSource *src, bool delete_on_close)
 {
 	d->_src = src;
 	d->_delete_src = delete_on_close;
-	d->ibuf = xmlParserInputBufferCreateIO(Private::xmlInputReadCallback, Private::xmlInputCloseCallback, this, XML_CHAR_ENCODING_UTF8);
-	d->reader = xmlNewTextReader(d->ibuf, "");
+    d->reader = xmlReaderForIO(Private::xmlInputReadCallback, nullptr, d, nullptr, nullptr, XML_PARSE_HUGE);
 }
 
 XMLReader::XMLReader(std::istream *ifs, bool delete_on_close)
@@ -100,7 +82,6 @@ XMLReader::XMLReader(const std::vector<uint8_t> &data)
 XMLReader::~XMLReader()
 {
 	xmlFreeTextReader(d->reader);
-	xmlFreeParserInputBuffer(d->ibuf);
 	if(d->_src && d->_delete_src) delete d->_src;
 	delete d;
 }

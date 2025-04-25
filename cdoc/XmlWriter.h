@@ -34,7 +34,6 @@ class XMLWriter
 public:
 	struct NS { std::string prefix, ns; };
 
-	XMLWriter(std::ostream *ofs);
 	XMLWriter(const std::string& path);
 	XMLWriter(std::vector<uint8_t>& vec);
 	XMLWriter(DataConsumer *dst);

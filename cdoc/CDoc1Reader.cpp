@@ -127,13 +127,14 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
-        std::vector<uint8_t> eph_key = lock.getBytes(Lock::Params::KEY_MATERIAL);
         std::vector<uint8_t> key;
-        int result = crypto->deriveConcatKDF(key, eph_key, lock.getString(Lock::Params::CONCAT_DIGEST),
-                                             lock.getBytes(Lock::Params::ALGORITHM_ID),
-                                             lock.getBytes(Lock::Params::PARTY_UINFO),
-                                             lock.getBytes(Lock::Params::PARTY_VINFO),
-                                             lock_idx);
+        int result = crypto->deriveConcatKDF(key,
+            lock.getBytes(Lock::Params::KEY_MATERIAL),
+            lock.getString(Lock::Params::CONCAT_DIGEST),
+            lock.getBytes(Lock::Params::ALGORITHM_ID),
+            lock.getBytes(Lock::Params::PARTY_UINFO),
+            lock.getBytes(Lock::Params::PARTY_VINFO),
+            lock_idx);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
