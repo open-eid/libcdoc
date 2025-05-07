@@ -4,12 +4,10 @@
 
 Most methods return `result_t` status value. It can be one of the following:
 
-- positive value - for read and write methods indicates success and the number of bytes read/written
 - OK (= 0) - indicates success
-- END_OF_STREAM (= -1) - indicates the end of file list in multi-file source
+- positive value - for read and write methods indicates success and the number of bytes read/written
+- END_OF_STREAM (= 1) - for `nextFile` methods indicates the end of file list in multi-file source
 - any error value (< -1) - failure
-
-The END_OF_STREAM can only be returned from `nextFile` methods. For all other methods any negative value indicates always an error.
 
 ## Encryption
 

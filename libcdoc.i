@@ -96,7 +96,7 @@
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{
 {
     long result = $jnicall;
-    if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr((int) result));
+    if (result < 0) throw new CDocException((int) result, this.getLastErrorStr((int) result));
     return result;
 }
 %}
@@ -574,13 +574,12 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 #ifdef SWIGJAVA
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{
-                                                            {
-                                                             long result = $jnicall;
-if (result < CDoc.END_OF_STREAM) throw new CDocException((int) result, this.getLastErrorStr());
-return result;
+{
+    long result = $jnicall;
+    if (result < 0) throw new CDocException((int) result, this.getLastErrorStr());
+    return result;
 }
 %}
-
 #endif
 
 %include "CDocReader.h"
