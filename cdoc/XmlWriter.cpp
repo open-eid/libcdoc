@@ -29,13 +29,12 @@ typedef const xmlChar *pcxmlChar;
 
 struct XMLWriter::Private
 {
-	xmlTextWriterPtr w = nullptr;
+	xmlTextWriterPtr w = xmlNewTextWriter(
+		xmlOutputBufferCreateIO(xmlOutputWriteCallback, xmlOutputCloseCallback, this, nullptr));
 	std::map<std::string, int> nsmap;
 
 	libcdoc::DataConsumer* dst = nullptr;
 	bool dst_owned = false;
-
-	xmlOutputBufferPtr obuf = nullptr;
 
 	static int xmlOutputWriteCallback (void *context, const char *buffer, int len);
 	static int xmlOutputCloseCallback (void *context);
@@ -44,62 +43,40 @@ struct XMLWriter::Private
 int
 XMLWriter::Private::xmlOutputWriteCallback (void *context, const char *buffer, int len)
 {
-	XMLWriter *writer = reinterpret_cast<XMLWriter *>(context);
-	return writer->d->dst->write((uint8_t *) buffer, len);
+	auto *d = reinterpret_cast<XMLWriter::Private *>(context);
+	return d->dst->write((uint8_t *) buffer, len);
 }
 
 int
 XMLWriter::Private::xmlOutputCloseCallback (void *context)
 {
-	XMLWriter *writer = reinterpret_cast<XMLWriter *>(context);
-	return writer->d->dst->close();
+	auto *d = reinterpret_cast<XMLWriter::Private *>(context);
+	return d->dst->close();
 }
 
 XMLWriter::XMLWriter(libcdoc::DataConsumer* dst)
 	: d(new Private)
 {
 	d->dst = dst;
-	d->obuf = xmlOutputBufferCreateIO(Private::xmlOutputWriteCallback,  Private::xmlOutputCloseCallback, this, nullptr);
-	d->w = xmlNewTextWriter(d->obuf);
-	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
-}
-
-
-XMLWriter::XMLWriter(std::ostream *ofs)
-	: d(new Private)
-{
-	d->dst = new libcdoc::OStreamConsumer(ofs);
-	d->dst_owned = true;
-	d->obuf = xmlOutputBufferCreateIO(Private::xmlOutputWriteCallback,  Private::xmlOutputCloseCallback, this, nullptr);
-	d->w = xmlNewTextWriter(d->obuf);
 	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
 }
 
 XMLWriter::XMLWriter(const std::string& path)
-	: d(new Private)
+	: XMLWriter(new libcdoc::OStreamConsumer(path))
 {
-	d->dst = new libcdoc::OStreamConsumer(path);
 	d->dst_owned = true;
-	d->obuf = xmlOutputBufferCreateIO(Private::xmlOutputWriteCallback,  Private::xmlOutputCloseCallback, this, nullptr);
-	d->w = xmlNewTextWriter(d->obuf);
-	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
 }
 
 XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
-	: d(new Private)
+	: XMLWriter(new libcdoc::VectorConsumer(vec))
 {
-	d->dst = new libcdoc::VectorConsumer(vec);
 	d->dst_owned = true;
-	d->obuf = xmlOutputBufferCreateIO(Private::xmlOutputWriteCallback,  Private::xmlOutputCloseCallback, this, nullptr);
-	d->w = xmlNewTextWriter(d->obuf);
-	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
 }
 
 XMLWriter::~XMLWriter()
 {
 	xmlTextWriterEndDocument(d->w);
 	xmlFreeTextWriter(d->w);
-	xmlOutputBufferClose(d->obuf);
 	if(d->dst && d->dst_owned) delete d->dst;
 	delete d;
 }
