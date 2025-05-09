@@ -4,7 +4,7 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 
-project(libcdoc VERSION 0.1.7)
+project(libcdoc VERSION 0.1.8)
 
 macro(SET_ENV NAME DEF)
     if(DEFINED ENV{${NAME}})
