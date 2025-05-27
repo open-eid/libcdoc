@@ -92,7 +92,7 @@ libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
     int version = getCDocFileVersion(src);
-    LOG_DBG("CDocReader::createReader: version ", version);
+    LOG_DBG("CDocReader::createReader: version {}", version);
     if (src->seek(0) != libcdoc::OK) return nullptr;
     CDocReader *reader;
 	if (version == 1) {

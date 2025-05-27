@@ -31,20 +31,14 @@ namespace libcdoc
  * The Logging Engine holds all instances of registered loggers and
  * logs a log message to all the instances.
  */
-class LogEngine final : public ILogger
+struct LogEngine final : public ILogger
 {
-public:
-    LogEngine() : currentLoggerCookie(0) {}
-
-    LogEngine(const LogEngine&) = delete;
-    LogEngine(LogEngine&&) noexcept = delete;
-
-    void LogMessage(libcdoc::ILogger::LogLevel level, const char* file, int line, const std::string& message) override
+    void LogMessage(libcdoc::ILogger::LogLevel level, std::string_view file, int line, std::string_view message) final
     {
         lock_guard<mutex> guard(loggers_protector);
-        for (map<int, ILogger*>::const_reference logger : loggers)
+        for (const auto &[_, logger] : loggers)
         {
-            logger.second->LogMessage(level, file, line, message);
+            logger->LogMessage(level, file, line, message);
         }
     }
 
@@ -65,7 +59,7 @@ public:
 
 private:
     // Current Cookie value
-    int currentLoggerCookie;
+    int currentLoggerCookie = 0;
 
     // The map with registered loggers.
     map<int, ILogger*> loggers;
@@ -76,9 +70,6 @@ private:
 
 // Default logger's instance - Logging Engine instance.
 static LogEngine defaultLogEngine;
-
-// Currentlty used logger's instance.
-static ILogger* cdoc_logger = &defaultLogEngine;
 
 // It is essential to define shared functions and variables with namespace. Otherwise, the linker won't find them.
 
@@ -97,7 +88,7 @@ ILogger::removeLogger(int cookie)
 ILogger*
 ILogger::getLogger()
 {
-    return cdoc_logger;
+    return &defaultLogEngine;
 }
 
 }
