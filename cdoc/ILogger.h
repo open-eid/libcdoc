@@ -23,14 +23,15 @@
 
 #include <string>
 
-#ifdef __GNUC__
+#ifdef __cpp_lib_format
+#include <format>
+namespace fmt = std;
+#else
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
-#define FORMAT fmt::format
-#else
-#include <format>
-#define FORMAT std::format
 #endif
+
+#define FORMAT fmt::format
 
 namespace libcdoc
 {
@@ -90,7 +91,7 @@ public:
      * Every class implementing the ILogger interface must implement the member function.
      * Default implementation does nothing.
      */
-    virtual void LogMessage(LogLevel level, const char* file, int line, const std::string& message) {}
+    virtual void LogMessage(LogLevel level, std::string_view file, int line, std::string_view message) {}
 
     /**
      * @brief Returns current minimum log level of the logger.
@@ -110,6 +111,11 @@ public:
 
     /**
      * @brief Adds ILogger implementation to logging queue.
+     * 
+     * This function does not take ownership of the logger's instance.
+     * It is up to the caller to free the resources of the logger's instance and 
+     * keep it alive until removed from the queue.
+     * 
      * @param logger Logger's instance to be added.
      * @return Unique cookie identifying the logger's instance in the logging queue.
      */
@@ -135,18 +141,32 @@ protected:
     LogLevel minLogLevel;
 };
 
-#define LOG(l,...) ILogger::getLogger()->LogMessage((l), __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_ERROR(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_ERROR, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_WARN(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_WARNING, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_INFO(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_INFO, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_DBG(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_DEBUG, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
+#ifndef SWIG
+template<typename... Args>
+static inline void LogFormat(ILogger::LogLevel level, std::string_view file, int line, fmt::format_string<Args...> fmt, Args&&... args)
+{
+    auto msg = fmt::format(fmt, std::forward<Args>(args)...);
+    ILogger::getLogger()->LogMessage(level, file, line, msg);
+}
+
+static inline void LogFormat(ILogger::LogLevel level, std::string_view file, int line, std::string_view msg)
+{
+    ILogger::getLogger()->LogMessage(level, file, line, msg);
+}
+#endif
+
+#define LOG(l,...) LogFormat((l), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) LogFormat(libcdoc::ILogger::LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) LogFormat(libcdoc::ILogger::LEVEL_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) LogFormat(libcdoc::ILogger::LEVEL_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DBG(...) LogFormat(libcdoc::ILogger::LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
 #define LOG_TRACE_KEY(MSG, KEY)
 #else
-#define LOG_TRACE(...) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(__VA_ARGS__))
-#define LOG_TRACE_KEY(MSG, KEY) ILogger::getLogger()->LogMessage(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, FORMAT(MSG, toHex(KEY)))
+#define LOG_TRACE(...) LogFormat(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE_KEY(MSG, KEY) LogFormat(libcdoc::ILogger::LEVEL_TRACE, __FILE__, __LINE__, MSG, toHex(KEY))
 #endif
 
 }

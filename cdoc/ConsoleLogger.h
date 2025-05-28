@@ -18,8 +18,9 @@
 
 #pragma once
 
-#include <iostream>
 #include "ILogger.h"
+
+#include <iostream>
 
 namespace libcdoc
 {
@@ -34,13 +35,13 @@ namespace libcdoc
 class ConsoleLogger : public ILogger
 {
 public:
-    virtual void LogMessage(LogLevel level, const char* file, int line, const std::string& message) override
+    virtual void LogMessage(LogLevel level, std::string_view file, int line, std::string_view message) override
     {
         // We ignore by default the file name and line number, and call LogMessage with the level and message.
         if (level <= minLogLevel)
         {
             std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
-            ofs << message << std::endl;
+            ofs << message << '\n';
         }
     }
 };
