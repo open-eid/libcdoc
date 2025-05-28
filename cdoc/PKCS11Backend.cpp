@@ -301,7 +301,7 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
     LOG_DBG("PKCS11: useSecretKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
     if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
     d->key = handles[0];
-    LOG_DBG("PKCS11: useSecretKey Using key ", d->key);
+    LOG_DBG("PKCS11: useSecretKey Using key {}", d->key);
     return OK;
 }
 
@@ -445,7 +445,7 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 	}
 
     dst = d->attribute(d->session, newkey, CKA_VALUE);
-    LOG_DBG("PKCS11:deriveECDH1() derived key: {}", toHex(dst));
+    LOG_TRACE_KEY("PKCS11:deriveECDH1() derived key: {}", dst);
 	d->logout();
     return dst.empty() ? CRYPTO_ERROR : OK;
 }
@@ -493,7 +493,7 @@ libcdoc::PKCS11Backend::extractHKDF(std::vector<uint8_t>& kek, const std::vector
 	}
 
     kek = d->attribute(d->session, newkey, CKA_VALUE);
-    LOG_DBG("PKCS11:extractHKDF() derived key: {}", toHex(kek));
+    LOG_TRACE_KEY("PKCS11:extractHKDF() derived key: {}", kek);
 	d->logout();
     return kek.empty() ? CRYPTO_ERROR : OK;
 }
