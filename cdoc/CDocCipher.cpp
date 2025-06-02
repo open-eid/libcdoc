@@ -265,7 +265,7 @@ static bool
 fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, RecipientInfoIdMap& crypto_rcpts, const RecipientInfoVector& recipients)
 {
     int idx = 0;
-    for (auto& rcpt : recipients) {
+    for (const auto& rcpt : recipients) {
         // Generate the labels if needed
         string label;
         if (conf.gen_label) {
