@@ -32,6 +32,9 @@ public class CDocTool {
         return args[arg_idx];
     }
 
+    // Make logger static to ensure that it is not garbage-collected as long as it is atached to library
+    private static final JavaLogger logger = new JavaLogger();
+    
     public static void main(String[] args) {
         System.out.println("Starting app...");
 
@@ -122,7 +125,6 @@ public class CDocTool {
         System.load(lib.getAbsolutePath());
         System.out.println("Library loaded");
 
-        JavaLogger logger = new JavaLogger();
         //ConsoleLogger logger = new ConsoleLogger();
         logger.SetMinLogLevel(ILogger.LogLevel.LEVEL_TRACE);
         ILogger.addLogger(logger);
@@ -155,13 +157,6 @@ public class CDocTool {
             case TEST:
                 test();
                 break;
-        }
-    }
-
-    private static class JavaLogger extends ILogger {
-        @Override
-        public void LogMessage(ILogger.LogLevel level, String file, int line, String message) {
-            System.out.format("%s:%s %s %s\n", file, line, level, message);
         }
     }
 
@@ -499,6 +494,13 @@ public class CDocTool {
             dst.addCertificate(new byte[] {1, 2, 3});
             dst.addCertificate(new byte[] {4, 5, 6, 7, 8});
             return CDoc.OK;
+        }
+    }
+
+    private static class JavaLogger extends ILogger {
+        @Override
+        public void LogMessage(ILogger.LogLevel level, String file, int line, String message) {
+            System.out.format("%s:%s %s %s\n", file, line, level, message);
         }
     }
 }
