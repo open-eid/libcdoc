@@ -565,7 +565,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
         case Capsule::recipients_RSAPublicKeyCapsule:
             if(const auto *key = recipient->capsule_as_recipients_RSAPublicKeyCapsule())
             {
-                Lock &k = fillRecipientPK(Lock::PKType::ECC, key);
+                Lock &k = fillRecipientPK(Lock::PKType::RSA, key);
                 k.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
             }
             break;

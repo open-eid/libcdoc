@@ -473,6 +473,10 @@ Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
 {
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_RSA, nullptr, &p, long(der.size()));
+    if (!key) {
+        p = der.data();
+        key = d2i_PUBKEY(nullptr, &p, long(der.size()));        
+    }
     if (!key)
         LOG_SSL_ERROR("d2i_PublicKey");
 

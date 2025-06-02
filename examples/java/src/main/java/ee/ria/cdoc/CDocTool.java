@@ -32,6 +32,9 @@ public class CDocTool {
         return args[arg_idx];
     }
 
+    // Make logger static to ensure that it is not garbage-collected as long as it is atached to library
+    private static final JavaLogger logger = new JavaLogger();
+    
     public static void main(String[] args) {
         System.out.println("Starting app...");
 
@@ -122,9 +125,10 @@ public class CDocTool {
         System.load(lib.getAbsolutePath());
         System.out.println("Library loaded");
 
-        ConsoleLogger logger = new ConsoleLogger();
+        //ConsoleLogger logger = new ConsoleLogger();
         logger.SetMinLogLevel(ILogger.LogLevel.LEVEL_TRACE);
         ILogger.addLogger(logger);
+        ILogger.getLogger().LogMessage(ILogger.LogLevel.LEVEL_DEBUG, "FILENAME", 0, "Starting CDocTool.java");
 
         switch (action) {
             case ENCRYPT:
@@ -137,6 +141,10 @@ public class CDocTool {
             }
                 break;
             case DECRYPT:
+                if (certfile != null) {
+                    decryptForCert(files.get(0), certfile);
+                    break;
+                }
                 if (p11library != null) {
                     decrypt(files.get(0), label, password);
                 } else {
@@ -154,6 +162,31 @@ public class CDocTool {
 
     static void decrypt(String file, String p11library, int p11slot, byte[] p11pin, byte[] p11id, String p11label) {
         System.out.println("Decrypting file (P11) " + file);
+    }
+
+    static void decryptForCert(String file, String certfile) {
+        try {
+            ToolConf conf = new ToolConf();
+            IStreamSource src = new IStreamSource(new FileInputStream(file));
+            CDocReader rdr = CDocReader.createReader(src, false, conf, null, null);
+
+            LockVector locks = rdr.getLocks();
+            System.err.println("Num locks " + locks.size());
+
+            InputStream ifs = new FileInputStream(certfile);
+            byte[] cert = ifs.readAllBytes();
+
+            long idx = rdr.getLockForCert(cert);
+            System.err.println("Lock idx " + idx);
+            ee.ria.cdoc.Lock lock = locks.get((int) idx);
+            System.err.println("Lock label " + lock.getLabel());
+
+        } catch (CDocException exc) {
+            System.err.println("CDoc exception");
+            System.err.println(exc.getMessage());
+        } catch (IOException exc) {
+            // Caught CDoc exception
+        }
     }
 
     static void decrypt(String file, String label, String password) {
@@ -461,6 +494,13 @@ public class CDocTool {
             dst.addCertificate(new byte[] {1, 2, 3});
             dst.addCertificate(new byte[] {4, 5, 6, 7, 8});
             return CDoc.OK;
+        }
+    }
+
+    private static class JavaLogger extends ILogger {
+        @Override
+        public void LogMessage(ILogger.LogLevel level, String file, int line, String message) {
+            System.out.format("%s:%s %s %s\n", file, line, level, message);
         }
     }
 }

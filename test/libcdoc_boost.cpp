@@ -45,6 +45,10 @@ constexpr string_view SourceFile("test_data.txt");
  * @brief Encrypted file name.
  */
 constexpr string_view TargetFile("test_data.txt.cdoc");
+constexpr string_view ECPrivKeyFile("ec-secp384r1-priv.der");
+constexpr string_view ECPubKeyFile("ec-secp384r1-pub.der");
+constexpr string_view RSAPrivKeyFile("rsa_2048_priv.der");
+constexpr string_view RSAPubKeyFile("rsa_2048_pub.der");
 
 const string Label("Proov");
 
@@ -260,7 +264,6 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
 
 BOOST_AUTO_TEST_SUITE_END()
 
-
 BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
 
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture, * utf::description("Encrypting a file with password and without label"))
@@ -307,7 +310,6 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
 }
 
 BOOST_AUTO_TEST_SUITE_END()
-
 
 BOOST_AUTO_TEST_SUITE(AESKeyUsage)
 
@@ -356,8 +358,113 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
 
 BOOST_AUTO_TEST_SUITE_END()
 
+BOOST_AUTO_TEST_SUITE(ECKeyUsage)
 
-BOOST_AUTO_TEST_SUITE(MacineLabelParsing)
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKey, EncryptFixture, * utf::description("Encrypting a file with EC key"))
+{
+    // Check if the source and public key file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+    fs::path keyPath;
+    FormFilePath(ECPubKeyFile, keyPath);
+    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::PKEY;
+    rcpt.secret = libcdoc::readAllBytes(keyPath.string());
+    rcpt.label = Label;
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
+
+    // Validate the encrypted file
+    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+}
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKey, DecryptFixture,
+                     * utf::depends_on("ECKeyUsage/EncryptWithECKey")
+                     * utf::description("Decrypting a file with with EC private key"))
+{
+    // Check if the source, encrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+    fs::path keyPath;
+    FormFilePath(ECPrivKeyFile, keyPath);
+    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = testDataPath.string();
+
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::readAllBytes(keyPath.string())};
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
+
+    // Check if the encrypted file exists
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(RSAKeyUsage)
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithRSAKey, EncryptFixture, * utf::description("Encrypting a file with RSA key"))
+{
+    // Check if the source and public key file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+    fs::path keyPath;
+    FormFilePath(RSAPubKeyFile, keyPath);
+    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = targetFilePath.string();
+
+    libcdoc::RcptInfo rcpt;
+    rcpt.type = libcdoc::RcptInfo::PKEY;
+    rcpt.secret = libcdoc::readAllBytes(keyPath.string());
+    rcpt.label = Label;
+
+    libcdoc::RecipientInfoVector rcpts {rcpt};
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
+
+    // Validate the encrypted file
+    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+}
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKey, DecryptFixture,
+                     * utf::depends_on("RSAKeyUsage/EncryptWithRSAKey")
+                     * utf::description("Decrypting a file with with RSA private key"))
+{
+    // Check if the source, encrypted file exists
+    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
+    fs::path keyPath;
+    FormFilePath(RSAPrivKeyFile, keyPath);
+    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
+
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(sourceFilePath.string());
+    conf.out = testDataPath.string();
+
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::readAllBytes(keyPath.string())};
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
+
+    // Check if the encrypted file exists
+    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(MachineLabelParsing)
 
 BOOST_AUTO_TEST_CASE(PlainLabelParsing)
 {
