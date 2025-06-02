@@ -1,5 +1,9 @@
 # Basic libcdoc Library Usage
 
+This document provides an overview of how to use the **libcdoc** library for encryption and decryption workflows.
+
+---
+
 ## Common
 
 The **libcdoc** library is built around three main components that work together to handle encryption, decryption, and key management:

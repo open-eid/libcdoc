@@ -1,6 +1,8 @@
 # libcdoc Tool Usage
 
-libcdoc includes command-line tool, **cdoc-tool** (**cdoc-tool.exe** in Windows) that can be used to encrypt and decrypt files, and see the locks in encrypted container.
+The **libcdoc** library includes a command-line tool, **cdoc-tool** (or **cdoc-tool.exe** on Windows), which can be used to encrypt and decrypt files, as well as view the locks in an encrypted container. The tool is compatible with Windows, macOS, and Linux platforms.
+
+---
 
 ## Encryption
 
