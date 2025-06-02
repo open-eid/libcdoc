@@ -2,7 +2,45 @@
 
 ## Common
 
-Most methods return `result_t` status value. It can be one of the following:
+The **libcdoc** library is built around three main components that work together to handle encryption, decryption, and key management:
+
+1. **CryptoBackend**  
+   Handles cryptographic operations such as key management, encryption, and decryption. This is the core component responsible for all cryptographic logic.
+
+2. **NetworkBackend**  
+   Manages interactions with external key servers. This component is optional and is only required if your workflow involves fetching or storing keys on a remote server.
+
+3. **Configuration**  
+   Provides configuration parameters, such as key server URLs and certificates, to the `NetworkBackend`. This component ensures that the `NetworkBackend` has the necessary information to communicate with external servers.
+
+In addition to these backends, the library provides two key classes for working with CDOC containers:
+
+- **CDocWriter**: Used for creating encrypted CDOC containers. It supports both CDOC1 and CDOC2 formats, allowing you to specify the desired version during the encryption process.
+- **CDocReader**: Used for reading and decrypting CDOC containers. It can automatically detect whether a container is in CDOC1 or CDOC2 format.
+
+These components interact with each other to enable secure encryption and decryption workflows. The following diagram illustrates their relationships:
+
+```plaintext
++-------------------+       +-------------------+
+|   CryptoBackend   |<----->|   NetworkBackend  |
+| (Handles keys,    |       | (Optional: Key    |
+| encryption/decrypt|       | server interaction|
++-------------------+       +-------------------+
+          ^                           ^
+          |                           |
+          +---------------------------+
+                        |
+                        v
+              +-------------------+
+              |   Configuration   |
+              | (Provides key     |
+              | server parameters)|
+              +-------------------+
+```
+
+---
+
+Most methods in the library return a `result_t` status value, which can indicate the following:
 
 - OK (= 0) - indicates success
 - positive value - for read and write methods indicates success and the number of bytes read/written
@@ -12,6 +50,32 @@ Most methods return `result_t` status value. It can be one of the following:
 ## Encryption
 
 The encryption is managed by CDocWriter object.
+
+### Workflow Diagram
+
+The following diagram illustrates the encryption workflow:
+
+```plaintext
++-------------------+       +-------------------+       +-------------------+
+|   Data Source     |       |   CryptoBackend   |       |   NetworkBackend  |
+| (e.g., file data) |       | (Handles keys,    |       | (Optional: Key    |
+|                   |       | encryption logic) |       | server interaction|
++-------------------+       +-------------------+       +-------------------+
+          |                           |                           |
+          v                           v                           v
+      +---------------------------------------------------------------+
+      |                           CDocWriter                          |
+      | (Manages encryption process, writes encrypted container file) |
+      +---------------------------------------------------------------+
+                                      |
+                                      v
+                            +-------------------+
+                            |   Output File     |
+                            | (Encrypted CDOC)  |
+                            +-------------------+
+```
+
+---
 
 ### CryptoBackend
 
@@ -75,6 +139,17 @@ Returns configuration value for domain/param combination. For key-server:
 
 - domain is the key-server ID
 - param is KEYSERVER_SEND_URL
+
+### CDOC1 vs. CDOC2 Formats
+
+The **libcdoc** library supports two container formats:
+
+- **CDOC1**: A legacy format suitable for compatibility with older systems. It provides basic encryption and decryption functionality.
+- **CDOC2**: A modern format with enhanced security features, such as key server integration and improved cryptographic algorithms.
+
+The `CDocWriter` allows you to specify the desired format when creating a container, while the `CDocReader` can automatically detect the format of an existing container.
+
+---
 
 ### CDocWriter
 
@@ -147,6 +222,32 @@ delete writer;
 ## Decryption
 
 Decryption is managed by CDocReader object.
+
+### Workflow Diagram
+
+The following diagram illustrates the decryption workflow:
+
+```plaintext
++-------------------+       +-------------------+       +-------------------+
+|   Input File      |       |   CryptoBackend   |       |   NetworkBackend  |
+| (Encrypted CDOC)  |       | (Handles keys,    |       | (Optional: Key    |
+|                   |       | decryption logic) |       | server interaction|
++-------------------+       +-------------------+       +-------------------+
+          |                           |                           |
+          v                           v                           v
+      +---------------------------------------------------------------+
+      |                           CDocReader                          |
+      | (Manages decryption process, reads encrypted container file)  |
+      +---------------------------------------------------------------+
+                                      |
+                                      v
+                            +-------------------+
+                            |   Output Files    |
+                            | (Decrypted data)  |
+                            +-------------------+
+```
+
+---
 
 ### CryptoBackend
 
@@ -258,6 +359,8 @@ fails, the data should be assumed incomplete or corrupted.
 
 ### Implementation Example
 
+Below is an example of how to implement decryption using the `CDocReader` object and a custom `CryptoBackend` subclass:
+
 ```cpp
 struct MyBackend : public libcdoc::CryptoBackend {
     /* Elliptic curves */
@@ -286,7 +389,7 @@ std::vector<uint8_t> fmk;
 reader->getFMK(fmk, lock_idx);
 
 /* Start decryption */
-reader->beginDecryption(const std::vector<uint8_t>& fmk);
+reader->beginDecryption(fmk);
 std::string name;
 int64_t size;
 while(reader->nextFile(name, size) == libcdoc::OK) {
@@ -299,3 +402,10 @@ reader->finishDecryption();
 
 delete reader;
 ```
+
+This example demonstrates how to:
+1. Subclass `CryptoBackend` to implement the required decryption methods (`deriveECDH1` and `decryptRSA`).
+2. Create a `CDocReader` instance and use it to process an encrypted CDOC container.
+3. Retrieve locks, decrypt the File Master Key (FMK), and read the decrypted files.
+
+---
