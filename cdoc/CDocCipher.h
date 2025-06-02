@@ -30,7 +30,6 @@
 namespace libcdoc
 {
 
-typedef typename std::map<std::string, RcptInfo> RecipientInfoLabelMap;
 typedef typename std::map<int, RcptInfo>         RecipientInfoIdMap;
 typedef typename std::vector<RcptInfo>           RecipientInfoVector;
 

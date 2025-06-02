@@ -25,6 +25,7 @@
 #include "PKCS11Backend.h"
 #include "Recipient.h"
 #include "Utils.h"
+#include "utils/memory.h"
 #ifdef _WIN32
 #include "WinBackend.h"
 #endif
@@ -32,6 +33,9 @@
 #include <sstream>
 #include <map>
 #include <openssl/rand.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
 
 using namespace std;
 using namespace libcdoc;
@@ -97,25 +101,94 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
         if (p11) return p11->decryptRSA(dst, data, oaep, idx);
-        return libcdoc::NOT_IMPLEMENTED;
+        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = rcpts.at(idx);
+        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
+        const uint8_t *p = rcpt.secret.data();
+
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
+        if (!key) return libcdoc::CRYPTO_ERROR;
+
+        auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
+        if (!ctx) return libcdoc::CRYPTO_ERROR;
+
+        int result = EVP_PKEY_decrypt_init(ctx.get());
+        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (oaep) {
+            if ((EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) < 0) ||
+                (EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) < 0) ||
+                (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) < 0))
+                return libcdoc::CRYPTO_ERROR;
+        }
+
+        size_t outlen;
+        result = EVP_PKEY_decrypt(ctx.get(), NULL, &outlen, data.data(), data.size());
+        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        dst.resize(outlen);
+        result = EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size());
+        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        dst.resize(outlen);
+
+        return libcdoc::OK;
     }
+
+    libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {
+        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo& rcpt = rcpts.at(idx);
+        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
+        const uint8_t *p = rcpt.secret.data();
+
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_EC, nullptr, &p, rcpt.secret.size()));
+        if (!key) return libcdoc::CRYPTO_ERROR;
+
+        auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
+        if (!ctx) return libcdoc::CRYPTO_ERROR;
+
+        EVP_PKEY *params = nullptr;
+        if ((EVP_PKEY_paramgen_init(ctx.get()) < 0) ||
+            (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), NID_secp384r1) < 0) ||
+            (EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE) < 0) ||
+            (EVP_PKEY_paramgen(ctx.get(), &params) < 0))
+            return libcdoc::CRYPTO_ERROR;
+
+	    p = public_key.data();
+        auto pubkey = make_unique_ptr<EVP_PKEY_free>(d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(public_key.size())));
+        if (!pubkey) return libcdoc::CRYPTO_ERROR;
+
+        size_t dlen;
+        if ((EVP_PKEY_derive_init(ctx.get()) < 0) ||
+            (EVP_PKEY_derive_set_peer(ctx.get(), pubkey.get()) < 0) ||
+            (EVP_PKEY_derive(ctx.get(), nullptr, &dlen) < 0))
+            return libcdoc::CRYPTO_ERROR;
+
+        dst.resize(dlen);
+        if (EVP_PKEY_derive(ctx.get(), dst.data(), &dlen) < 0)
+            return libcdoc::CRYPTO_ERROR;
+        dst.resize(dlen);
+
+        return libcdoc::OK;
+    }
+
     libcdoc::result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
                         const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx) override final {
         if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
-        return libcdoc::NOT_IMPLEMENTED;
+        return libcdoc::CryptoBackend::deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
     }
+
     libcdoc::result_t deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final {
         if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, idx);
-        return libcdoc::NOT_IMPLEMENTED;
+        return libcdoc::CryptoBackend::deriveHMACExtract(dst, publicKey, salt, idx);
     }
+
     libcdoc::result_t extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override {
         if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
         return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
     }
+
     libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
         if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
         const RcptInfo& rcpt = rcpts.at(idx);
-        secret =rcpt.secret;
+        secret = rcpt.secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }
 
@@ -192,7 +265,7 @@ static bool
 fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, RecipientInfoIdMap& crypto_rcpts, const RecipientInfoVector& recipients)
 {
     int idx = 0;
-    for (RecipientInfoVector::const_reference rcpt : recipients) {
+    for (auto& rcpt : recipients) {
         // Generate the labels if needed
         string label;
         if (conf.gen_label) {
@@ -260,7 +333,17 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             if (!conf.servers.empty()) {
                 key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
+                const uint8_t *der = rcpt.secret.data();
+                EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, rcpt.secret.size());
+                int id = EVP_PKEY_get_id(pkey);
+                std::vector<uint8_t> d(i2d_PublicKey(pkey, nullptr), 0);
+                uint8_t *p = d.data();
+                i2d_PublicKey(pkey, &p);
+                if (id == EVP_PKEY_EC) {
+                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
+                } else if (id == EVP_PKEY_RSA) {
+                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::RSA);
+                }
             }
             LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {

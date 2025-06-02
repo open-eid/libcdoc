@@ -23,6 +23,8 @@
 #include "ILogger.h"
 #include "Utils.h"
 
+#include "json/jwt.h"
+
 using namespace std;
 using namespace libcdoc;
 
@@ -83,6 +85,31 @@ static void print_usage(ostream& ofs)
     //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
 }
 
+static std::vector<uint8_t>
+fromB64(const std::string& data)
+{
+    std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
+    return std::vector<uint8_t>(str.cbegin(), str.cend());
+}
+
+static void
+load_certs(ToolConf& conf, const std::string& filename)
+{
+    std::vector<uint8_t> content = readAllBytes(filename);
+    if ((content.size() > 3) && (content[0] == 'M') && (content[1] == 'I') && (content[2] == 'I')) {
+        std::string cstr(content.cbegin(), content.cend());
+        std::vector<std::string> parts = split(cstr, '\n');
+        for (auto part : parts) {
+            if (part.size() > 3) {
+                std::vector<uint8_t> v = fromB64(part);
+                conf.accept_certs.push_back(v);
+            }
+        }
+    } else {
+        conf.accept_certs.push_back(content);
+    }
+}
+
 // Return the number of arguments consumed or error code
 
 static int
@@ -99,7 +126,7 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
         conf.servers.push_back(sdata);
         return 3;
     } else if ((arg == "--accept") && ((arg_idx + 1) < argc)) {
-        conf.accept_certs.push_back(readAllBytes(argv[arg_idx + 1]));
+        load_certs(conf, argv[arg_idx + 1]);
         return 2;
     } else if ((arg == "--conf") && ((arg_idx + 1) < argc)) {
         conf.parse(argv[arg_idx + 1]);
@@ -381,8 +408,15 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
         return 2;
     } else if (arg == "--secret") {
         if ((arg_idx + 1) >= argc) return RESULT_USAGE;
-
         ldata.secret = fromHex(argv[arg_idx + 1]);
+        return 2;
+    } else if (arg == "--pkey") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        ldata.secret = fromHex(argv[arg_idx + 1]);
+        return 2;
+    } else if (arg == "--pfkey") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        ldata.secret = readAllBytes(argv[arg_idx + 1]);
         return 2;
     } else if (arg == "--slot") {
         if ((arg_idx + 1) >= argc) return RESULT_USAGE;
@@ -585,7 +619,7 @@ int main(int argc, char *argv[])
 
     // Add console logger by default
     ConsoleLogger console_logger;
-    console_logger.SetMinLogLevel(ILogger::LEVEL_DEBUG);
+    console_logger.SetMinLogLevel(ILogger::LEVEL_TRACE);
     int cookie = ILogger::addLogger(&console_logger);
 
     string_view command(argv[1]);
