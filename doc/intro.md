@@ -9,18 +9,15 @@ applications to create, parse, and decrypt encrypted CDoc containers, ensuring s
 
 ## Key Features
 
-- **Support for CDoc Versions:** Handles CDoc 1.0 and 1.1 formats ([CDoc 1.0](https://www.id.ee/wp-content/uploads/2020/02/SK-CDOC-1.0-20120625_EN.pdf), 
-[CDoc 1.1](https://www.ria.ee/sites/default/files/content-editors/EID/cdoc.pdf)) as well as CDoc 2.0 ([CDoc 2.0 Specification](https://open-eid.github.io/CDOC2/1.1/)).
-
-- **Future-Proof Design:** Includes support for workflows based on current and upcoming standard changes ([CDoc 2.0 Draft](https://open-eid.github.io/CDOC2/2.0-Draft/)), 
-ensuring compatibility with evolving requirements.
-
+- **Cross-Platform Support:** The library is compatible with Windows, macOS, and Linux for desktop environments, as well as iOS and Android for mobile platforms.
+- **Support for CDoc Versions:** Handles CDoc 1.0 and 1.1 formats ([CDoc 1.0](https://www.id.ee/wp-content/uploads/2020/02/SK-CDOC-1.0-20120625_EN.pdf), [CDoc 1.1](https://www.ria.ee/sites/default/files/content-editors/EID/cdoc.pdf)) as well as CDoc 2.0 ([CDoc 2.0 Specification](https://open-eid.github.io/CDOC2/1.1/)).
+- **Future-Proof Design:** Includes support for workflows based on current and upcoming standard changes ([CDoc 2.0 Draft](https://open-eid.github.io/CDOC2/2.0-Draft/)), ensuring compatibility with evolving requirements.
 - **Encryption Support:** Provides functionality for encrypting and decrypting documents securely, including both online and offline decryption workflows.
-
-- **Extended Encryption Schemes:** Supports password-based encryption/decryption schemes, Smart-ID/Mobile-ID based encryption and decryption, as well as 
-ID-card/smart-card encryption and other additional hardware security tokens.
-
+- **Extended Encryption Schemes:** Supports password-based encryption/decryption schemes, Smart-ID/Mobile-ID based encryption and decryption, as well as ID-card/smart-card encryption and other additional hardware security tokens.
+- **Multi-Recipient Encryption:** Supports encrypting files for multiple recipients using various encryption methods, including public key, password-based, and hardware token-based schemes.
 - **Integration with eID Systems:** Can be used alongside other components in the Estonian ID-card infrastructure, although it does not handle digital signatures.
+- **Multi-Language Support:** The library is written in C++ and provides Java and C# bindings using SWIG, enabling cross-platform usage in various programming environments.
+- **Command-Line Tool:** Includes the `cdoc-tool` utility for encrypting, decrypting, and managing CDoc containers via the command line, refer to the [Tool](tool.md) document.
 
 ## Use Cases
 
@@ -37,31 +34,4 @@ formats in other systems.
 
 ## Library Architecture
 
-The libcdoc library is structured around modular and extensible components that handle various aspects of CDoc container processing. The design emphasizes 
-maintainability and flexibility to accommodate evolving standards and security requirements.
-
-## Core Components
-
-- **CDoc Parser/Builder:** Responsible for reading and writing CDoc 1.x and 2.0 containers. It supports parsing XML-based metadata and managing encrypted payloads.
-
-- **Encryption Engine:** Handles encryption and decryption using cryptographic libraries such as OpenSSL. It supports a variety of schemes including public key 
-encryption (smart-cards, ID-cards, Mobile-ID, Smart-ID), symmetric password-based encryption, and hybrid encryption models.
-
-- **Recipient Management:** Implements recipient-specific key wrapping and metadata handling for multi-recipient encrypted documents.
-
-- **Workflow Support:** Enables both online and offline workflows, supporting scenarios where keys are available via connected tokens or remote signing/encryption services.
-
-- **Standards Abstraction:** Provides an abstraction layer for handling differences between CDoc versions and upcoming specification changes.
-
-## Extensibility
-
-The architecture is designed to allow easy integration of new encryption back-ends and recipient schemes. For instance, support for emerging mobile and cloud-based 
-identity systems can be added without restructuring core functionality.
-
-## Interoperability
-
-libcdoc maintains strong compatibility with other components in the Estonian eID ecosystem and adheres closely to official specifications to ensure interoperability 
-across different platforms and implementations.
-
-This architectural foundation ensures that libcdoc remains a reliable and future-ready library for secure document encryption in both governmental and private 
-sector applications.
+The libcdoc library is structured around modular and extensible components that handle various aspects of CDoc container processing. For a detailed explanation of the library's architecture, refer to the [Overview](overview.md) document.
