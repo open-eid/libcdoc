@@ -6,7 +6,7 @@ The **libcdoc** library includes a command-line tool, **cdoc-tool** (or **cdoc-t
 
 ## Encryption
 
-Common syntax for encrypting one of more files for one or more recipients is following:
+The general syntax for encrypting files for one or more recipients is the following:
 
 ```bash
 cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel]
@@ -17,7 +17,7 @@ cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel]
     FILE1 [FILE2 FILE3... FILEn]
 ```
 
-It is also possible to re-encrypt file by adding new recipients. In that case, use **re-encrypt** switch instead of *encrypt*. The rest of the options are same.
+To re-encrypt a file for a different recipient(s) or with a different encryption method, use the **re-encrypt** switch instead of **encrypt**. For that both decryption and encryption options have to be specified.
 
 ### Options
 
@@ -44,7 +44,7 @@ directory.
 
 ### Recipients
 
-One ore more recipients can be specified, each with its own encryption method. At least one recipient must be specified.
+One or more recipients must be specified, each with its own encryption method.
 
 | Form | Description |
 | ---    | ---         |
@@ -64,33 +64,46 @@ symmetric key and password case. Refer [Appendix D](https://open-eid.github.io/C
 
 ### Examples
 
-In all examples file *abc.txt* from user's *Documents* directory is used a source file to be encrypted. The result container is created in current working directory 
-where also *cdoc-tool* executable is located.
+1. **Encrypt a file with a password**  
+   Encrypt the file `abc.txt` with the password `Test123`. The resulting container is `abc.txt-pw.cdoc`.
 
-Encrypt the file with password *Test123*. In result, *abc.txt-pw.cdoc* is created.
+   ```bash
+   ./cdoc-tool encrypt --rcpt Test:pw:Test123 --out abc.txt-pw.cdoc abc.txt
+   ```
 
-    ./cdoc-tool encrypt --rcpt Test:pw:Test123 --out abc.txt-pw.cdoc ~/Documents/abc.txt
+2. **Encrypt a file with a public key from an ID card**  
+   Encrypt the file `abc.txt` using a public key from an Estonian ID card. The resulting container is `abc.txt-p11pk.cdoc`. To use the ID card a PKCS11 library has to be specified, the exact location depends on the operating system and installed software.
 
-Encrypt the file with public-key from Estonian ID card and machine-readable label. In result, *abc.txt-p11pk.cdoc* is created.
+   ```bash
+   ./cdoc-tool encrypt --rcpt :p11pk:0:::Isikutuvastus --genlabel --out abc.txt-p11pk.cdoc --library /opt/homebrew/lib/opensc-pkcs11.so abc.txt
+   ```
 
-    ./cdoc-tool encrypt --rcpt :p11pk:0:::Isikutuvastus --genlabel --out abc.txt-p11pk.cdoc --library /opt/homebrew/lib/opensc-pkcs11.so ~/Documents/abc.txt
+3. **Encrypt a file with a public key from a file**  
+   Encrypt the file `abc.txt` using a public key from the file `ec-secp384r1-pub.der`. The resulting container is `abc.txt-pfkey.cdoc`.
 
-Encrypt the file with public-key from file *ec-secp384r1-pub.der*, located in current working directory. The key file can be located also in any other directory,
-but in that case full path must be specified. In result, *abc.txt-pfkey.cdoc* is created.
+   ```bash
+   ./cdoc-tool encrypt --rcpt :pfkey:ec-secp384r1-pub.der --genlabel --out abc.txt-pfkey.cdoc abc.txt
+   ```
 
-    ./cdoc-tool encrypt --rcpt :pfkey:ec-secp384r1-pub.der --genlabel --out abc.txt-pfkey.cdoc ~/Documents/abc.txt
+4. **Encrypt a file with an AES key**  
+   Encrypt the file `abc.txt` using an AES key provided via the command line. The resulting container is `abc.txt-aes.cdoc`.
 
-Encrypt the file with AES key provided via command-line. Use provided label *Test* as a part of machine-readable key-label. In result, *abc.txt-aes.cdoc* is created.
+   ```bash
+   ./cdoc-tool encrypt --rcpt Test:skey:E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E --genlabel --out abc.txt-aes.cdoc abc.txt
+   ```
 
-    ./cdoc-tool encrypt --rcpt Test:skey:E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E --genlabel --out abc.txt-aes.cdoc ~/Documents/abc.txt
+5. **Encrypt a file with a public key from an ID card and use key server**  
+   Encrypt the file `abc.txt` using a public key from an Estonian ID card and use the RIA key server. The resulting container is `abc.txt-ks.cdoc`.
 
-Encrypt the file with public-key from RIA test key server. **VPN connection to RIA must be established!** In result, *abc.txt-ks.cdoc* is created.
+   ```bash
+   ./cdoc-tool encrypt --rcpt Test:p11pk:0:::Isikutuvastus --library /opt/homebrew/lib/opensc-pkcs11.so --server 00000000-0000-0000-0000-000000000000 https://cdoc2.id.ee:8443 --accept keyserver-cert.der --out abc.txt-ks.cdoc abc.txt
+   ```
 
-    ./doc-tool encrypt --rcpt Test:p11pk:0:::Isikutuvastus --library /opt/homebrew/lib/opensc-pkcs11.so --server 00000000-0000-0000-0000-000000000000 https://cdoc2-keyserver.test.riaint.ee:8443 --accept keyserver-cert.der --out abc.txt-ks.cdoc ~/Documents/abc.txt
+---
 
 ## Decryption
 
-Syntax for decrypting of an encrypted file differs dramatically from encryption and is following:
+The syntax for decrypting an encrypted file is the following:
 
 ```bash
 cdoc-tool decrypt OPTIONS FILE [OUTPUT_DIR]
@@ -117,32 +130,43 @@ then it is overwritten.
 
 ### Examples
 
-In all examples the same container file is used as the file to be decrypted that was created previously in encryption examples.
+1. **Decrypt a file with a password**  
+   Decrypt the file `abc.txt-pw.cdoc` using the key with label `Test` and password `Test123`.
 
-Decrypt file abc.txt-pw.cdoc with key label *Test* and password *Test123*.
+   ```bash
+   ./cdoc-tool decrypt --label Test --password Test123 abc.txt-pw.cdoc
+   ```
 
-    ./cdoc-tool decrypt --label Test --password Test123 abc.txt-pw.cdoc
+2. **Decrypt a file with an ID card**  
+   Decrypt the file `abc.txt-p11pk.cdoc` using the key from lock `1` and an Estonian ID card with PIN code `1234`.
 
-Decrypt file *abc.txt-p11pk.cdoc* with key label index 1 and Estonian ID card by using PIN code *1234*.
+   ```bash
+   ./cdoc-tool decrypt --label_idx 1 --pin 1234 --slot 0 --key-label Isikutuvastus --library /opt/homebrew/lib/opensc-pkcs11.so abc.txt-p11pk.cdoc
+   ```
 
-    ./cdoc-tool decrypt --label_idx 1 --pin 1234 --slot 0 --key-label Isikutuvastus --library /opt/homebrew/lib/opensc-pkcs11.so abc.txt-p11pk.cdoc
+3. **Decrypt a file with an ID card and use key server**  
+   Decrypt the file `abc.txt-ks.cdoc` using the key with label `Test` and a private key from an ID card, using the RIA key server.
 
-Decrypt file *abc.txt-ks.cdoc* with key label *Test* and private-key from RIA test key server. **VPN connection to RIA must be established!** PIN code *1234* is used.
+   ```bash
+   ./cdoc-tool decrypt --library /opt/homebrew/lib/opensc-pkcs11.so --server 00000000-0000-0000-0000-000000000000 https://cdoc2.id.ee:8444 --accept keyserver-cert.der --label Test --slot 0 --pin 1234 --key-label Isikutuvastus abc.txt-ks.cdoc out
+   ```
 
-    ./cdoc-tool decrypt --library /opt/homebrew/lib/opensc-pkcs11.so --server 00000000-0000-0000-0000-000000000000 https://cdoc2-keyserver.test.riaint.ee:8444 --accept keyserver-cert.der --label Test --slot 0 --pin 1234 --key-label Isikutuvastus abc.txt-ks.cdoc out
+---
 
-## See the Locks
+## Viewing Locks
 
-Syntax for seeing the locks that are in container is following:
+To view the locks in a container, use the following syntax:
 
 ```bash
 cdoc-tool locks FILE
 ```
 
-The command does not have any options and only argument is the encrypted container file, which locks will be displayed.
+This command does not have any options. The only argument is the encrypted container file whose locks will be displayed.
 
 ### Example
 
-Displays the locks of *abc.txt-aes.cdoc* file:
+Display the locks of the file `abc.txt-aes.cdoc`:
 
-    ./cdoc-tool locks abc.txt-aes.cdoc
+```bash
+./cdoc-tool locks abc.txt-aes.cdoc
+```
