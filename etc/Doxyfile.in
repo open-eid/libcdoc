@@ -957,6 +957,7 @@ INPUT = @CMAKE_SOURCE_DIR@/cdoc/CDoc.h \
     @CMAKE_SOURCE_DIR@/cdoc/WinBackend.h \
     @CMAKE_SOURCE_DIR@/cdoc/ILogger.h \
     @CMAKE_SOURCE_DIR@/cdoc/ConsoleLogger.h \
+    @CMAKE_SOURCE_DIR@/doc/intro.md \
     @CMAKE_SOURCE_DIR@/doc/overview.md \
     @CMAKE_SOURCE_DIR@/doc/usage.md \
     @CMAKE_SOURCE_DIR@/doc/tool.md
@@ -1033,15 +1034,7 @@ EXCLUDE_SYMLINKS       = NO
 # Note that the wildcards are matched against the file with absolute path, so to
 # exclude all test directories for example use the pattern */test/*
 
-EXCLUDE_PATTERNS       = */log.* \
-                         */SignatureCAdES_*.* \
-                         */SignatureXAdES*.* \
-                         */SignatureTST.* \
-                         */*ASiC*.* \
-                         */*Doc.* \
-                         */*jsonxx.* \
-                         */PDF.* \
-                         */libcdoc.i.h \
+EXCLUDE_PATTERNS       = */libcdoc.i.h \
                          */cdoc/fmt/* \
                          */httplib*.* \
                          */CDocChipher*.*
@@ -1052,13 +1045,7 @@ EXCLUDE_PATTERNS       = */log.* \
 # wildcard * is used, a substring. Examples: ANamespace, AClass,
 # ANamespace::AClass, ANamespace::*Test
 
-EXCLUDE_SYMBOLS        = digidoc::*Private \
-                         digidoc::asic \
-                         digidoc::dsig \
-                         digidoc::tsl \
-                         digidoc::xades \
-                         *m_* \
-                         *tslcert*
+EXCLUDE_SYMBOLS        = *m_*
 
 # The EXAMPLE_PATH tag can be used to specify one or more files or directories
 # that contain example code fragments that are included (see the \include
@@ -1146,7 +1133,7 @@ FILTER_SOURCE_PATTERNS =
 # (index.html). This can be useful if you have a project on for instance GitHub
 # and want to reuse the introduction page also for the doxygen output.
 
-USE_MDFILE_AS_MAINPAGE =
+USE_MDFILE_AS_MAINPAGE = @CMAKE_SOURCE_DIR@/doc/intro.md
 
 # The Fortran standard specifies that for fixed formatted Fortran code all
 # characters from position 72 are to be considered as comment. A common
