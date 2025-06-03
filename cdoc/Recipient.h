@@ -231,9 +231,10 @@ struct CDOC_EXPORT Recipient {
     /**
      * @brief build machine-readable CDoc2 label
      * @param components a list of string pairs
+     * @param exp a expire date to added to label (if 0, no expire date is added)
      * @return a composed label
      */
-    static std::string buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components);
+    static std::string buildLabel(const std::vector<std::pair<std::string_view, std::string_view>> &components, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for EID recipient
      * @param version the label version
@@ -242,16 +243,18 @@ struct CDOC_EXPORT Recipient {
      * @param serial_number the serial number
      * @param last_name the last name
      * @param first_name the first name
+     * @param exp a expire date to added to label (if 0, no expire date is added)
      * @return a composed label
      */
-    static std::string BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name);
+    static std::string BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for EID recipient filling info from certificate
      * @see BuildLabelEID
      * @param cert the certificate value (der-encoded)
+     * @param exp a expire date to added to label (if 0, expire date is taken from certificate)
      * @return a composed label
      */
-    static std::string BuildLabelEID(const std::vector<uint8_t> &cert);
+    static std::string BuildLabelEID(const std::vector<uint8_t> &cert, time_t exp = 0);
     /**
      * @brief build machine-readable CDoc2 label for certificate-based recipient
      * @param version the label version
