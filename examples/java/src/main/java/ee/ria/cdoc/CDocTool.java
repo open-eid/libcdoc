@@ -33,7 +33,7 @@ public class CDocTool {
     }
 
     // Make logger static to ensure that it is not garbage-collected as long as it is atached to library
-    private static final JavaLogger logger = new JavaLogger();
+    private static JavaLogger logger;
     
     public static void main(String[] args) {
         System.out.println("Starting app...");
@@ -125,6 +125,7 @@ public class CDocTool {
         System.load(lib.getAbsolutePath());
         System.out.println("Library loaded");
 
+        logger =  new JavaLogger();
         //ConsoleLogger logger = new ConsoleLogger();
         logger.SetMinLogLevel(ILogger.LogLevel.LEVEL_TRACE);
         ILogger.addLogger(logger);

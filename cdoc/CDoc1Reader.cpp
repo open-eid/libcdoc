@@ -102,9 +102,11 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
             }
             break;
         default:
+            setLastError("Method not supported");
             return libcdoc::NOT_SUPPORTED;
         }
 	}
+    setLastError("No lock found with certificate key");
     return libcdoc::NOT_FOUND;
 }
 
