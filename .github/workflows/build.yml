@@ -14,7 +14,7 @@ jobs:
     container: ubuntu:${{ matrix.container }}
     strategy:
       matrix:
-        container: ['22.04', '24.04', '24.10', '25.04']
+        container: ['22.04', '24.04', '25.04']
         arch: ['amd64', 'arm64']
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -59,7 +59,7 @@ jobs:
     - name: Prepare vcpkg
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgGitCommitId: 4008642a50a01a7115c2406b04d5273898e7fe1c
+        vcpkgGitCommitId: 031ad89ce6c575df35a8e58707ad2c898446c63e
         vcpkgJsonGlob: ./vcpkg.json
         runVcpkgInstall: true
       env:
@@ -94,14 +94,12 @@ jobs:
     - name: Install dependencies
       run: |
         brew update
-        brew install --formula flatbuffers swig doxygen boost openssl@3.0
-        brew unlink python@3.12 || true
-        brew unlink python@3.13 || true
+        brew install --formula flatbuffers swig doxygen boost
     - name: Prepare vcpkg
       if: matrix.target != 'macos'
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgGitCommitId: 4008642a50a01a7115c2406b04d5273898e7fe1c
+        vcpkgGitCommitId: 031ad89ce6c575df35a8e58707ad2c898446c63e
         vcpkgJsonGlob: ./vcpkg.json
         runVcpkgInstall: true
       env:
@@ -125,7 +123,7 @@ jobs:
     runs-on: ${{ matrix.image }}
     strategy:
       matrix:
-        image: [windows-2022]
+        image: [windows-2025]
         platform: [x64, arm64]
     env:
       CXXFLAGS: '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' # https://github.com/actions/runner-images/issues/10004
@@ -137,17 +135,14 @@ jobs:
     - name: Prepare vcpkg
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgGitCommitId: 4008642a50a01a7115c2406b04d5273898e7fe1c
+        vcpkgGitCommitId: 031ad89ce6c575df35a8e58707ad2c898446c63e
         vcpkgJsonGlob: ./vcpkg.json
         runVcpkgInstall: true
         runVcpkgFormatString: "[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `$[env.VCPKG_DEFAULT_TRIPLET]`, `--x-feature`, `tests`]"
       env:
         VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/vcpkg_installed
     - name: Install dependencies
-      run: |
-        choco install doxygen.install -y > $null
-        Invoke-WebRequest -UserAgent "Wget" "https://sourceforge.net/projects/swig/files/swigwin/swigwin-4.3.0/swigwin-4.3.0.zip/download" -OutFile swig.zip
-        tar xf swig.zip
+      run: winget install --silent --accept-source-agreements --accept-package-agreements swig doxygen
     - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -156,7 +151,7 @@ jobs:
       run: |
         cmake -A ${{ matrix.platform }} -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo `
           "-DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
-          "-DSWIG_EXECUTABLE=${{ github.workspace }}/swigwin-4.3.0/swig.exe" `
+          -DSWIG_EXECUTABLE=(Get-Item $env:LOCALAPPDATA\Microsoft\WinGet\Links\swig.exe).Target `
           -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
           -DVCPKG_MANIFEST_FEATURES=tests `
           -DCMAKE_INSTALL_LIBDIR=bin

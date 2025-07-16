@@ -29,13 +29,14 @@ public:
 	DDOCWriter(std::vector<uint8_t>& vec);
 	~DDOCWriter();
 
-	void addFile(const std::string &name, const std::string &mime, const std::vector<unsigned char> &data);
+    uint64_t addFile(const std::string &name, const std::string &mime, const std::vector<unsigned char> &data);
 
 private:
 	DDOCWriter(const DDOCWriter &) = delete;
 	DDOCWriter &operator=(const DDOCWriter &) = delete;
-	struct Private;
-	Private *d;
+    int fileCount = 0;
+
+    static const NS DDOC;
 };
 
 }
