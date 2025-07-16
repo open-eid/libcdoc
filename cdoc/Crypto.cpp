@@ -407,8 +407,8 @@ Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, 
         SSL_FAILED(EVP_PKEY_CTX_hkdf_mode(ctx.get(), mode), "EVP_PKEY_CTX_hkdf_mode") ||
         SSL_FAILED(EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_hkdf_md") ||
         SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_key(ctx.get(), key.data(), int(key.size())), "EVP_PKEY_CTX_set1_hkdf_key") ||
-        SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), salt.data(), int(salt.size())), "EVP_PKEY_CTX_set1_hkdf_salt") ||
-        SSL_FAILED(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info") ||
+        (!salt.empty() && SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), salt.data(), int(salt.size())), "EVP_PKEY_CTX_set1_hkdf_salt")) ||
+        (!info.empty() && SSL_FAILED(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info")) ||
         SSL_FAILED(EVP_PKEY_derive(ctx.get(), out.data(), &outlen), "EVP_PKEY_derive"))
 		return {};
 

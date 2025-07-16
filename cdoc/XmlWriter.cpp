@@ -18,9 +18,8 @@
 
 #include "XmlWriter.h"
 
-#include "Utils.h"
+#include "Io.h"
 
-#include <openssl/evp.h>
 #include <libxml/xmlwriter.h>
 
 using namespace libcdoc;
@@ -81,72 +80,70 @@ XMLWriter::~XMLWriter()
 	delete d;
 }
 
-void XMLWriter::writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr)
+int64_t XMLWriter::writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr)
 {
+    if(!d->w)
+        return WRONG_ARGUMENTS;
 	std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
 	if (pos != d->nsmap.cend())
 		pos->second++;
 	else
 		pos = d->nsmap.insert({ns.prefix, 1}).first;
-	if(!d->w)
-		return;
-	if(xmlTextWriterStartElementNS(d->w, ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
-		pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) < 0)
-		return;
+    if(xmlTextWriterStartElementNS(d->w, ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
+        pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) == -1)
+        return IO_ERROR;
 	for(auto i = attr.cbegin(), end = attr.cend(); i != end; ++i)
 	{
-		if(xmlTextWriterWriteAttribute(d->w, pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) < 0)
-			break;
+        if(xmlTextWriterWriteAttribute(d->w, pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) == -1)
+            return IO_ERROR;
 	}
+    return OK;
 }
 
-void XMLWriter::writeEndElement(const NS &ns)
+int64_t XMLWriter::writeEndElement(const NS &ns)
 {
-	if(d->w)
-		xmlTextWriterEndElement(d->w);
-	std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
-	if (pos != d->nsmap.cend())
+    if(!d->w)
+        return WRONG_ARGUMENTS;
+    if(xmlTextWriterEndElement(d->w) == -1)
+        return IO_ERROR;
+    if(std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
+        pos != d->nsmap.cend())
 		pos->second--;
+    return OK;
 }
 
-void XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<void()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<void()> &f)
 {
-	writeStartElement(ns, name, {});
+    if(auto rv = writeStartElement(ns, name, {}); rv != OK)
+        return rv;
 	if(f)
 		f();
-	writeEndElement(ns);
+    return writeEndElement(ns);
 }
 
-void XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<void()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<void()> &f)
 {
-	writeStartElement(ns, name, attr);
+    if(auto rv = writeStartElement(ns, name, attr); rv != OK)
+        return rv;
 	if(f)
 		f();
-	writeEndElement(ns);
+    return writeEndElement(ns);
 }
 
-void XMLWriter::writeBase64Element(const NS &ns, const std::string &name, const std::vector<xmlChar> &data, const std::map<std::string, std::string> &attr)
+int64_t XMLWriter::writeBase64Element(const NS &ns, const std::string &name, const std::vector<xmlChar> &data, const std::map<std::string, std::string> &attr)
 {
-	if (!d->w)
-		return;
-	static const size_t bufLen = 48 * 10240;
-	std::vector<xmlChar> result(((bufLen + 2) / 3) * 4, 0);
-	writeStartElement(ns, name, attr);
-	for (size_t i = 0; i < data.size(); i += bufLen)
-	{
-		int size = EVP_EncodeBlock(result.data(), &data[i], std::min(data.size() - i, bufLen));
-		if(size == 0)
-			break;
-		if(xmlTextWriterWriteRawLen(d->w, result.data(), size) < 0)
-			break;
-	}
-	writeEndElement(ns);
+    if(auto rv = writeStartElement(ns, name, attr); rv != OK)
+        return rv;
+    if(xmlTextWriterWriteBase64(d->w, reinterpret_cast<const char*>(data.data()), 0, data.size()) == -1)
+        return IO_ERROR;
+    return writeEndElement(ns);
 }
 
-void XMLWriter::writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data)
+int64_t XMLWriter::writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data)
 {
-	writeStartElement(ns, name, attr);
-	if(d->w)
-		(void)xmlTextWriterWriteString(d->w, pcxmlChar(data.c_str()));
-	writeEndElement(ns);
+    if(auto rv = writeStartElement(ns, name, attr); rv != OK)
+        return rv;
+    if(xmlTextWriterWriteString(d->w, pcxmlChar(data.c_str())) == -1)
+        return IO_ERROR;
+    return writeEndElement(ns);
 }
