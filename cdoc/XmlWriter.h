@@ -34,15 +34,14 @@ class XMLWriter
 public:
 	struct NS { std::string prefix, ns; };
 
-	XMLWriter(const std::string& path);
 	XMLWriter(std::vector<uint8_t>& vec);
 	XMLWriter(DataConsumer *dst);
 	virtual ~XMLWriter();
 
     int64_t writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr);
     int64_t writeEndElement(const NS &ns);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::function<void()> &f = nullptr);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<void()> &f = nullptr);
+    int64_t writeElement(const NS &ns, const std::string &name, const std::function<uint64_t()> &f = nullptr);
+    int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<uint64_t()> &f = nullptr);
     int64_t writeBase64Element(const NS &ns, const std::string &name, const std::vector<unsigned char> &data, const std::map<std::string, std::string> &attr = {});
     int64_t writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data);
 

@@ -25,7 +25,6 @@ namespace libcdoc {
 class DDOCWriter: public XMLWriter
 {
 public:
-	DDOCWriter(const std::string &path);
 	DDOCWriter(std::vector<uint8_t>& vec);
 	~DDOCWriter();
 
