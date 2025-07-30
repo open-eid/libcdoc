@@ -483,7 +483,7 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     std::vector<uint8_t> shareval = fromBase64(share64);
     shareval.resize(32);
     LOG_DBG("Share: {}", toHex(shareval));
-    share = {shareval, recipient};
+    share = {std::move(shareval), std::move(recipient)};
     return OK;
 }
 

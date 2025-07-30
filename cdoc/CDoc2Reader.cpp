@@ -298,7 +298,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                 LOG_ERROR("Cannot fetch share {}", i);
                 return result;
             }
-            Crypto::xor_data(kek, kek, share.share);
+            if (Crypto::xor_data(kek, kek, share.share) != libcdoc::OK) {
+                setLastError("Failed to derive kek");
+                LOG_ERROR("Failed to derive kek");
+                return libcdoc::CRYPTO_ERROR;
+            }
         }
         LOG_INFO("Fetched all shares");
     } else {
@@ -651,7 +655,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
                     std::string url = cshare->server_base_url()->str();
                     std::string str = url + "," + id;
                     LOG_DBG("Keyshare: {}", str);
-                    strs.push_back(str);
+                    strs.push_back(std::move(str));
                 }
                 std::string urls = join(strs, ";");
                 LOG_DBG("Keyshare urls: {}", urls);

@@ -20,6 +20,8 @@
 
 #include "Io.h"
 
+#include "utils/memory.h"
+
 #include <libxml/xmlwriter.h>
 
 using namespace libcdoc;
@@ -28,8 +30,8 @@ typedef const xmlChar *pcxmlChar;
 
 struct XMLWriter::Private
 {
-	xmlTextWriterPtr w = xmlNewTextWriter(
-		xmlOutputBufferCreateIO(xmlOutputWriteCallback, xmlOutputCloseCallback, this, nullptr));
+    unique_ptr_t<xmlFreeTextWriter> w = make_unique_ptr<xmlFreeTextWriter>(xmlNewTextWriter(
+        xmlOutputBufferCreateIO(xmlOutputWriteCallback, xmlOutputCloseCallback, this, nullptr)));
 	std::map<std::string, int> nsmap;
 
 	libcdoc::DataConsumer* dst = nullptr;
@@ -57,7 +59,7 @@ XMLWriter::XMLWriter(libcdoc::DataConsumer* dst)
 	: d(new Private)
 {
 	d->dst = dst;
-	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
+    xmlTextWriterStartDocument(d->w.get(), nullptr, "UTF-8", nullptr);
 }
 
 XMLWriter::XMLWriter(const std::string& path)
@@ -74,8 +76,7 @@ XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
 
 XMLWriter::~XMLWriter()
 {
-	xmlTextWriterEndDocument(d->w);
-	xmlFreeTextWriter(d->w);
+    xmlTextWriterEndDocument(d->w.get());
 	if(d->dst && d->dst_owned) delete d->dst;
 	delete d;
 }
@@ -89,12 +90,12 @@ int64_t XMLWriter::writeStartElement(const NS &ns, const std::string &name, cons
 		pos->second++;
 	else
 		pos = d->nsmap.insert({ns.prefix, 1}).first;
-    if(xmlTextWriterStartElementNS(d->w, ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
+    if(xmlTextWriterStartElementNS(d->w.get(), ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
         pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) == -1)
         return IO_ERROR;
 	for(auto i = attr.cbegin(), end = attr.cend(); i != end; ++i)
 	{
-        if(xmlTextWriterWriteAttribute(d->w, pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) == -1)
+        if(xmlTextWriterWriteAttribute(d->w.get(), pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) == -1)
             return IO_ERROR;
 	}
     return OK;
@@ -104,7 +105,7 @@ int64_t XMLWriter::writeEndElement(const NS &ns)
 {
     if(!d->w)
         return WRONG_ARGUMENTS;
-    if(xmlTextWriterEndElement(d->w) == -1)
+    if(xmlTextWriterEndElement(d->w.get()) == -1)
         return IO_ERROR;
     if(std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
         pos != d->nsmap.cend())
@@ -134,7 +135,7 @@ int64_t XMLWriter::writeBase64Element(const NS &ns, const std::string &name, con
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
-    if(xmlTextWriterWriteBase64(d->w, reinterpret_cast<const char*>(data.data()), 0, data.size()) == -1)
+    if(xmlTextWriterWriteBase64(d->w.get(), reinterpret_cast<const char*>(data.data()), 0, data.size()) == -1)
         return IO_ERROR;
     return writeEndElement(ns);
 }
@@ -143,7 +144,7 @@ int64_t XMLWriter::writeTextElement(const NS &ns, const std::string &name, const
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
-    if(xmlTextWriterWriteString(d->w, pcxmlChar(data.c_str())) == -1)
+    if(xmlTextWriterWriteString(d->w.get(), pcxmlChar(data.c_str())) == -1)
         return IO_ERROR;
     return writeEndElement(ns);
 }

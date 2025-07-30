@@ -72,7 +72,7 @@ split(const std::string &s, char delim = ':') {
 }
 
 static std::string
-join(const std::vector<std::string> parts, const std::string_view sep)
+join(const std::vector<std::string> &parts, const std::string_view sep)
 {
 	std::string result;
 	for (auto& part : parts) {
