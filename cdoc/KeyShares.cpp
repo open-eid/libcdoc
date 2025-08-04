@@ -65,7 +65,7 @@ namespace libcdoc {
 /* Helper for JWT signing */
 struct JWTSigner {
     Signer *parent;
-    result_t *result;
+    result_t *result {};
 
     JWTSigner(Signer *_parent) : parent(_parent) {}
     std::string sign(const std::string& data, std::error_code& ec) const {
@@ -73,7 +73,9 @@ struct JWTSigner {
         std::vector<uint8_t> digest(32);
         SHA256((uint8_t *) data.c_str(), data.size(), digest.data());
         std::vector<uint8_t> dst;
-        *result = parent->signDigest(dst, digest);
+        auto rv = parent->signDigest(dst, digest);
+        if (result)
+            *result = rv;
         return std::string((const char *) dst.data(), dst.size());
     }
     void verify(const std::string& data, const std::string& signature, std::error_code& ec) const {};
@@ -164,9 +166,8 @@ Signer::generateTickets(std::vector<std::string>& dst, std::vector<ShareData>& s
     // Create list of individual disclosures
     std::vector<Disclosure> disclosures;
     for (auto share : shares) {
-        Disclosure d({}, share.getURL());
+        Disclosure &d = disclosures.emplace_back(std::string{}, share.getURL());
         LOG_DBG("Disclosure for {}: {}", share.base_url, d.json);
-        disclosures.push_back(d);
     }
     // Create disclosure of the whole list
     Disclosure aud("aud", disclosures);

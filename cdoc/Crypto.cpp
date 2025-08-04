@@ -480,7 +480,7 @@ Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
     if (!key)
         LOG_SSL_ERROR("d2i_PublicKey");
 
-    return EVP_PKEY_ptr(key, EVP_PKEY_free);
+    return {key, EVP_PKEY_free};
 }
 
 Crypto::EVP_PKEY_ptr
@@ -496,14 +496,14 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
         SSL_FAILED(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), curveName), "EVP_PKEY_CTX_set_ec_paramgen_curve_nid") ||
         SSL_FAILED(EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE), "EVP_PKEY_CTX_set_ec_param_enc") ||
         SSL_FAILED(EVP_PKEY_paramgen(ctx.get(), &params), "EVP_PKEY_paramgen"))
-		return std::unique_ptr<EVP_PKEY, void (*)(EVP_PKEY *)>(nullptr, EVP_PKEY_free);
+		return {nullptr, EVP_PKEY_free};
 
 	const uint8_t *p = der.data();
 	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(der.size()));
     if (!key)
         LOG_SSL_ERROR("d2i_PublicKey");
 
-    return EVP_PKEY_ptr(key, EVP_PKEY_free);
+    return {key, EVP_PKEY_free};
 }
 
 Crypto::EVP_PKEY_ptr
@@ -514,17 +514,19 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
     if (!key)
         LOG_SSL_ERROR("d2i_PUBKEY");
 
-    return EVP_PKEY_ptr(key, EVP_PKEY_free);
+    return {key, EVP_PKEY_free};
 }
 
 Crypto::EVP_PKEY_ptr
 Crypto::genECKey(EVP_PKEY *params)
 {
 	EVP_PKEY *key = nullptr;
-    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(params, nullptr));
-    if(ctx && !SSL_FAILED(EVP_PKEY_keygen_init(ctx.get()), "EVP_PKEY_keygen_init"))
-        SSL_FAILED(EVP_PKEY_keygen(ctx.get(), &key), "EVP_PKEY_keygen");
-    return EVP_PKEY_ptr(key, EVP_PKEY_free);
+    if(auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(params, nullptr));
+        !ctx ||
+        SSL_FAILED(EVP_PKEY_keygen_init(ctx.get()), "EVP_PKEY_keygen_init") ||
+        SSL_FAILED(EVP_PKEY_keygen(ctx.get(), &key), "EVP_PKEY_keygen"))
+        return {nullptr, EVP_PKEY_free};
+    return {key, EVP_PKEY_free};
 }
 
 std::vector<uint8_t>

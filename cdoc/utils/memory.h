@@ -42,6 +42,9 @@ struct free_argument<R (*)(T *)>
 template <class T>
 using unique_free_t = std::unique_ptr<T, void(*)(T*)>;
 
+template <auto D>
+using unique_ptr_t = std::unique_ptr<typename free_argument<decltype(D)>::type, free_deleter<D>>;
+
 template<class T, typename D>
 [[nodiscard]]
 constexpr std::unique_ptr<T, D> make_unique_ptr(T *p, D d) noexcept
@@ -60,8 +63,7 @@ template<auto D>
 [[nodiscard]]
 constexpr auto make_unique_ptr(nullptr_t) noexcept
 {
-    using T = typename free_argument<decltype(D)>::type;
-    return std::unique_ptr<T, free_deleter<D>>(nullptr);
+    return unique_ptr_t<D>(nullptr);
 }
 
 template<auto D, class P>
