@@ -74,10 +74,17 @@ getVersion()
 int
 libcdoc::CDocReader::getCDocFileVersion(DataSource *src)
 {
-    if (src->seek(0) != libcdoc::OK) return libcdoc::IO_ERROR;
+    if (src->seek(0) != libcdoc::OK) {
+        LOG_DBG("CDocReader::getCDocFileVersion (A): Source does not support seek");
+        return libcdoc::IO_ERROR;
+    }
     if (CDoc2Reader::isCDoc2File(src)) return 2;
-    if (src->seek(0) != libcdoc::OK) return libcdoc::IO_ERROR;
+    if (src->seek(0) != libcdoc::OK) {
+        LOG_DBG("CDocReader::getCDocFileVersion (B): Source does not support seek");
+        return libcdoc::IO_ERROR;
+    }
     if (CDoc1Reader::isCDoc1File(src)) return 1;
+    LOG_DBG("CDocReader::getCDocFileVersion: File not supported");
     return libcdoc::NOT_SUPPORTED;
 }
 

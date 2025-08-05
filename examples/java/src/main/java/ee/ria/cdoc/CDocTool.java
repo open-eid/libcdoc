@@ -41,6 +41,7 @@ public class CDocTool {
         String library = "../../build/macos/cdoc/libcdoc_javad.jnilib";
         Action action = Action.INVALID;
         ArrayList<String> files = new ArrayList<>();
+        int version = 2;
         String label = null;
         String password = null;
         String out = "test.cdoc2";
@@ -68,6 +69,8 @@ public class CDocTool {
             } else if (args[i].equals("--label")) {
                 label = getArg(i, args);
                 i += 1;
+            } else if (args[i].equals("--v1")) {
+                version = 1;
             } else if (args[i].equals("--certfile")) {
                 certfile = getArg(i, args);
                 i += 1;
@@ -134,7 +137,7 @@ public class CDocTool {
         switch (action) {
             case ENCRYPT:
             if (certfile != null) {
-                encryptCertFile(out, label, certfile, files);
+                encryptCertFile(version, out, label, certfile, files);
             } else if (password != null) {
                 encrypt(out, label, password, files);
             } else if (servers != null) {
@@ -314,11 +317,11 @@ public class CDocTool {
         }
     }
 
-    static void encryptCertFile(String file, String label, String certfile, Collection<String> files) {
+    static void encryptCertFile(int version, String file, String label, String certfile, Collection<String> files) {
         System.out.println("Creating file " + file);
         ToolConf conf = new ToolConf();
         ToolNetwork network = new ToolNetwork();
-        CDocWriter wrtr = CDocWriter.createWriter(2, file, conf, null, network);
+        CDocWriter wrtr = CDocWriter.createWriter(version, file, conf, null, network);
         try {
             InputStream ifs = new FileInputStream(certfile);
             byte[] cert = ifs.readAllBytes();

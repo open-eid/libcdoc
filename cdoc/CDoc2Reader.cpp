@@ -687,8 +687,14 @@ CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
 {
     uint8_t in[libcdoc::CDoc2::LABEL.size()];
     constexpr size_t len = libcdoc::CDoc2::LABEL.size();
-    if (src->read(&in[0], len) != len) return false;
-    if (libcdoc::CDoc2::LABEL.compare(0, len, (char *) &in[0], len)) return false;
+    if (src->read(&in[0], len) != len) {
+        LOG_DBG("CDoc2Reader::isCDoc1File: Cannot read tag");
+        return false;
+    }
+    if (libcdoc::CDoc2::LABEL.compare(0, len, (char *) &in[0], len)) {
+        LOG_DBG("CDoc2Reader::isCDoc2File: Invalid tag: {}", toHex(in));
+        return false;
+    }
     return true;
 }
 

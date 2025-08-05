@@ -25,6 +25,7 @@
 #include "DDocReader.h"
 #include "ILogger.h"
 #include "Lock.h"
+#include "Utils.h"
 #include "XmlReader.h"
 #include "ZStream.h"
 
@@ -85,8 +86,7 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
 	libcdoc::Certificate cc(cert);
     for (size_t i = 0; i < d->locks.size(); i++) {
         const Lock &ll = d->locks.at(i);
-        if (!ll.isCDoc1() ||
-            ll.getBytes(Lock::Params::CERT) != cert ||
+        if (ll.getBytes(Lock::Params::CERT) != cert ||
             ll.encrypted_fmk.empty())
             continue;
         switch(cc.getAlgorithm()) {
@@ -115,11 +115,6 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
     if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
     const Lock &lock = d->locks.at(lock_idx);
-    if (lock.type != Lock::Type::CDOC1) {
-		setLastError("Not a CDoc1 key");
-        LOG_ERROR("{}", last_error);
-		return libcdoc::UNSPECIFIED_ERROR;
-	}
     setLastError({});
     if (lock.isRSA()) {
         int result = crypto->decryptRSA(fmk, lock.encrypted_fmk, false, lock_idx);
@@ -264,7 +259,7 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
 
 /*
  * CDoc1Reader constructor.
- * @param file File to open reading
+ * @param src A DataSource of container
  */
 CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 	: CDocReader(1), d(new Private)
@@ -306,7 +301,6 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 		else if(reader.isElement("EncryptedKey"))
 		{
             Lock &key = d->locks.emplace_back(Lock::Type::CDOC1);
-			//key.id = reader.attribute("Id");
             key.label = reader.attribute("Recipient");
 			while(reader.read())
 			{
@@ -314,18 +308,9 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 					break;
                 if(reader.isEndElement())
 					continue;
-				// EncryptedData/KeyInfo/KeyName
-				//if(reader.isElement("KeyName"))
-				//	key.name = reader.readText();
 				// EncryptedData/KeyInfo/EncryptedKey/EncryptionMethod
                 if(reader.isElement("EncryptionMethod"))
                     key.setString(Lock::Params::METHOD, reader.attribute("Algorithm"));
-				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod
-				//else if(reader.isElement("AgreementMethod"))
-				//	key.agreement = reader.attribute("Algorithm");
-				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod
-				//else if(reader.isElement("KeyDerivationMethod"))
-				//	key.derive = reader.attribute("Algorithm");
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod/ConcatKDFParams
 				else if(reader.isElement("ConcatKDFParams"))
 				{
@@ -363,11 +348,18 @@ CDoc1Reader::CDoc1Reader(const std::string &path)
 bool
 CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 {
-    // fixme: better check
-    static const std::string XML_TAG("<?xml");
-    std::vector<uint8_t>buf(XML_TAG.size());
-    if (src->read(buf.data(), XML_TAG.size()) != XML_TAG.size()) return false;
-    if (XML_TAG.compare(0, XML_TAG.size(), (char *) buf.data())) return false;
+    // todo: better check
+    static constexpr std::string_view XML_TAG("<?xml");
+    std::array<uint8_t,XML_TAG.size()> buf;
+    if (src->read(buf.data(), XML_TAG.size()) != XML_TAG.size()) {
+        LOG_DBG("CDoc1Reader::isCDoc1File: Cannot read tag");
+        return false;
+    }
+    if (XML_TAG.compare(0, XML_TAG.size(), (const char *) buf.data(), buf.size())) {
+        LOG_DBG("CDoc1Reader::isCDoc1File: Invalid tag: {}", toHex(buf));
+        LOG_DBG("CDoc1Reader::isCDoc1File: Should be  : {}", toHex(XML_TAG));
+        return false;
+    }
     return true;
 }
 
@@ -393,6 +385,7 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& 
         return libcdoc::WORKFLOW_ERROR;
     }
     if (auto result = d->dsrc->seek(0); result != libcdoc::OK) {
+        LOG_ERROR("{}", d->src->getLastErrorStr(result));
         return result;
     }
 
