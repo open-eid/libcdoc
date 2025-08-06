@@ -38,6 +38,11 @@ struct free_argument<R (*)(T *)>
 {
     using type = T;
 };
+template<class T, class R>
+struct free_argument<R (&)(T *)>
+{
+    using type = T;
+};
 
 template <class T>
 using unique_free_t = std::unique_ptr<T, void(*)(T*)>;
