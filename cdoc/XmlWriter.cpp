@@ -77,6 +77,8 @@ XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
 XMLWriter::~XMLWriter()
 {
     xmlTextWriterEndDocument(d->w.get());
+    // Force XmlTextWriter to finish before deleting consumer
+    d->w.reset();
 	if(d->dst && d->dst_owned) delete d->dst;
 	delete d;
 }
