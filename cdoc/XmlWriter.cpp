@@ -62,12 +62,6 @@ XMLWriter::XMLWriter(libcdoc::DataConsumer* dst)
     xmlTextWriterStartDocument(d->w.get(), nullptr, "UTF-8", nullptr);
 }
 
-XMLWriter::XMLWriter(const std::string& path)
-	: XMLWriter(new libcdoc::OStreamConsumer(path))
-{
-	d->dst_owned = true;
-}
-
 XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
 	: XMLWriter(new libcdoc::VectorConsumer(vec))
 {
@@ -115,21 +109,21 @@ int64_t XMLWriter::writeEndElement(const NS &ns)
     return OK;
 }
 
-int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<void()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<uint64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, {}); rv != OK)
         return rv;
-	if(f)
-		f();
+    if(uint64_t rv = OK; f && (rv = f()) != OK)
+        return rv;
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<void()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<uint64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
-	if(f)
-		f();
+    if(uint64_t rv = OK; f && (rv = f()) != OK)
+        return rv;
     return writeEndElement(ns);
 }
 
