@@ -27,16 +27,6 @@ using namespace libcdoc;
 
 const XMLWriter::NS DDOCWriter::DDOC{ "", "http://www.sk.ee/DigiDoc/v1.3.0#" };
 
-/**
- * DDOCWriter constructor.
- * @param file File to be created
- */
-DDOCWriter::DDOCWriter(const std::string &file)
-	: XMLWriter(file)
-{
-    writeStartElement(DDOC, "SignedDoc", {{"format", "DIGIDOC-XML"}, {"version", "1.3"}});
-}
-
 DDOCWriter::DDOCWriter(std::vector<uint8_t>& vec)
     : XMLWriter(vec)
 {
