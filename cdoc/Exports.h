@@ -58,5 +58,11 @@
 #define CDOC_DISABLE_MOVE(Class) \
     Class(Class&&) noexcept = delete; \
     Class& operator=(Class&&) noexcept = delete;
+#define CDOC_DISABLE_COPY(Class) \
+    Class(const Class&) noexcept = delete; \
+    Class& operator=(const Class&) noexcept = delete;
+#define CDOC_DISABLE_MOVE_COPY(Class) \
+    CDOC_DISABLE_MOVE(Class) \
+    CDOC_DISABLE_COPY(Class)
 
 #endif // EXPOORTS_H
