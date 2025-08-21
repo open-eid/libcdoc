@@ -26,74 +26,59 @@
 
 using namespace libcdoc;
 
-typedef const xmlChar *pcxmlChar;
+using pcxmlChar = xmlChar *;
 
 struct XMLWriter::Private
 {
+    Private(libcdoc::DataConsumer &_dst): dst(_dst) {}
+    libcdoc::DataConsumer &dst;
+    std::map<std::string, int> nsmap;
+
     unique_ptr_t<xmlFreeTextWriter> w = make_unique_ptr<xmlFreeTextWriter>(xmlNewTextWriter(
-        xmlOutputBufferCreateIO(xmlOutputWriteCallback, xmlOutputCloseCallback, this, nullptr)));
-	std::map<std::string, int> nsmap;
+        xmlOutputBufferCreateIO(xmlOutputWriteCallback, nullptr, this, nullptr)));
 
-	libcdoc::DataConsumer* dst = nullptr;
-	bool dst_owned = false;
-
-	static int xmlOutputWriteCallback (void *context, const char *buffer, int len);
-	static int xmlOutputCloseCallback (void *context);
+    static int xmlOutputWriteCallback (void *context, const char *buffer, int len);
 };
 
 int
 XMLWriter::Private::xmlOutputWriteCallback (void *context, const char *buffer, int len)
 {
-	auto *d = reinterpret_cast<XMLWriter::Private *>(context);
-	return d->dst->write((uint8_t *) buffer, len);
+    auto *d = reinterpret_cast<XMLWriter::Private *>(context);
+    return d->dst.write((uint8_t *) buffer, len);
 }
 
-int
-XMLWriter::Private::xmlOutputCloseCallback (void *context)
+XMLWriter::XMLWriter(libcdoc::DataConsumer &dst)
+    : d(std::make_unique<Private>(dst))
 {
-	auto *d = reinterpret_cast<XMLWriter::Private *>(context);
-	return d->dst->close();
+    if(d->w)
+        xmlTextWriterStartDocument(d->w.get(), nullptr, "UTF-8", nullptr);
 }
 
-XMLWriter::XMLWriter(libcdoc::DataConsumer* dst)
-	: d(new Private)
+XMLWriter::~XMLWriter() noexcept
 {
-	d->dst = dst;
-    xmlTextWriterStartDocument(d->w.get(), nullptr, "UTF-8", nullptr);
-}
-
-XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
-	: XMLWriter(new libcdoc::VectorConsumer(vec))
-{
-	d->dst_owned = true;
-}
-
-XMLWriter::~XMLWriter()
-{
-    xmlTextWriterEndDocument(d->w.get());
-    // Force XmlTextWriter to finish before deleting consumer
-    d->w.reset();
-	if(d->dst && d->dst_owned) delete d->dst;
-	delete d;
+    if(d->w)
+        xmlTextWriterEndDocument(d->w.get());
 }
 
 int64_t XMLWriter::writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr)
 {
     if(!d->w)
         return WRONG_ARGUMENTS;
-	std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
-	if (pos != d->nsmap.cend())
-		pos->second++;
-	else
-		pos = d->nsmap.insert({ns.prefix, 1}).first;
-    if(xmlTextWriterStartElementNS(d->w.get(), ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
-        pcxmlChar(name.c_str()), pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) == -1)
+    auto pos = d->nsmap.find(ns.prefix);
+    if (pos != d->nsmap.cend())
+        pos->second++;
+    else
+        pos = d->nsmap.insert({ns.prefix, 1}).first;
+    if(xmlTextWriterStartElementNS(d->w.get(),
+            ns.prefix.empty() ? nullptr : pcxmlChar(ns.prefix.c_str()),
+            pcxmlChar(name.c_str()),
+            pos->second > 1 ? nullptr : pcxmlChar(ns.ns.c_str())) == -1)
         return IO_ERROR;
-	for(auto i = attr.cbegin(), end = attr.cend(); i != end; ++i)
-	{
-        if(xmlTextWriterWriteAttribute(d->w.get(), pcxmlChar(i->first.c_str()), pcxmlChar(i->second.c_str())) == -1)
+    for(const auto &[name, content]: attr)
+    {
+        if(xmlTextWriterWriteAttribute(d->w.get(), pcxmlChar(name.c_str()), pcxmlChar(content.c_str())) == -1)
             return IO_ERROR;
-	}
+    }
     return OK;
 }
 
@@ -103,26 +88,25 @@ int64_t XMLWriter::writeEndElement(const NS &ns)
         return WRONG_ARGUMENTS;
     if(xmlTextWriterEndElement(d->w.get()) == -1)
         return IO_ERROR;
-    if(std::map<std::string, int>::iterator pos = d->nsmap.find(ns.prefix);
-        pos != d->nsmap.cend())
-		pos->second--;
+    if(auto pos = d->nsmap.find(ns.prefix); pos != d->nsmap.cend())
+        pos->second--;
     return OK;
 }
 
-int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<uint64_t()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::function<int64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, {}); rv != OK)
         return rv;
-    if(uint64_t rv = OK; f && (rv = f()) != OK)
+    if(int64_t rv = OK; f && (rv = f()) != OK)
         return rv;
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<uint64_t()> &f)
+int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
-    if(uint64_t rv = OK; f && (rv = f()) != OK)
+    if(int64_t rv = OK; f && (rv = f()) != OK)
         return rv;
     return writeEndElement(ns);
 }

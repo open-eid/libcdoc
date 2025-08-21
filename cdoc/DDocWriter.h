@@ -22,17 +22,17 @@
 
 namespace libcdoc {
 
-class DDOCWriter: public XMLWriter
+class DDOCWriter final: public XMLWriter
 {
 public:
-	DDOCWriter(std::vector<uint8_t>& vec);
-	~DDOCWriter();
+    DDOCWriter(DataConsumer &dst);
+    ~DDOCWriter() noexcept final;
 
-    uint64_t addFile(const std::string &name, const std::string &mime, const std::vector<unsigned char> &data);
+    int64_t addFile(const std::string &name, const std::string &mime, const std::vector<unsigned char> &data);
 
 private:
-	DDOCWriter(const DDOCWriter &) = delete;
-	DDOCWriter &operator=(const DDOCWriter &) = delete;
+    DDOCWriter(const DDOCWriter &) = delete;
+    DDOCWriter &operator=(const DDOCWriter &) = delete;
     int fileCount = 0;
 
     static const NS DDOC;
