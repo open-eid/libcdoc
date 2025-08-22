@@ -27,13 +27,13 @@ using namespace libcdoc;
 
 const XMLWriter::NS DDOCWriter::DDOC{ "", "http://www.sk.ee/DigiDoc/v1.3.0#" };
 
-DDOCWriter::DDOCWriter(std::vector<uint8_t>& vec)
-    : XMLWriter(vec)
+DDOCWriter::DDOCWriter(DataConsumer &dst)
+    : XMLWriter(dst)
 {
     writeStartElement(DDOC, "SignedDoc", {{"format", "DIGIDOC-XML"}, {"version", "1.3"}});
 }
 
-DDOCWriter::~DDOCWriter()
+DDOCWriter::~DDOCWriter() noexcept
 {
     writeEndElement(DDOC); // SignedDoc
 }
@@ -44,13 +44,13 @@ DDOCWriter::~DDOCWriter()
  * @param mime File mime type
  * @param data File content
  */
-uint64_t DDOCWriter::addFile(const std::string &file, const std::string &mime, const std::vector<unsigned char> &data)
+int64_t DDOCWriter::addFile(const std::string &file, const std::string &mime, const std::vector<unsigned char> &data)
 {
     return writeBase64Element(DDOC, "DataFile", data, {
-		{"ContentType", "EMBEDDED_BASE64"},
-		{"Filename", file},
+        {"ContentType", "EMBEDDED_BASE64"},
+        {"Filename", file},
         {"Id", "D" + std::to_string(fileCount++)},
-		{"MimeType", mime},
-		{"Size", std::to_string(data.size())}
-	});
+        {"MimeType", mime},
+        {"Size", std::to_string(data.size())}
+    });
 }

@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <ostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -32,22 +32,21 @@ struct DataConsumer;
 class XMLWriter
 {
 public:
-	struct NS { std::string prefix, ns; };
+    struct NS { std::string prefix, ns; };
 
-	XMLWriter(std::vector<uint8_t>& vec);
-	XMLWriter(DataConsumer *dst);
-	virtual ~XMLWriter();
+    XMLWriter(DataConsumer &dst);
+    virtual ~XMLWriter() noexcept;
 
     int64_t writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr);
     int64_t writeEndElement(const NS &ns);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::function<uint64_t()> &f = nullptr);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<uint64_t()> &f = nullptr);
+    int64_t writeElement(const NS &ns, const std::string &name, const std::function<int64_t()> &f = nullptr);
+    int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f = nullptr);
     int64_t writeBase64Element(const NS &ns, const std::string &name, const std::vector<unsigned char> &data, const std::map<std::string, std::string> &attr = {});
     int64_t writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data);
 
 private:
-	struct Private;
-	Private *d;
+    struct Private;
+    std::unique_ptr<Private> d;
 };
 
 } // namespace libcdoc
