@@ -16,10 +16,6 @@
  *
  */
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#endif
-
 #include "CDoc.h"
 #include "Crypto.h"
 #include "ILogger.h"
@@ -34,6 +30,7 @@
 #include <openssl/sha.h>
 #include <openssl/x509.h>
 
+#include <array>
 #include <cstring>
 
 using namespace libcdoc;
@@ -44,6 +41,14 @@ const std::string Crypto::SHA512_MTH = "http://www.w3.org/2001/04/xmlenc#sha512"
 const std::string Crypto::RSA_MTH = "http://www.w3.org/2001/04/xmlenc#rsa-1_5";
 const std::string Crypto::CONCATKDF_MTH = "http://www.w3.org/2009/xmlenc11#ConcatKDF";
 const std::string Crypto::AGREEMENT_MTH = "http://www.w3.org/2009/xmlenc11#ECDH-ES";
+
+template<auto F, auto Free, typename... Args>
+[[nodiscard]]
+constexpr auto d2i(const std::vector<uint8_t> &data, Args&&... args) noexcept
+{
+    const auto *p = data.data();
+    return make_unique_ptr(F(std::forward<Args>(args)..., &p, long(data.size())), Free);
+}
 
 
 Crypto::Cipher::Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt)
@@ -80,15 +85,6 @@ bool Crypto::Cipher::result() const
     if(result.size() != len)
         result.resize(len);
 	return true;
-}
-
-std::vector<uint8_t>
-Crypto::Cipher::tag() const
-{
-	std::vector<uint8_t> result(tagLen(), 0);
-    if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, int(result.size()), result.data()), "EVP_CIPHER_CTX_ctrl"))
-        return {};
-    return result;
 }
 
 bool Crypto::Cipher::setTag(const std::vector<uint8_t> &data) const
@@ -213,37 +209,6 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 	return concatKDF(hashAlg, keyDataLen, z, otherInfo);
 }
 
-std::vector<uint8_t> Crypto::encrypt(const std::string &method, const Key &key, const std::vector<uint8_t> &data)
-{
-	const EVP_CIPHER *c = cipher(method);
-    auto ctx = make_unique_ptr<EVP_CIPHER_CTX_free>(EVP_CIPHER_CTX_new());
-    if (SSL_FAILED(EVP_CipherInit(ctx.get(), c, key.key.data(), key.iv.data(), 1), "EVP_CipherInit"))
-        return {};
-
-    std::vector<uint8_t> result(data.size() + size_t(EVP_CIPHER_CTX_block_size(ctx.get())), 0);
-
-	std::vector<char> buf(10 * 1024, 0);
-    size_t total = 0;
-    int sizeIn = 0;
-    if (SSL_FAILED(EVP_CipherUpdate(ctx.get(), result.data(), &sizeIn, data.data(), data.size()), "EVP_CipherUpdate"))
-        return {};
-    total += sizeIn;
-    if (SSL_FAILED(EVP_CipherFinal(ctx.get(), result.data() + sizeIn, &sizeIn), "EVP_CipherFinal"))
-        return {};
-    total += sizeIn;
-    result.resize(total);
-	result.insert(result.cbegin(), key.iv.cbegin(), key.iv.cend());
-    if(EVP_CIPHER_mode(c) == EVP_CIPH_GCM_MODE) {
-		std::vector<uint8_t> tag(16, 0);
-        if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
-            return {};
-
-		result.insert(result.cend(), tag.cbegin(), tag.cend());
-        LOG_DBG("GCM TAG {}", toHex(tag));
-	}
-	return result;
-}
-
 std::vector<uint8_t>
 Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
 {
@@ -270,6 +235,8 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	const EVP_CIPHER *cipher = Crypto::cipher(method);
 	size_t dataSize = data.size();
 	std::vector<uint8_t> iv(data.cbegin(), data.cbegin() + EVP_CIPHER_iv_length(cipher));
+    if(dataSize < iv.size())
+        return {};
 	dataSize -= iv.size();
 
     LOG_TRACE_KEY("iv {}", iv);
@@ -290,6 +257,8 @@ std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vecto
 	if (EVP_CIPHER_mode(cipher) == EVP_CIPH_GCM_MODE)
 	{
 		std::vector<uint8_t> tag(data.cend() - 16, data.cend());
+        if(dataSize < tag.size())
+            return {};
         EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, int(tag.size()), tag.data());
 		dataSize -= tag.size();
         LOG_DBG("GCM TAG {}", toHex(tag));
@@ -471,16 +440,12 @@ Crypto::pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>
 Crypto::EVP_PKEY_ptr
 Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
 {
-	const uint8_t *p = der.data();
-	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_RSA, nullptr, &p, long(der.size()));
-    if (!key) {
-        p = der.data();
-        key = d2i_PUBKEY(nullptr, &p, long(der.size()));        
-    }
-    if (!key)
+    if(auto key = d2i<d2i_PublicKey,EVP_PKEY_free>(der, EVP_PKEY_RSA, nullptr))
+        return key;
+    auto key = d2i<d2i_PUBKEY,EVP_PKEY_free>(der, nullptr);
+    if(!key)
         LOG_SSL_ERROR("d2i_PublicKey");
-
-    return {key, EVP_PKEY_free};
+    return key;
 }
 
 Crypto::EVP_PKEY_ptr
@@ -498,23 +463,19 @@ Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName)
         SSL_FAILED(EVP_PKEY_paramgen(ctx.get(), &params), "EVP_PKEY_paramgen"))
 		return {nullptr, EVP_PKEY_free};
 
-	const uint8_t *p = der.data();
-	EVP_PKEY *key = d2i_PublicKey(EVP_PKEY_EC, &params, &p, long(der.size()));
+    auto key = d2i<d2i_PublicKey,EVP_PKEY_free>(der, EVP_PKEY_EC, &params);
     if (!key)
         LOG_SSL_ERROR("d2i_PublicKey");
-
-    return {key, EVP_PKEY_free};
+    return key;
 }
 
 Crypto::EVP_PKEY_ptr
 Crypto::fromECPublicKeyDer(const std::vector<uint8_t> &der)
 {
-    const uint8_t *p = der.data();
-    EVP_PKEY *key = d2i_PUBKEY(nullptr, &p, (long) der.size());
-    if (!key)
+    auto key = d2i<d2i_PUBKEY, EVP_PKEY_free>(der, nullptr);
+    if(!key)
         LOG_SSL_ERROR("d2i_PUBKEY");
-
-    return {key, EVP_PKEY_free};
+    return key;
 }
 
 Crypto::EVP_PKEY_ptr
@@ -568,12 +529,9 @@ Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, con
 
 unique_free_t<X509> Crypto::toX509(const std::vector<uint8_t> &data)
 {
-	const uint8_t *p = data.data();
-    auto x509 = make_unique_ptr(d2i_X509(nullptr, &p, int(data.size())), X509_free);
-    if (!x509)
-    {
+    auto x509 = d2i<d2i_X509,X509_free>(data, nullptr);
+    if(!x509)
         LOG_SSL_ERROR("d2i_X509");
-    }
     return x509;
 }
 
@@ -591,4 +549,69 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
         // Get next error code
         errorCode = ERR_get_error();
     }
+}
+
+EncryptionConsumer::EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key)
+    : EncryptionConsumer(dst, Crypto::cipher(method), key)
+{}
+
+EncryptionConsumer::EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key)
+    : ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free}
+    , dst(dst)
+{
+    EVP_CIPHER_CTX_set_flags(ctx.get(), EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
+    if(SSL_FAILED(EVP_CipherInit_ex(ctx.get(), cipher, nullptr, key.key.data(), key.iv.data(), 1), "EVP_CipherInit_ex"))
+        error = CRYPTO_ERROR;
+    if(auto rv = dst.write(key.iv); rv != key.iv.size())
+        error = rv;
+}
+
+result_t
+EncryptionConsumer::write(const uint8_t *src, size_t size)
+{
+    if(!src || size == 0)
+        return OK;
+    if(error != OK)
+        return error;
+    std::vector<uint8_t> data(size + EVP_CIPHER_CTX_block_size(ctx.get()) - 1);
+    int len = int(data.size());
+    if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), data.data(), &len, src, int(size)), "EVP_CipherUpdate"))
+        return CRYPTO_ERROR;
+    return dst.write(data.data(), size_t(len));
+}
+
+result_t
+EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data)
+{
+    int len = 0;
+    if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate"))
+        return CRYPTO_ERROR;
+    return OK;
+}
+
+result_t
+EncryptionConsumer::close()
+{
+    std::vector<uint8_t> data(EVP_CIPHER_CTX_block_size(ctx.get()));
+    int len = int(data.size());
+    if(SSL_FAILED(EVP_CipherFinal(ctx.get(), data.data(), &len), "EVP_CipherFinal"))
+        return CRYPTO_ERROR;
+    if(auto rv = dst.write(data.data(), size_t(len)); rv < 0)
+        return rv;
+    std::array<uint8_t, 16> tag {};
+    if(EVP_CIPHER_CTX_mode(ctx.get()) == EVP_CIPH_GCM_MODE)
+    {
+        if(SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
+            return CRYPTO_ERROR;
+        LOG_DBG("tag: {}", toHex(tag));
+        return dst.write(tag.data(), tag.size());
+    }
+    if(EVP_CIPHER_CTX_flags(ctx.get()) & EVP_CIPH_FLAG_AEAD_CIPHER)
+    {
+        if(SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
+            return CRYPTO_ERROR;
+        LOG_DBG("tag: {}", toHex(tag));
+        return dst.write(tag.data(), tag.size());
+    }
+    return OK;
 }

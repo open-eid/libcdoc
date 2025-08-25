@@ -26,8 +26,6 @@
 #include "XmlWriter.h"
 #include "utils/memory.h"
 
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <openssl/x509.h>
 
 using namespace libcdoc;
@@ -94,7 +92,8 @@ int64_t CDoc1Writer::Private::writeEncryptionProperties(bool use_ddoc)
 
 int64_t CDoc1Writer::Private::writeKeyInfo(bool use_ddoc, const Crypto::Key& transportKey)
 {
-    RET_ERROR(writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}}));
+    RET_ERROR(writeStartElement(Private::DENC, "EncryptedData",
+        {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}}));
     RET_ERROR(writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", method}}));
     return writeElement(Private::DS, "KeyInfo", {}, [&]() -> int64_t {
         for (const Recipient& key : rcpts) {
@@ -143,10 +142,7 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
 		{
 		case EVP_PKEY_RSA:
 		{
-			auto rsa = make_unique_ptr<RSA_free>(EVP_PKEY_get1_RSA(peerPKey));
-			encryptedData.resize(size_t(RSA_size(rsa.get())));
-			RSA_public_encrypt(int(transportKey.key.size()), transportKey.key.data(),
-				encryptedData.data(), rsa.get(), RSA_PKCS1_PADDING);
+            encryptedData = Crypto::encrypt(peerPKey, RSA_PKCS1_PADDING, transportKey.key);
             RET_ERROR(writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", Crypto::RSA_MTH}}));
             RET_ERROR(writeElement(Private::DS, "KeyInfo", [&] {
                 return writeElement(Private::DS, "X509Data", [&] {
@@ -156,18 +152,18 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
 			break;
 		}
 		case EVP_PKEY_EC:
-		{
-			auto *peerECKey = EVP_PKEY_get0_EC_KEY(peerPKey);
-			int curveName = EC_GROUP_get_curve_name(EC_KEY_get0_group(peerECKey));
-			auto priv = make_unique_ptr<EC_KEY_free>(EC_KEY_new_by_curve_name(curveName));
-			EC_KEY_generate_key(priv.get());
-			auto pkey = make_unique_ptr<EVP_PKEY_free>(EVP_PKEY_new());
-			EVP_PKEY_set1_EC_KEY(pkey.get(), priv.get());
-			std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(pkey.get(), peerPKey);
+        {
+            auto ephKey = libcdoc::Crypto::genECKey(peerPKey);
+            std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), peerPKey);
 
-			std::string oid(50, 0);
-			oid.resize(size_t(OBJ_obj2txt(&oid[0], int(oid.size()), OBJ_nid2obj(curveName), 1)));
-			std::vector<uint8_t> SsDer = Crypto::toPublicKeyDer(pkey.get());
+            std::string groupName(25, 0);
+            size_t len = 0;
+            EVP_PKEY_get_group_name(ephKey.get(), groupName.data(), groupName.size(), &len);
+            groupName.resize(len);
+            auto obj = make_unique_ptr<ASN1_OBJECT_free>(OBJ_txt2obj(groupName.c_str(), 0));
+            std::string oid(25, 0);
+            oid.resize(size_t(OBJ_obj2txt(oid.data(), int(oid.size()), obj.get(), 1)));
+            std::vector<uint8_t> SsDer = Crypto::toPublicKeyDer(ephKey.get());
 
 			std::string encryptionMethod(libcdoc::Crypto::KWAES256_MTH);
 			std::string concatDigest = libcdoc::Crypto::SHA384_MTH;
@@ -245,10 +241,11 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
         std::vector<uint8_t> data;
         data.reserve(16384);
         VectorConsumer vcons(data);
+        EncryptionConsumer enc(vcons, d->method, transportKey);
         std::string name;
         int64_t size;
         if(use_ddoc) {
-            DDOCWriter ddoc(vcons);
+            DDOCWriter ddoc(enc);
             result_t result;
             for (result = src.next(name, size); result == OK; result = src.next(name, size)) {
                 std::vector<uint8_t> contents;
@@ -262,13 +259,14 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
                 return result;
         } else {
             RET_ERROR(src.next(name, size));
-            if(auto rv = src.readAll(vcons); rv >= 0)
+            if(auto rv = src.readAll(enc); rv >= 0)
                 d->files.push_back({std::move(name), size_t(rv)});
             else
                 return rv;
         }
+        RET_ERROR(enc.close());
         RET_ERROR(vcons.close());
-        return d->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, data));
+        return d->writeBase64Element(Private::DENC, "CipherValue", data);
     }));
     RET_ERROR(d->writeEncryptionProperties(use_ddoc));
     d.reset();
@@ -322,16 +320,20 @@ CDoc1Writer::finishEncryption()
 
     RET_ERROR(d->writeKeyInfo(use_ddoc, transportKey));
     RET_ERROR(d->writeElement(Private::DENC, "CipherData", [&] {
-        if(!use_ddoc)
-            return d->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, d->files.back().data));
         std::vector<uint8_t> data;
         data.reserve(16384);
         VectorConsumer vcons(data);
-        for (DDOCWriter ddoc(vcons); const FileEntry& file : d->files) {
-            RET_ERROR(ddoc.addFile(file.name, "application/octet-stream", file.data));
+        EncryptionConsumer enc(vcons, d->method, transportKey);
+        if(use_ddoc)
+        {
+            for(DDOCWriter ddoc(enc); const FileEntry& file : d->files)
+                RET_ERROR(ddoc.addFile(file.name, "application/octet-stream", file.data));
         }
+        else
+            RET_ERROR(VectorSource(d->files.back().data).readAll(enc));
+        RET_ERROR(enc.close());
         RET_ERROR(vcons.close());
-        return d->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, data));
+        return d->writeBase64Element(Private::DENC, "CipherValue", data);
     }));
     RET_ERROR(d->writeEncryptionProperties(use_ddoc));
     d.reset();
