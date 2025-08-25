@@ -18,16 +18,14 @@
 
 #pragma once
 
+#include "Io.h"
+
 #include "utils/memory.h"
 
-#include <string>
-#include <vector>
-
-typedef unsigned char uint8_t;
-typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
-typedef struct evp_cipher_st EVP_CIPHER;
-typedef struct evp_pkey_st EVP_PKEY;
-typedef struct x509_st X509;
+using EVP_CIPHER_CTX = struct evp_cipher_ctx_st;
+using EVP_CIPHER = struct evp_cipher_st;
+using EVP_PKEY = struct evp_pkey_st;
+using X509 = struct x509_st;
 
 namespace libcdoc {
 
@@ -40,14 +38,13 @@ public:
 	using EVP_PKEY_ptr = unique_free_t<EVP_PKEY>;
 
 	struct Cipher {
-		struct evp_cipher_ctx_st *ctx;
+		EVP_CIPHER_CTX *ctx;
 		Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt = true);
 		~Cipher();
 		bool updateAAD(const std::vector<uint8_t> &data) const;
 		bool update(uint8_t *data, int size) const;
 		bool result() const;
 		static constexpr int tagLen() { return 16; }
-		std::vector<uint8_t> tag() const;
 		bool setTag(const std::vector<uint8_t> &data) const;
 		int blockSize() const;
 		void clear();
@@ -71,6 +68,11 @@ public:
         std::vector<uint8_t> iv;
 
         Key() {}
+		~Key() {
+			std::fill(key.begin(), key.end(), 0);
+			std::fill(iv.begin(), iv.end(), 0);
+		}
+        Key(std::vector<uint8_t> _key, std::vector<uint8_t> _iv) : key(std::move(_key)), iv(std::move(_iv)) {}
         Key(size_t keySize, size_t ivSize) : key(keySize), iv(ivSize) {}
     };
 
@@ -79,7 +81,6 @@ public:
 	static std::vector<uint8_t> concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z, const std::vector<uint8_t> &otherInfo);
 	static std::vector<uint8_t> concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 		const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo);
-    static std::vector<uint8_t> encrypt(const std::string &method, const Key &key, const std::vector<uint8_t> &data);
 	static std::vector<uint8_t> decrypt(const std::string &method, const std::vector<uint8_t> &key, const std::vector<uint8_t> &data);
 	static std::vector<uint8_t> encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data);
 	static std::vector<uint8_t> decodeBase64(const uint8_t *data);
@@ -114,11 +115,26 @@ public:
         if (retval < 1) {
             LogSslError(funcName, file, line);
             return true;
-        } else
-            return false;
+        }
+        return false;
     }
 
     static void LogSslError(const char* funcName, const char* file, int line);
+};
+
+struct EncryptionConsumer final : public DataConsumer {
+    EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key);
+	EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
+    CDOC_DISABLE_MOVE_COPY(EncryptionConsumer)
+    result_t write(const uint8_t *src, size_t size) final;
+    result_t writeAAD(const std::vector<uint8_t> &data);
+    result_t close() final;
+    bool isError() final { return error != OK; }
+
+private:
+    unique_free_t<EVP_CIPHER_CTX> ctx;
+    DataConsumer &dst;
+    result_t error = OK;
 };
 
 }; // namespace libcdoc

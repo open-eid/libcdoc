@@ -28,46 +28,6 @@
 
 namespace libcdoc {
 
-struct CipherConsumer : public ChainedConsumer {
-	bool _fail = false;
-	libcdoc::Crypto::Cipher *_cipher;
-	uint32_t _block_size;
-	CipherConsumer(DataConsumer *dst, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
-		: ChainedConsumer(dst, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
-	~CipherConsumer() {
-	}
-
-    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
-		static constexpr uint64_t CHUNK_SIZE = 16LL * 1024LL;
-		if (_fail) return OUTPUT_ERROR;
-		if (size % _block_size) {
-			_fail = true;
-			return OUTPUT_ERROR;
-		}
-		uint8_t b[CHUNK_SIZE];
-		size_t processed = 0;
-		while (processed < size) {
-			size_t to_process = std::min<size_t>(size, CHUNK_SIZE);
-			std::copy(src + processed, src + processed + to_process, b);
-			if(!_cipher->update(b, int(to_process))) {
-				_fail = true;
-				return OUTPUT_ERROR;
-			}
-			int64_t n_written = _dst->write(b, to_process);
-			if (n_written != to_process) {
-				_fail = true;
-				return OUTPUT_ERROR;
-			}
-			processed += to_process;
-		}
-		return processed;
-	}
-
-	virtual bool isError() override final {
-		return _fail || ChainedConsumer::isError();
-	};
-};
-
 struct CipherSource : public ChainedSource {
 	bool _fail = false;
 	libcdoc::Crypto::Cipher *_cipher;

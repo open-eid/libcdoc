@@ -20,7 +20,6 @@
 
 #include "Configuration.h"
 #include "Crypto.h"
-#include "CryptoBackend.h"
 #include "CDoc2.h"
 #include "ILogger.h"
 #include "NetworkBackend.h"
@@ -31,120 +30,70 @@
 
 #include "header_generated.h"
 
-#define OPENSSL_SUPPRESS_DEPRECATED
-
-#include "openssl/evp.h"
 #include <openssl/x509.h>
 
 using namespace libcdoc;
-
-struct CDoc2Writer::Private {
-    //
-    // Private holds the keys and cipher, thus is is obligatory to destroy it as soon as the encryption is finished
-    //
-    Private(libcdoc::DataConsumer *dst, libcdoc::CryptoBackend *crypto) {
-        std::vector<uint8_t> rnd;
-        crypto->random(rnd, libcdoc::CDoc2::KEY_LEN);
-        fmk = libcdoc::Crypto::extract(rnd, {libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()});
-        std::fill(rnd.begin(), rnd.end(), 0);
-        LOG_TRACE_KEY("fmk: {}", fmk);
-        crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN);
-        std::vector<uint8_t> cek = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()});
-        cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, true);
-        LOG_TRACE_KEY("cek: {}", cek);
-        std::fill(cek.begin(), cek.end(), 0);
-        hhk = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()});
-        LOG_TRACE_KEY("hhk: {}", hhk);
-        LOG_TRACE_KEY("nonce: {}", hhk);
-
-        libcdoc::CipherConsumer *ccons = new libcdoc::CipherConsumer(dst, false, cipher.get());
-        libcdoc::ZConsumer *zcons = new libcdoc::ZConsumer(ccons, true);
-        tar = std::make_unique<libcdoc::TarConsumer>(zcons, true);
-    }
-
-    ~Private() {
-        std::fill(fmk.begin(), fmk.end(), 0);
-        std::fill(hhk.begin(), hhk.end(), 0);
-        cipher->clear();
-        cipher.reset();
-        tar.reset();
-    }
-    std::vector<uint8_t> fmk;
-    std::vector<uint8_t> hhk;
-    std::vector<uint8_t> nonce;
-    std::unique_ptr<libcdoc::Crypto::Cipher> cipher;
-    std::unique_ptr<libcdoc::TarConsumer> tar;
-    std::vector<libcdoc::Recipient> recipients;
-    bool header_written = false;
-};
 
 CDoc2Writer::CDoc2Writer(libcdoc::DataConsumer *dst, bool take_ownership)
     : CDocWriter(2, dst, take_ownership)
 {
 }
 
-CDoc2Writer::~CDoc2Writer()
+CDoc2Writer::~CDoc2Writer() noexcept = default;
+
+libcdoc::result_t
+CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
 {
-}
-
-int
-CDoc2Writer::encryptInternal(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
-{
-    std::vector<uint8_t> header;
-    int result = buildHeader(header, keys, priv->fmk);
-    std::fill(priv->fmk.begin(), priv->fmk.end(), 0);
-    if (result < 0) return result;
-
-    result = writeHeader(header, priv->hhk);
-    std::fill(priv->hhk.begin(), priv->hhk.end(), 0);
-    if (result < 0) return result;
-
-    std::string name;
-    int64_t size;
-    while (src.next(name, size) == libcdoc::OK) {
-        if (priv->tar->open(name, size) < 0) return libcdoc::IO_ERROR;
-        if (priv->tar->writeAll(src) < 0) return libcdoc::IO_ERROR;
-    }
-    if (priv->tar->close() < 0) return libcdoc::IO_ERROR;
-    priv->tar.reset();
-//    if(!libcdoc::TAR::save(zcons, src)) {
-//        setLastError("Error packing encrypted stream");
-//        return libcdoc::IO_ERROR;
-//    }
-    if(!priv->cipher->result()) {
-        setLastError("Encryption error");
+    if(recipients.empty()) {
+        setLastError("No recipients specified");
         LOG_ERROR("{}", last_error);
-        return libcdoc::CRYPTO_ERROR;
+        return libcdoc::WRONG_ARGUMENTS;
     }
-    std::vector<uint8_t> tag = priv->cipher->tag();
+    std::vector<uint8_t> rnd;
+    if(auto rv = crypto->random(rnd, libcdoc::CDoc2::KEY_LEN); rv < 0)
+        return rv;
+    std::vector<uint8_t> fmk = libcdoc::Crypto::extract(rnd, {libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()});
+    std::fill(rnd.begin(), rnd.end(), 0);
+    LOG_TRACE_KEY("fmk: {}", fmk);
 
-    LOG_DBG("tag: {}", toHex(tag));
+    std::vector<uint8_t> header;
+    if(auto rv = buildHeader(header, recipients, fmk); rv < 0)
+    {
+        std::fill(fmk.begin(), fmk.end(), 0);
+        return rv;
+    }
 
-    dst->write(tag.data(), tag.size());
-    return libcdoc::OK;
-}
-
-int
-CDoc2Writer::writeHeader(const std::vector<uint8_t>& header, const std::vector<uint8_t>& hhk)
-{
+    auto hhk = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()});
+    auto cek = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()});
+    std::fill(fmk.begin(), fmk.end(), 0);
+    LOG_TRACE_KEY("cek: {}", cek);
+    LOG_TRACE_KEY("hhk: {}", hhk);
     std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
-
+    std::fill(hhk.begin(), hhk.end(), 0);
     LOG_TRACE_KEY("hmac: {}", headerHMAC);
-    LOG_TRACE_KEY("nonce: {}", priv->nonce);
 
-    std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
-    aad.insert(aad.end(), header.cbegin(), header.cend());
-    aad.insert(aad.end(), headerHMAC.cbegin(), headerHMAC.cend());
-    priv->cipher->updateAAD(aad);
     uint32_t hs = uint32_t(header.size());
+    // FIXME: not big/little endian friendly
     uint8_t header_len[] {uint8_t(hs >> 24), uint8_t((hs >> 16) & 0xff), uint8_t((hs >> 8) & 0xff), uint8_t(hs & 0xff)};
 
     dst->write((const uint8_t *) libcdoc::CDoc2::LABEL.data(), libcdoc::CDoc2::LABEL.size());
     dst->write((const uint8_t *) &header_len, 4);
     dst->write(header.data(), header.size());
     dst->write(headerHMAC.data(), headerHMAC.size());
-    dst->write(priv->nonce.data(), priv->nonce.size());
-    return libcdoc::OK;
+
+    std::vector<uint8_t> nonce;
+    crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN);
+    LOG_TRACE_KEY("nonce: {}", nonce);
+    auto cipher = std::make_unique<EncryptionConsumer>(*dst, EVP_chacha20_poly1305(), Crypto::Key(std::move(cek), nonce));
+    std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
+    aad.insert(aad.end(), header.cbegin(), header.cend());
+    aad.insert(aad.end(), headerHMAC.cbegin(), headerHMAC.cend());
+    if(auto rv = cipher->writeAAD(aad); rv < 0)
+        return rv;
+
+    auto *zcons = new ZConsumer(cipher.release(), true);
+    tar = std::make_unique<TarConsumer>(zcons, true);
+    return OK;
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
@@ -242,7 +191,7 @@ createPasswordCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Re
                                                       cdoc20::header::FMKEncryptionMethod::XOR);
 }
 
-int
+libcdoc::result_t
 CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc::Recipient>& recipients, const std::vector<uint8_t>& fmk)
 {
     flatbuffers::FlatBufferBuilder builder;
@@ -295,7 +244,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     return libcdoc::CRYPTO_ERROR;
                 }
 
-                LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+                LOG_DBG("info: {}", toHex(info_str));
                 LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
                 LOG_TRACE_KEY("ephPublicKeyDer: {}", key_material);
                 LOG_TRACE_KEY("sharedSecret: {}", sharedSecret);
@@ -534,23 +483,22 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 libcdoc::result_t
 CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
-    if (!priv) {
-        LOG_WARN("Encryption workflow not started");
-        setLastError("Encryption workflow not started");
-        priv = std::make_unique<Private>(dst, crypto);
+    if(tar) {
+        setLastError("Cannot add Recipient when files are added");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
     }
-    priv->recipients.push_back(rcpt);
+    recipients.push_back(rcpt);
     return libcdoc::OK;
 }
 
 libcdoc::result_t
 CDoc2Writer::beginEncryption()
 {
-    if (priv) {
+    last_error.clear();
+    if(!recipients.empty()) {
         LOG_ERROR("Encryption workflow already started");
         setLastError("Encryption workflow already started");
-    } else {
-        priv = std::make_unique<Private>(dst, crypto);
     }
     return libcdoc::OK;
 }
@@ -558,33 +506,14 @@ CDoc2Writer::beginEncryption()
 libcdoc::result_t
 CDoc2Writer::addFile(const std::string& name, size_t size)
 {
-    if (!priv) {
-        setLastError("Encryption workflow not started");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::WORKFLOW_ERROR;
+    if(!tar) {
+        if(auto rv = writeHeader(recipients); rv < 0)
+            return rv;
     }
-    if (priv->recipients.empty()) {
-        setLastError("No recipients specified");
+    if(auto rv = tar->open(name, size); rv < 0) {
+        setLastError(tar->getLastErrorStr(rv));
         LOG_ERROR("{}", last_error);
-        return libcdoc::WRONG_ARGUMENTS;
-    }
-    if (!priv->header_written) {
-        std::vector<uint8_t> header;
-        int result = buildHeader(header, priv->recipients, priv->fmk);
-        std::fill(priv->fmk.begin(), priv->fmk.end(), 0);
-        if (result == libcdoc::OK) {
-            result = writeHeader(header, priv->hhk);
-        }
-        std::fill(priv->hhk.begin(), priv->hhk.end(), 0);
-        if (result < 0) return result;
-
-        priv->header_written = true;
-    }
-    int result = priv->tar->open(name, size);
-    if (result < 0) {
-        setLastError(priv->tar->getLastErrorStr(result));
-        LOG_ERROR("{}", last_error);
-        return result;
+        return rv;
     }
     return libcdoc::OK;
 }
@@ -592,68 +521,50 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 libcdoc::result_t
 CDoc2Writer::writeData(const uint8_t *src, size_t size)
 {
-    if (!priv) {
-        setLastError("Encryption workflow not started");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::WORKFLOW_ERROR;
-    }
-    if (!priv->header_written) {
+    if(!tar) {
         setLastError("No file added");
         LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
-
-    int64_t result = priv->tar->write(src, size);
-    if (result != size) {
-        setLastError(priv->tar->getLastErrorStr(result));
-        return result;
+    if(auto rv = tar->write(src, size); rv != size) {
+        setLastError(tar->getLastErrorStr(rv));
+        return rv;
     }
-
     return libcdoc::OK;
 }
 
 libcdoc::result_t
 CDoc2Writer::finishEncryption()
 {
-    if (!priv) {
-        setLastError("Encryption workflow not started");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::WORKFLOW_ERROR;
-    }
-    if (!priv->header_written) {
+    if(!tar) {
         setLastError("No file added");
         LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
-    result_t result = priv->tar->close();
-    if (result < 0) {
-        setLastError(priv->tar->getLastErrorStr(result));
-        priv.reset();
-        return result;
-    }
-    priv->tar.reset();
-    if(!priv->cipher->result()) {
-        setLastError("Encryption error");
-        LOG_ERROR("{}", last_error);
-        priv.reset();
-        return libcdoc::CRYPTO_ERROR;
-    }
-    std::vector<uint8_t> tag = priv->cipher->tag();
-    LOG_DBG("tag: {}", toHex(tag));
-    result = dst->write(tag.data(), tag.size());
+    auto rv = tar->close();
+    if(rv < 0)
+        setLastError(tar->getLastErrorStr(rv));
+    tar.reset();
+    recipients.clear();
     if (owned) dst->close();
-    priv.reset();
-
-    return (result < 0) ? result : libcdoc::OK;
+    return rv;
 }
 
 libcdoc::result_t
 CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
-    last_error.clear();
-    priv = std::make_unique<Private>(dst, crypto);
-    int result = encryptInternal(src, keys);
-    priv.reset();
-    if (owned) dst->close();
-    return result;
+    if(auto rv = beginEncryption(); rv < 0)
+        return rv;
+    if(auto rv = writeHeader(keys); rv < 0)
+        return rv;
+    std::string name;
+    int64_t size;
+    while(src.next(name, size) == libcdoc::OK) {
+        if(tar->open(name, size) < 0 || tar->writeAll(src) < 0)
+        {
+            tar.reset();
+            return libcdoc::IO_ERROR;
+        }
+    }
+    return finishEncryption();
 }
