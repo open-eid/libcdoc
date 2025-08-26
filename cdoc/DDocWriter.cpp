@@ -18,6 +18,8 @@
 
 #include "DDocWriter.h"
 
+#include "Io.h"
+
 using namespace libcdoc;
 
 /**
@@ -36,6 +38,24 @@ DDOCWriter::DDOCWriter(DataConsumer &dst)
 DDOCWriter::~DDOCWriter() noexcept
 {
     writeEndElement(DDOC); // SignedDoc
+}
+
+/**
+ * Add File to container
+ * @param file Filename
+ * @param mime File mime type
+ * @param size File size
+ * @param data File content
+ */
+int64_t DDOCWriter::addFile(const std::string &file, const std::string &mime, size_t size, libcdoc::DataSource& src)
+{
+    return writeBase64Element(DDOC, "DataFile", [&src](DataConsumer &dst){ return src.readAll(dst); }, {
+        {"ContentType", "EMBEDDED_BASE64"},
+        {"Filename", file},
+        {"Id", "D" + std::to_string(fileCount++)},
+        {"MimeType", mime},
+        {"Size", std::to_string(size)}
+    });
 }
 
 /**
