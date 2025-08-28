@@ -573,11 +573,11 @@ EncryptionConsumer::write(const uint8_t *src, size_t size)
         return OK;
     if(error != OK)
         return error;
-    std::vector<uint8_t> data(size + EVP_CIPHER_CTX_block_size(ctx.get()) - 1);
-    int len = int(data.size());
-    if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), data.data(), &len, src, int(size)), "EVP_CipherUpdate"))
+    buf.resize(std::max(buf.size(), size + EVP_CIPHER_CTX_block_size(ctx.get()) - 1));
+    int len = int(buf.size());
+    if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), buf.data(), &len, src, int(size)), "EVP_CipherUpdate"))
         return CRYPTO_ERROR;
-    return dst.write(data.data(), size_t(len));
+    return dst.write(buf.data(), size_t(len));
 }
 
 result_t
@@ -592,11 +592,11 @@ EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data)
 result_t
 EncryptionConsumer::close()
 {
-    std::vector<uint8_t> data(EVP_CIPHER_CTX_block_size(ctx.get()));
-    int len = int(data.size());
-    if(SSL_FAILED(EVP_CipherFinal(ctx.get(), data.data(), &len), "EVP_CipherFinal"))
+    buf.resize(std::max(buf.size(), size_t(EVP_CIPHER_CTX_block_size(ctx.get()))));
+    int len = int(buf.size());
+    if(SSL_FAILED(EVP_CipherFinal(ctx.get(), buf.data(), &len), "EVP_CipherFinal"))
         return CRYPTO_ERROR;
-    if(auto rv = dst.write(data.data(), size_t(len)); rv < 0)
+    if(auto rv = dst.write(buf.data(), size_t(len)); rv < 0)
         return rv;
     std::array<uint8_t, 16> tag {};
     if(EVP_CIPHER_CTX_mode(ctx.get()) == EVP_CIPH_GCM_MODE)

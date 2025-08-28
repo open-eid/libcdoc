@@ -24,6 +24,8 @@
 
 #include <libxml/xmlwriter.h>
 
+#include <array>
+
 using namespace libcdoc;
 
 using pcxmlChar = xmlChar *;
@@ -107,6 +109,66 @@ int64_t XMLWriter::writeElement(const NS &ns, const std::string &name, const std
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
     if(int64_t rv = OK; f && (rv = f()) != OK)
+        return rv;
+    return writeEndElement(ns);
+}
+
+int64_t XMLWriter::writeBase64Element(const NS &ns, const std::string &name, const std::function<int64_t(DataConsumer&)> &f, const std::map<std::string, std::string> &attr)
+{
+    if(auto rv = writeStartElement(ns, name, attr); rv != OK)
+        return rv;
+
+    struct Base64Consumer : public DataConsumer {
+        xmlTextWriterPtr w;
+        std::array<uint8_t, 3> buf {}; // buffer up to 2 leftover bytes
+        size_t bufSize = 0;
+        Base64Consumer(xmlTextWriterPtr _w) : w(_w) {}
+        result_t write(const uint8_t *src, size_t size) final {
+            if(!src || size == 0)
+                return OK;
+
+            size_t pos = 0;
+            if(bufSize > 0) {
+                pos = std::min(buf.size() - bufSize, size);
+                std::copy(src, src + pos, buf.begin() + bufSize);
+                bufSize += pos;
+                if (bufSize < 3) {
+                    return result_t(size);
+                }
+                if (xmlTextWriterWriteBase64(w, reinterpret_cast<const char*>(buf.data()), 0, buf.size()) == -1)
+                    return IO_ERROR;
+                bufSize = 0;
+            }
+
+            // Write largest contiguous chunk with length multiple of 3
+            size_t remaining = size - pos;
+            if(size_t fullTriples = remaining - (remaining % 3); fullTriples > 0) {
+                if (xmlTextWriterWriteBase64(w, reinterpret_cast<const char*>(src), pos, fullTriples) == -1)
+                    return IO_ERROR;
+                pos += fullTriples;
+            }
+
+            // Buffer leftover (0..2) bytes for next write/close
+            if(bufSize = size - pos; bufSize > 0) {
+                std::copy(src + pos, src + size, buf.begin());
+            }
+
+            return result_t(size);
+        }
+        result_t close() final {
+            if (bufSize > 0) {
+                // write remaining 1..2 bytes so base64 padding is applied only at the end
+                if(xmlTextWriterWriteBase64(w, reinterpret_cast<const char*>(buf.data()), 0, bufSize) == -1)
+                    return IO_ERROR;
+            }
+            bufSize = 0;
+            return OK;
+        }
+        bool isError() final { return false; }
+    } base64Consumer {d->w.get()};
+    if(auto rv = f(base64Consumer); rv < 0)
+        return rv;
+    if(auto rv = base64Consumer.close(); rv < 0)
         return rv;
     return writeEndElement(ns);
 }
