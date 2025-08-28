@@ -124,7 +124,7 @@ public:
 
 struct EncryptionConsumer final : public DataConsumer {
     EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key);
-	EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
+    EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
     CDOC_DISABLE_MOVE_COPY(EncryptionConsumer)
     result_t write(const uint8_t *src, size_t size) final;
     result_t writeAAD(const std::vector<uint8_t> &data);
@@ -135,6 +135,7 @@ private:
     unique_free_t<EVP_CIPHER_CTX> ctx;
     DataConsumer &dst;
     result_t error = OK;
+    std::vector<uint8_t> buf;
 };
 
 }; // namespace libcdoc

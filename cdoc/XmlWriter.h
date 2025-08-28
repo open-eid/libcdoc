@@ -41,6 +41,7 @@ public:
     int64_t writeEndElement(const NS &ns);
     int64_t writeElement(const NS &ns, const std::string &name, const std::function<int64_t()> &f = nullptr);
     int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f = nullptr);
+    int64_t writeBase64Element(const NS &ns, const std::string &name, const std::function<int64_t(DataConsumer &)> &f, const std::map<std::string, std::string> &attr = {});
     int64_t writeBase64Element(const NS &ns, const std::string &name, const std::vector<unsigned char> &data, const std::map<std::string, std::string> &attr = {});
     int64_t writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data);
 

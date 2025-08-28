@@ -59,7 +59,7 @@ struct CDoc1Writer::Private final: public XMLWriter
     std::vector<Recipient> rcpts;
 
     int64_t writeEncryptionProperties(bool use_ddoc);
-    int64_t writeKeyInfo(bool use_ddoc, const Crypto::Key& transportKey);
+    int64_t writeKeyInfo(bool use_ddoc, const std::vector<Recipient> &rcpts, const Crypto::Key& transportKey);
     int64_t writeRecipient(const std::vector<uint8_t> &recipient, const Crypto::Key& transportKey);
 };
 
@@ -90,7 +90,7 @@ int64_t CDoc1Writer::Private::writeEncryptionProperties(bool use_ddoc)
     return writeEndElement(Private::DENC); // EncryptedData
 }
 
-int64_t CDoc1Writer::Private::writeKeyInfo(bool use_ddoc, const Crypto::Key& transportKey)
+int64_t CDoc1Writer::Private::writeKeyInfo(bool use_ddoc, const std::vector<Recipient> &rcpts, const Crypto::Key& transportKey)
 {
     RET_ERROR(writeStartElement(Private::DENC, "EncryptedData",
         {{"MimeType", use_ddoc ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}}));
@@ -230,43 +230,38 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
 libcdoc::result_t
 CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
+    if(keys.empty())
+        return WORKFLOW_ERROR;
     RET_ERROR(beginEncryption());
     d->rcpts = keys;
     Crypto::Key transportKey = Crypto::generateKey(d->method);
 	int n_components = src.getNumComponents();
 	bool use_ddoc = (n_components > 1) || (n_components == libcdoc::NOT_IMPLEMENTED);
 
-    RET_ERROR(d->writeKeyInfo(use_ddoc, transportKey));
-    RET_ERROR(d->writeElement(Private::DENC, "CipherData", [&]() -> int64_t {
-        std::vector<uint8_t> data;
-        data.reserve(16384);
-        VectorConsumer vcons(data);
-        EncryptionConsumer enc(vcons, d->method, transportKey);
-        std::string name;
-        int64_t size;
-        if(use_ddoc) {
-            DDOCWriter ddoc(enc);
-            result_t result;
-            for (result = src.next(name, size); result == OK; result = src.next(name, size)) {
-                std::vector<uint8_t> contents;
-                VectorConsumer vcons(contents);
-                RET_ERROR(src.readAll(vcons));
-                RET_ERROR(vcons.close());
-                RET_ERROR(ddoc.addFile(name, "application/octet-stream", contents));
-                d->files.push_back({name, contents.size()});
+    RET_ERROR(d->writeKeyInfo(use_ddoc, keys, transportKey));
+    RET_ERROR(d->writeElement(Private::DENC, "CipherData", [&] {
+        return d->writeBase64Element(Private::DENC, "CipherValue", [&](DataConsumer &dst) -> int64_t {
+            EncryptionConsumer enc(dst, d->method, transportKey);
+            std::string name;
+            int64_t size;
+            if(use_ddoc) {
+                DDOCWriter ddoc(enc);
+                result_t result;
+                for (result = src.next(name, size); result == OK; result = src.next(name, size)) {
+                    RET_ERROR(ddoc.addFile(name, "application/octet-stream", size, src));
+                    d->files.push_back({name, size_t(size)});
+                }
+                if(result != END_OF_STREAM)
+                    return result;
+            } else {
+                RET_ERROR(src.next(name, size));
+                if(auto rv = src.readAll(enc); rv >= 0)
+                    d->files.push_back({std::move(name), size_t(rv)});
+                else
+                    return rv;
             }
-            if(result != END_OF_STREAM)
-                return result;
-        } else {
-            RET_ERROR(src.next(name, size));
-            if(auto rv = src.readAll(enc); rv >= 0)
-                d->files.push_back({std::move(name), size_t(rv)});
-            else
-                return rv;
-        }
-        RET_ERROR(enc.close());
-        RET_ERROR(vcons.close());
-        return d->writeBase64Element(Private::DENC, "CipherValue", data);
+            return enc.close();
+        });
     }));
     RET_ERROR(d->writeEncryptionProperties(use_ddoc));
     d.reset();
@@ -318,22 +313,19 @@ CDoc1Writer::finishEncryption()
 	bool use_ddoc = d->files.size() > 1;
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
 
-    RET_ERROR(d->writeKeyInfo(use_ddoc, transportKey));
+    RET_ERROR(d->writeKeyInfo(use_ddoc, d->rcpts, transportKey));
     RET_ERROR(d->writeElement(Private::DENC, "CipherData", [&] {
-        std::vector<uint8_t> data;
-        data.reserve(16384);
-        VectorConsumer vcons(data);
-        EncryptionConsumer enc(vcons, d->method, transportKey);
-        if(use_ddoc)
-        {
-            for(DDOCWriter ddoc(enc); const FileEntry& file : d->files)
-                RET_ERROR(ddoc.addFile(file.name, "application/octet-stream", file.data));
-        }
-        else
-            RET_ERROR(VectorSource(d->files.back().data).readAll(enc));
-        RET_ERROR(enc.close());
-        RET_ERROR(vcons.close());
-        return d->writeBase64Element(Private::DENC, "CipherValue", data);
+        return d->writeBase64Element(Private::DENC, "CipherValue", [&](DataConsumer &dst) -> int64_t {
+            EncryptionConsumer enc(dst, d->method, transportKey);
+            if(use_ddoc)
+            {
+                for(DDOCWriter ddoc(enc); const FileEntry& file : d->files)
+                    RET_ERROR(ddoc.addFile(file.name, "application/octet-stream", file.data));
+            }
+            else
+                RET_ERROR(VectorSource(d->files.back().data).readAll(enc));
+            return enc.close();
+        });
     }));
     RET_ERROR(d->writeEncryptionProperties(use_ddoc));
     d.reset();
