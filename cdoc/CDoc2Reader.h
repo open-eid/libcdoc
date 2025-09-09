@@ -39,7 +39,6 @@ public:
     libcdoc::result_t finishDecryption() override final;
 
 	CDoc2Reader(libcdoc::DataSource *src, bool take_ownership = false);
-	CDoc2Reader(const std::string &path);
 
 	static bool isCDoc2File(const std::string& path);
     static bool isCDoc2File(libcdoc::DataSource *src);

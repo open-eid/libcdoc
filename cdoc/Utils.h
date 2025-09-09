@@ -25,10 +25,6 @@
 #include <iostream>
 #include <sstream>
 
-#ifdef _WIN32
-#include <Windows.h>
-#endif
-
 namespace libcdoc {
 
 std::string toBase64(const uint8_t *data, size_t len);
@@ -79,7 +75,7 @@ join(const std::vector<std::string> &parts, const std::string_view sep)
 		if (part != parts.front()) result += sep;
 		result += part;
 	}
-	return std::move(result);
+    return result;
 }
 
 std::vector<std::string> JsonToStringArray(std::string_view json);
@@ -123,83 +119,7 @@ std::string buildURL(const std::string& host, int port);
 std::string urlEncode(std::string_view src);
 std::string urlDecode(const std::string &src);
 
-#ifdef _WIN32
-
-static std::wstring toWide(UINT codePage, const std::string &in)
-{
-	std::wstring result;
-	if(in.empty())
-		return result;
-	int len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), nullptr, 0);
-	result.resize(size_t(len), 0);
-	len = MultiByteToWideChar(codePage, 0, in.data(), int(in.size()), &result[0], len);
-	return result;
-}
-
-static std::wstring
-toWide(const std::string& in)
-{
-	return toWide(CP_UTF8, in);
-}
-
-static std::string toMultiByte(UINT codePage, const std::wstring &in)
-{
-	std::string result;
-	if(in.empty())
-		return result;
-	int len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), nullptr, 0, nullptr, nullptr);
-	result.resize(size_t(len), 0);
-	len = WideCharToMultiByte(codePage, 0, in.data(), int(in.size()), &result[0], len, nullptr, nullptr);
-	return result;
-}
-
-static std::string
-toUTF8(const std::wstring& in)
-{
-	return toMultiByte(CP_UTF8, in);
-}
-
-
-#endif
-
-static std::string toUTF8(const std::string &in)
-{
-#ifdef _WIN32
-	return toMultiByte(CP_UTF8, toWide(CP_ACP, in));
-#else
-	return in;
-#endif
-}
-
-static std::vector<unsigned char> readFile(const std::string &path)
-{
-	std::vector<unsigned char> data;
-#ifdef _WIN32
-	std::ifstream f(toWide(CP_UTF8, path).c_str(), std::ifstream::binary);
-#else
-	std::ifstream f(path, std::ifstream::binary);
-#endif
-	if (!f)
-		return data;
-	f.seekg(0, std::ifstream::end);
-	data.resize(size_t(f.tellg()));
-	f.clear();
-	f.seekg(0);
-	f.read((char*)data.data(), std::streamsize(data.size()));
-	return data;
-}
-
-static void writeFile(const std::string &path, const std::vector<unsigned char> &data)
-{
-#ifdef _WIN32
-	std::ofstream f(toWide(CP_UTF8, path).c_str(), std::ofstream::binary);
-#else
-	std::ofstream f(path.c_str(), std::ofstream::binary);
-#endif
-	f.write((const char*)data.data(), std::streamsize(data.size()));
-}
-
-} // vectorwrapbuf
+} // namespace libcdoc
 
 // A source implementation that always keeps last 16 bytes in tag
 
