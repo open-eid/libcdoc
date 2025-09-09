@@ -677,21 +677,15 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     }
 }
 
-CDoc2Reader::CDoc2Reader(const std::string &path)
-    : CDoc2Reader(new libcdoc::IStreamSource(path), true)
-{
-}
-
 bool
 CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
 {
-    uint8_t in[libcdoc::CDoc2::LABEL.size()];
-    constexpr size_t len = libcdoc::CDoc2::LABEL.size();
-    if (src->read(&in[0], len) != len) {
-        LOG_DBG("CDoc2Reader::isCDoc1File: Cannot read tag");
+    std::array<uint8_t,libcdoc::CDoc2::LABEL.size()> in {};
+    if (src->read(in.data(), in.size()) != in.size()) {
+        LOG_DBG("CDoc2Reader::isCDoc2File: Cannot read tag");
         return false;
     }
-    if (libcdoc::CDoc2::LABEL.compare(0, len, (char *) &in[0], len)) {
+    if (libcdoc::CDoc2::LABEL.compare(0, in.size(), (char *) in.data(), in.size())) {
         LOG_DBG("CDoc2Reader::isCDoc2File: Invalid tag: {}", toHex(in));
         return false;
     }

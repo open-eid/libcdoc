@@ -165,6 +165,8 @@ public:
      *
      * Creates a new document reader if source is a valid CDoc container (either version 1 or 2).
      * Configuration and NetworkBackend may be null if keyservers are not used.
+     * If take_ownership is true, the source is deleted by the reader destructor. If src is not a valid CDoc file,
+     * the source is deleted before returning null.
      * @param src the container source
      * @param take_ownership if true the source is deleted in reader destructor
      * @param conf a configuration object
