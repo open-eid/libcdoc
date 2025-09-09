@@ -11,7 +11,7 @@
     },
     {
       "name": "flatbuffers",
-      "platform": "!osx & !ios"
+      "platform": "!osx"
     },
     {
       "name": "openssl",
@@ -21,7 +21,7 @@
   "features": {
     "tests": { "description": "Build tests", "dependencies": ["boost-test"] }
   },
-  "builtin-baseline": "085820b35f4ef5ad54967c8a46fb822e53c4be33",
+  "builtin-baseline": "98e7cd3a7ba579efc543f8854af800d033031eae",
   "vcpkg-configuration": {
     "overlay-triplets": ["./vcpkg-triplets"]
   }

@@ -152,15 +152,14 @@ parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, c
         if (parts.size() != 3) return RESULT_USAGE;
 
         rcpt.type = RcptInfo::CERT;
-        filesystem::path cert_file(toUTF8(parts[2]));
-        rcpt.cert = std::move(readFile(cert_file.string()));
-        rcpt.key_file_name = cert_file.filename().string();
+        rcpt.cert = readAllBytes(parts[2]);
+        rcpt.key_file_name = filesystem::path(parts[2]).filename().string();
     } else if (method == "pkey") {
         // label:pkey:PUBLIC_KEY
         if (parts.size() != 3) return RESULT_USAGE;
 
         rcpt.type = RcptInfo::PKEY;
-        rcpt.secret = std::move(fromHex(parts[2]));
+        rcpt.secret = fromHex(parts[2]);
     } else if (method == "pfkey") {
         // label:pfkey:PUBLIC_KEY_FILE
         if (parts.size() != 3) return RESULT_USAGE;
@@ -180,7 +179,7 @@ parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, c
         if (parts.size() != 3) return RESULT_USAGE;
 
         rcpt.type = RcptInfo::SKEY;
-        rcpt.secret = std::move(fromHex(parts[2]));
+        rcpt.secret = fromHex(parts[2]);
         if (rcpt.secret.size() != 32) {
             LOG_ERROR("Symmetric key has to be exactly 32 bytes long");
             return RESULT_ERROR;

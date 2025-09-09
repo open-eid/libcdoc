@@ -23,6 +23,10 @@
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
+#ifdef _WIN32
+#include <windows.h> // For RAND_screen
+#endif
+
 #include <openssl/aes.h>
 #include <openssl/err.h>
 #include <openssl/kdf.h>

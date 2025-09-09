@@ -19,12 +19,15 @@
 #include "WinBackend.h"
 
 #include "CDoc2.h"
-#include "Crypto.h"
 #include "ILogger.h"
-#include "Utils.h"
 
 #include <Windows.h>
 #include <wincrypt.h>
+
+static std::wstring toWide(const std::string &in)
+{
+    return {in.cbegin(), in.cend()};
+}
 
 struct libcdoc::WinBackend::Private {
     NCRYPT_PROV_HANDLE  prov = 0;
@@ -43,8 +46,8 @@ struct libcdoc::WinBackend::Private {
             void *state = NULL;
             SECURITY_STATUS result = NCryptEnumKeys(prov, NULL, &wkeyname, &state, NCRYPT_SILENT_FLAG);
             while (result == ERROR_SUCCESS) {
-                std::string name = toUTF8(wkeyname->pszName);
-                std::string algo = toUTF8(wkeyname->pszAlgid);
+                std::string_view name{(const char*)wkeyname->pszName, wcslen(wkeyname->pszName)};
+                std::string_view algo{(const char*)wkeyname->pszAlgid, wcslen(wkeyname->pszAlgid)};
                 LOG_DBG("Name: {} Algo: {}", name, algo);
                 NCryptFreeBuffer(wkeyname);
                 result = NCryptEnumKeys(prov, NULL, &wkeyname, &state, NCRYPT_SILENT_FLAG);

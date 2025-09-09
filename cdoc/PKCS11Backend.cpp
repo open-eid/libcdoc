@@ -37,9 +37,7 @@
 #include <functional>
 
 #ifdef _WIN32
-//#include <Windows.h>
-//#include <wincrypt.h>
-//#include <cryptuiapi.h>
+#include <Windows.h>
 #else
 #include <dlfcn.h>
 #endif

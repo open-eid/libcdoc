@@ -340,11 +340,6 @@ CDoc1Reader::~CDoc1Reader()
 	delete d;
 }
 
-CDoc1Reader::CDoc1Reader(const std::string &path)
-    : CDoc1Reader(new libcdoc::IStreamSource(path), true)
-{
-}
-
 bool
 CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 {

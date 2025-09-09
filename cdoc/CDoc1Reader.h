@@ -26,7 +26,6 @@ class CDoc1Reader : public libcdoc::CDocReader
 {
 public:
     CDoc1Reader(libcdoc::DataSource *src, bool take_ownership = false);
-    CDoc1Reader(const std::string& path);
     ~CDoc1Reader();
 
     const std::vector<libcdoc::Lock>& getLocks() override final;

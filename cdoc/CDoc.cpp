@@ -98,6 +98,8 @@ libcdoc::CDocReader::getCDocFileVersion(const std::string& path)
 libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
+    if(!src)
+        return nullptr;
     int version = getCDocFileVersion(src);
     LOG_DBG("CDocReader::createReader: version {}", version);
     if (src->seek(0) != libcdoc::OK) return nullptr;
@@ -106,7 +108,9 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
         reader = new CDoc1Reader(src, take_ownership);
 	} else if (version == 2) {
         reader = new CDoc2Reader(src, take_ownership);
-	} else {
+    } else {
+        if(take_ownership)
+            delete src;
 		return nullptr;
 	}
 	reader->conf = conf;
@@ -118,12 +122,18 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
 libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
-    int version = getCDocFileVersion(path);
+    if(path.empty())
+        return nullptr;
+    auto isrc = make_unique<IStreamSource>(path);
+    int version = getCDocFileVersion(isrc.get());
+    LOG_DBG("CDocReader::createReader: version {}", version);
+    if (isrc->seek(0) != libcdoc::OK)
+        return nullptr;
     CDocReader *reader;
     if (version == 1) {
-        reader = new CDoc1Reader(path);
+        reader = new CDoc1Reader(isrc.release(), true);
     } else if (version == 2) {
-        reader = new CDoc2Reader(path);
+        reader = new CDoc2Reader(isrc.release(), true);
     } else {
         return nullptr;
     }
@@ -138,6 +148,7 @@ libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, Crypto
 {
     libcdoc::IStreamSource *isrc = new libcdoc::IStreamSource(&ifs, false);
     int version = getCDocFileVersion(isrc);
+    LOG_DBG("CDocReader::createReader: version {}", version);
     CDocReader *reader;
     if (version == 1) {
         reader = new CDoc1Reader(isrc, true);
