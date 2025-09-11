@@ -55,6 +55,22 @@ getTime()
     return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+double
+timeFromISO(std::string_view iso)
+{
+    std::istringstream in{std::string(iso.data(), iso.size())};
+    std::tm t = {};
+    in >> std::get_time(&t, "%Y-%m-%dT%TZ");
+    return timegm(&t);
+}
+
+std::string
+timeToISO(double time)
+{
+    auto expiry_tp = std::chrono::system_clock::time_point{std::chrono::seconds{time_t(time)}};
+    return std::format("{:%FT%TZ}", expiry_tp);
+}
+
 int
 parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash)
 {

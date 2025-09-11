@@ -105,13 +105,13 @@ createRSACapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipie
     return cdoc20::header::CreateRecipientRecord(builder,
                                                         cdoc20::header::Capsule::recipients_RSAPublicKeyCapsule,
                                                         capsule.Union(),
-                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateString(rcpt.getLabel({})),
                                                         builder.CreateVector(xor_key),
                                                         cdoc20::header::FMKEncryptionMethod::XOR);
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createRSAServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, const std::vector<uint8_t>& xor_key)
+createRSAServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, uint64_t expiry_time, const std::vector<uint8_t>& xor_key)
 {
     auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder,
                                                                 builder.CreateVector(rcpt.rcpt_key));
@@ -123,7 +123,7 @@ createRSAServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::R
     return cdoc20::header::CreateRecipientRecord(builder,
                                                         cdoc20::header::Capsule::recipients_KeyServerCapsule,
                                                         capsule.Union(),
-                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateString(rcpt.getLabel({{"x-expiry-time", std::to_string(expiry_time)}})),
                                                         builder.CreateVector(xor_key),
                                                         cdoc20::header::FMKEncryptionMethod::XOR);
 }
@@ -138,13 +138,13 @@ createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipie
     return cdoc20::header::CreateRecipientRecord(builder,
                                                         cdoc20::header::Capsule::recipients_ECCPublicKeyCapsule,
                                                         capsule.Union(),
-                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateString(rcpt.getLabel({})),
                                                         builder.CreateVector(xor_key),
                                                         cdoc20::header::FMKEncryptionMethod::XOR);
 }
 
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
-createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, const std::vector<uint8_t>& xor_key)
+createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, uint64_t expiry_time, const std::vector<uint8_t>& xor_key)
 {
     auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
                                                                 cdoc20::recipients::EllipticCurve::secp384r1,
@@ -157,7 +157,7 @@ createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::R
     return cdoc20::header::CreateRecipientRecord(builder,
                                                         cdoc20::header::Capsule::recipients_KeyServerCapsule,
                                                         capsule.Union(),
-                                                        builder.CreateString(rcpt.label),
+                                                        builder.CreateString(rcpt.getLabel({{"x-expiry-time", std::to_string(expiry_time)}})),
                                                         builder.CreateVector(xor_key),
                                                         cdoc20::header::FMKEncryptionMethod::XOR);
 }
@@ -170,7 +170,7 @@ createSymmetricKeyCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc
     return cdoc20::header::CreateRecipientRecord(builder,
                                                       cdoc20::header::Capsule::recipients_SymmetricKeyCapsule,
                                                       capsule.Union(),
-                                                      builder.CreateString(rcpt.label),
+                                                      builder.CreateString(rcpt.getLabel({})),
                                                       builder.CreateVector(xor_key),
                                                       cdoc20::header::FMKEncryptionMethod::XOR);
 }
@@ -186,7 +186,7 @@ createPasswordCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Re
     return cdoc20::header::CreateRecipientRecord(builder,
                                                       cdoc20::header::Capsule::recipients_PBKDF2Capsule,
                                                       capsule.Union(),
-                                                      builder.CreateString(rcpt.label),
+                                                      builder.CreateString(rcpt.getLabel({})),
                                                       builder.CreateVector(xor_key),
                                                       cdoc20::header::FMKEncryptionMethod::XOR);
 }
@@ -272,7 +272,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                         return libcdoc::CONFIGURATION_ERROR;
                     }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "RSA");
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "RSA", rcpt.expiry_ts);
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);
@@ -282,7 +282,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     LOG_DBG("Keyserver Id: {}", rcpt.server_id);
                     LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
 
-                    auto record = createRSAServerCapsule(builder, rcpt, cinfo.transaction_id, xor_key);
+                    auto record = createRSAServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key);
                     fb_rcpts.push_back(std::move(record));
                 } else {
                     auto record = createRSACapsule(builder, rcpt, key_material, xor_key);
@@ -307,7 +307,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                         return libcdoc::CONFIGURATION_ERROR;
                     }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1");
+                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1", rcpt.expiry_ts);
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);
@@ -317,7 +317,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     LOG_DBG("Keyserver Id: {}", rcpt.server_id);
                     LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
 
-                    auto record = createECCServerCapsule(builder, rcpt, cinfo.transaction_id, xor_key);
+                    auto record = createECCServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key);
                     fb_rcpts.push_back(std::move(record));
                 } else {
                     auto record = createECCCapsule(builder, rcpt, key_material, xor_key);

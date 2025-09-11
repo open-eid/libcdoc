@@ -83,6 +83,8 @@ std::vector<std::string> JsonToStringArray(std::string_view json);
 // Get time in seconds since the Epoch
 
 double getTime();
+double timeFromISO(std::string_view iso);
+std::string timeToISO(double time);
 
 static std::vector<uint8_t>
 readAllBytes(std::istream& ifs)
