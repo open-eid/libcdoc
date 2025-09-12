@@ -68,7 +68,7 @@ std::string
 timeToISO(double time)
 {
     auto expiry_tp = std::chrono::system_clock::time_point{std::chrono::seconds{time_t(time)}};
-    return std::format("{:%FT%TZ}", expiry_tp);
+    return fmt::format("{:%FT%TZ}", expiry_tp);
 }
 
 int

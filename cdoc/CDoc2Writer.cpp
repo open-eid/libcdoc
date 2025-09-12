@@ -325,7 +325,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 }
             }
         } else if (rcpt.isSymmetric()) {
-            std::string info_str = libcdoc::CDoc2::getSaltForExpand(rcpt.label);
+            std::string info_str = libcdoc::CDoc2::getSaltForExpand(rcpt.getLabel({}));
             std::vector<uint8_t> kek_pm(libcdoc::CDoc2::KEY_LEN);
             std::vector<uint8_t> salt;
             int64_t result = crypto->random(salt, libcdoc::CDoc2::KEY_LEN);
