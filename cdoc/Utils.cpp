@@ -55,6 +55,10 @@ getTime()
     return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+#if defined(_WIN32) || defined(_WIN64)
+#define timegm _mkgmtime
+#endif
+
 double
 timeFromISO(std::string_view iso)
 {
