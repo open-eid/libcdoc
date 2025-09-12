@@ -67,8 +67,15 @@ timeFromISO(std::string_view iso)
 std::string
 timeToISO(double time)
 {
+#ifdef __cpp_lib_format
     auto expiry_tp = std::chrono::system_clock::time_point{std::chrono::seconds{time_t(time)}};
-    return fmt::format("{:%FT%TZ}", expiry_tp);
+    return std::format("{:%FT%TZ}", expiry_tp);
+#else
+    char buf[sizeof "2011-10-08T07:07:09Z"];
+    time_t tstamp = (time_t) time;
+    strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", gmtime(&tstamp));
+    return std::string(buf);
+#endif
 }
 
 int
