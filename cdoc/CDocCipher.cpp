@@ -268,64 +268,17 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
     for (const auto& rcpt : recipients) {
         // Generate the labels if needed
         string label;
-        if (conf.gen_label) {
-            switch (rcpt.type) {
-            case RcptInfo::Type::PASSWORD:
-                label = Recipient::BuildLabelPassword(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label);
-                break;
-
-            case RcptInfo::Type::SKEY:
-                label = Recipient::BuildLabelSymmetricKey(CDoc2::KEYLABELVERSION, rcpt.label.empty() ? GenerateRandomSequence() : rcpt.label, rcpt.key_file_name);
-                break;
-
-            case RcptInfo::Type::PKEY:
-                label = Recipient::BuildLabelPublicKey(CDoc2::KEYLABELVERSION, rcpt.key_file_name);
-                break;
-
-            case RcptInfo::Type::P11_PKI: {
-                bool isRsa;
-                vector<uint8_t> cert_bytes;
-                ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-                int result = p11->getCertificate(cert_bytes, isRsa, rcpt.slot, rcpt.secret, rcpt.key_id, rcpt.key_label);
-                if (result != libcdoc::OK)
-                {
-                    LOG_ERROR("Certificate reading from SC card failed. Key label: {}", rcpt.key_label);
-                    return 1;
-                }
-                LOG_DBG("Got certificate from P11 module");
-                label = Recipient::BuildLabelEID(cert_bytes);
-                break;
-            }
-
-            case RcptInfo::Type::CERT:
-            {
-                label = Recipient::BuildLabelCertificate(rcpt.key_file_name, rcpt.cert);
-                break;
-            } case RcptInfo::Type::P11_SYMMETRIC:
-                // TODO: what label should be generated in this case?
-                break;
-
-            default:
-                LOG_ERROR("Unhandled recipient type {} for generating the lock's label", static_cast<int>(rcpt.type));
-                break;
-            }
-#ifndef NDEBUG
-            LOG_DBG("Generated label: {}", label);
-#endif
-        } else {
-            label = rcpt.label;
-        }
-
-        if (label.empty()) {
-            LOG_ERROR("No lock label");
-            return 1;
-        }
+        if (!conf.gen_label) label = rcpt.label;
 
         crypto_rcpts[idx++] = rcpt;
 
         Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
-            key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+            if (!conf.servers.empty()) {
+                key = libcdoc::Recipient::makeServer(label, rcpt.cert, conf.servers[0].ID);
+            } else {
+                key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+            }
         } else if (rcpt.type == RcptInfo::Type::SKEY) {
             key = libcdoc::Recipient::makeSymmetric(label, 0);
             LOG_DBG("Creating symmetric key:");
@@ -766,7 +719,7 @@ void CDocCipher::Locks(const char* file) const
             }
 
             // Output the fields with their values
-            cout << lock_id << ":" << endl;
+            cout << lock_id << ":" << lock.label << endl;
             for (map<string, string>::const_reference pair : parsed_label) {
                 cout << "  " << setw(maxFieldLength + 1) << left << pair.first << ": " << pair.second << endl;
             }
