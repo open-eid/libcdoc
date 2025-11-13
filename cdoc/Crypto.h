@@ -39,19 +39,6 @@ class Crypto
 public:
 	using EVP_PKEY_ptr = unique_free_t<EVP_PKEY>;
 
-	struct Cipher {
-		EVP_CIPHER_CTX *ctx;
-		Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt = true);
-		~Cipher();
-		bool updateAAD(const std::vector<uint8_t> &data) const;
-		bool update(uint8_t *data, int size) const;
-		bool result() const;
-		static constexpr int tagLen() { return 16; }
-		bool setTag(const std::vector<uint8_t> &data) const;
-		int blockSize() const;
-		void clear();
-	};
-
 	static constexpr std::string_view KWAES128_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes128";
 	static constexpr std::string_view KWAES192_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes192";
 	static constexpr std::string_view KWAES256_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes256";

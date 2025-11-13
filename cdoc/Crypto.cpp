@@ -54,60 +54,6 @@ constexpr auto d2i(const std::vector<uint8_t> &data, Args&&... args) noexcept
     return make_unique_ptr(F(std::forward<Args>(args)..., &p, long(data.size())), Free);
 }
 
-
-Crypto::Cipher::Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt)
-	: ctx(EVP_CIPHER_CTX_new())
-{
-	EVP_CIPHER_CTX_set_flags(ctx, EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
-	EVP_CipherInit_ex(ctx, cipher, nullptr, key.data(), iv.empty() ? nullptr : iv.data(), int(encrypt));
-}
-
-Crypto::Cipher::~Cipher()
-{
-	EVP_CIPHER_CTX_free(ctx);
-}
-
-bool Crypto::Cipher::updateAAD(const std::vector<uint8_t> &data) const
-{
-	int len = 0;
-    return !SSL_FAILED(EVP_CipherUpdate(ctx, nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate");
-}
-
-bool
-Crypto::Cipher::update(uint8_t *data, int size) const
-{
-	int len = 0;
-    return !SSL_FAILED(EVP_CipherUpdate(ctx, data, &len, data, size), "EVP_CipherUpdate");
-}
-
-bool Crypto::Cipher::result() const
-{
-	std::vector<uint8_t> result(EVP_CIPHER_CTX_block_size(ctx), 0);
-	int len = int(result.size());
-    if(SSL_FAILED(EVP_CipherFinal(ctx, result.data(), &len), "EVP_CipherFinal"))
-        return false;
-    if(result.size() != len)
-        result.resize(len);
-	return true;
-}
-
-bool Crypto::Cipher::setTag(const std::vector<uint8_t> &data) const
-{
-    return !SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, int(data.size()), (void *) data.data()), "EVP_CIPHER_CTX_ctrl");
-}
-
-int
-Crypto::Cipher::blockSize() const
-{
-	return EVP_CIPHER_CTX_get_block_size(ctx);
-}
-
-void
-Crypto::Cipher::clear()
-{
-    EVP_CIPHER_CTX_reset(ctx);
-}
-
 std::vector<uint8_t> Crypto::AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt)
 {
 	AES_KEY aes;

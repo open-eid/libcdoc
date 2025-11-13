@@ -83,11 +83,9 @@ struct CDoc2Reader::Private {
 
     std::vector<Lock> locks;
 
-    std::unique_ptr<libcdoc::Crypto::Cipher> cipher;
-    std::unique_ptr<TaggedSource> tgs;
+    std::unique_ptr<libcdoc::DecryptionSource> dec;
     std::unique_ptr<libcdoc::ZSource> zsrc;
     std::unique_ptr<libcdoc::TarSource> tar;
-
 };
 
 CDoc2Reader::~CDoc2Reader()
@@ -389,29 +387,19 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     }
     priv->_at_nonce = false;
     std::vector<uint8_t> cek = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()));
-    std::vector<uint8_t> nonce(libcdoc::CDoc2::NONCE_LEN);
-    if (priv->_src->read(nonce.data(), libcdoc::CDoc2::NONCE_LEN) != libcdoc::CDoc2::NONCE_LEN) {
-        setLastError("Error reading nonce");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::IO_ERROR;
-    }
-
     LOG_TRACE_KEY("cek: {}", cek);
-    LOG_TRACE_KEY("nonce: {}", nonce);
 
-    priv->cipher = std::make_unique<libcdoc::Crypto::Cipher>(EVP_chacha20_poly1305(), cek, nonce, false);
+    priv->dec = std::make_unique<libcdoc::DecryptionSource>(*priv->_src, EVP_chacha20_poly1305(), cek, libcdoc::CDoc2::NONCE_LEN);
     std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
     aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
     aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
-    if(!priv->cipher->updateAAD(aad)) {
+    if(priv->dec->updateAAD(aad) != OK) {
         setLastError("Wrong decryption key (FMK)");
         LOG_ERROR("{}", last_error);
         return libcdoc::WRONG_KEY;
     }
 
-    priv->tgs = std::make_unique<TaggedSource>(priv->_src, false, 16);
-    libcdoc::CipherSource *csrc = new libcdoc::CipherSource(priv->tgs.get(), false, priv->cipher.get());
-    priv->zsrc = std::make_unique<libcdoc::ZSource>(csrc, true);
+    priv->zsrc = std::make_unique<libcdoc::ZSource>(priv->dec.get(), false);
     priv->tar = std::make_unique<libcdoc::TarSource>(priv->zsrc.get(), false);
 
     return libcdoc::OK;
@@ -455,21 +443,15 @@ CDoc2Reader::finishDecryption()
         LOG_WARN("{}", last_error);
     }
 
-    LOG_TRACE_KEY("tag: {}", priv->tgs->tag);
-
-    priv->cipher->setTag(priv->tgs->tag);
-    if (!priv->cipher->result()) {
-        setLastError("Stream tag is invalid");
-        LOG_ERROR("{}", last_error);
-        return HASH_MISMATCH;
-    }
     setLastError({});
-    priv->tgs.reset();
     priv->zsrc.reset();
     priv->tar.reset();
-    priv->cipher->clear();
-    priv->cipher.reset();
-    return OK;
+    auto rv = priv->dec->close();
+    priv->dec.reset();
+    if (rv != OK) {
+        setLastError("Crypto payload integrity check failed");
+    }
+    return rv;
 }
 
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
