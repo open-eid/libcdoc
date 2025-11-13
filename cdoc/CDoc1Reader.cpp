@@ -384,6 +384,7 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& 
         return result;
     }
 
+    std::vector<unsigned char> b64;
     XMLReader reader(d->dsrc, false);
     int skipKeyInfo = 0;
     while (reader.read()) {
@@ -397,26 +398,31 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& 
         // EncryptedData/CipherData/CipherValue
         else if(reader.isElement("CipherValue"))
         {
-            data = libcdoc::Crypto::decrypt(d->method, fmk, reader.readBase64());
+            b64 = reader.readBase64();
             break;
         }
     }
 
-    if(data.empty()) {
-        setLastError("Failed to decrypt data, verify if FMK is correct");
-        return libcdoc::CRYPTO_ERROR;
+    if(b64.empty()) {
+        setLastError("Failed to decode base64 data");
+        return libcdoc::IO_ERROR;
     }
+    VectorSource src(b64);
+    libcdoc::DecryptionSource dec(src, d->method, fmk);
+    if(dec.isError()) {
+        setLastError("Failed to decrypt data, verify if FMK is correct");
+        return CRYPTO_ERROR;
+    }
+    libcdoc::VectorConsumer out(data);
     setLastError({});
     if (d->mime == MIME_ZLIB) {
-        libcdoc::VectorSource vsrc(data);
-        libcdoc::ZSource zsrc(&vsrc);
-        std::vector<uint8_t> tmp;
-        libcdoc::VectorConsumer vcons(tmp);
-        vcons.writeAll(zsrc);
-        data = std::move(tmp);
+        libcdoc::ZSource zsrc(&dec);
+        out.writeAll(zsrc);
         mime = d->properties["OriginalMimeType"];
     }
-    else
+    else {
         mime = d->mime;
-    return libcdoc::OK;
+        out.writeAll(dec);
+    }
+    return dec.close();
 }

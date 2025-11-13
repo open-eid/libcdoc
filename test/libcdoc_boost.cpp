@@ -25,6 +25,8 @@
 #include <CDocCipher.h>
 #include <Recipient.h>
 #include <Utils.h>
+#include <cdoc/Crypto.h>
+#include <cdoc/Io.h>
 
 #ifndef DATA_DIR
 #define DATA_DIR "."
@@ -511,6 +513,54 @@ BOOST_AUTO_TEST_CASE(Base64LabelParsingWithMediaType)
         {
             BOOST_CHECK_EQUAL(result_pair->second, expected_pair.second);
         }
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(StreamingDecryption)
+
+using BufTypes = std::tuple<std::array<uint8_t, 4>, std::array<uint8_t, 16>, std::array<uint8_t, 20>, std::array<uint8_t, 36>>;
+BOOST_AUTO_TEST_CASE_TEMPLATE(constructor, Buf, BufTypes)
+{
+    const std::vector<uint8_t> srouce_text {
+        's', 'o', 'm', 'e', ' ', 'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't', '.', '\n',
+        's', 'o', 'm', 'e', ' ', 'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't', '.', '\n',
+        's', 'o', 'm', 'e', ' ', 'p', 'l', 'a', 'i', 'n', 't', 'e', 'x', 't', '.', '\n',
+    };
+    //std::vector<uint8_t> aad = {'A', 'A', 'D'};
+    Buf buffer{};
+    const auto key = libcdoc::Crypto::generateKey(std::string(libcdoc::Crypto::AES256GCM_MTH));
+    const auto method = std::string(libcdoc::Crypto::AES256GCM_MTH);
+
+    for(const auto &plaintext_size : {14, 16, 29, 32, 36})
+    {
+        auto plaintext = srouce_text;
+        plaintext.resize(plaintext_size);
+        // Encrypt
+        std::vector<uint8_t> encrypted_data;
+        libcdoc::VectorConsumer encrypted_dst(encrypted_data);
+        libcdoc::EncryptionConsumer encrypt(encrypted_dst, method, key);
+        BOOST_CHECK_EQUAL_COLLECTIONS(encrypted_data.begin(), encrypted_data.end(), key.iv.begin(), key.iv.end());
+        //BOOST_CHECK_EQUAL(encrypt.writeAAD(aad), libcdoc::OK);
+        libcdoc::VectorSource plain_src(plaintext);
+        for(ssize_t read_len = 0; (read_len = plain_src.read(buffer.data(), buffer.size())) > 0; ) {
+            BOOST_CHECK_EQUAL(encrypt.write(buffer.data(), read_len), read_len);
+        }
+        BOOST_CHECK_EQUAL(encrypt.close(), libcdoc::OK);
+
+        // Decrypt
+        libcdoc::VectorSource encrypted_src(encrypted_data);
+        libcdoc::DecryptionSource decrypt(encrypted_src, method, key.key);
+        //BOOST_CHECK_EQUAL(decrypt.readAAD(aad), libcdoc::OK);
+        std::vector<uint8_t> decrypted_text;
+        for(ssize_t read_len = 0; (read_len = decrypt.read(buffer.data(), buffer.size())) > 0; ) {
+            decrypted_text.insert(decrypted_text.end(), buffer.data(), buffer.data() + read_len);
+        }
+        BOOST_CHECK_EQUAL(decrypt.isError(), false);
+        BOOST_CHECK_EQUAL(decrypt.close(), libcdoc::OK);
+
+        BOOST_CHECK_EQUAL_COLLECTIONS(plaintext.begin(), plaintext.end(), decrypted_text.begin(), decrypted_text.end());
     }
 }
 
