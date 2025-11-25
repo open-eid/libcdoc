@@ -54,60 +54,6 @@ constexpr auto d2i(const std::vector<uint8_t> &data, Args&&... args) noexcept
     return make_unique_ptr(F(std::forward<Args>(args)..., &p, long(data.size())), Free);
 }
 
-
-Crypto::Cipher::Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt)
-	: ctx(EVP_CIPHER_CTX_new())
-{
-	EVP_CIPHER_CTX_set_flags(ctx, EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
-	EVP_CipherInit_ex(ctx, cipher, nullptr, key.data(), iv.empty() ? nullptr : iv.data(), int(encrypt));
-}
-
-Crypto::Cipher::~Cipher()
-{
-	EVP_CIPHER_CTX_free(ctx);
-}
-
-bool Crypto::Cipher::updateAAD(const std::vector<uint8_t> &data) const
-{
-	int len = 0;
-    return !SSL_FAILED(EVP_CipherUpdate(ctx, nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate");
-}
-
-bool
-Crypto::Cipher::update(uint8_t *data, int size) const
-{
-	int len = 0;
-    return !SSL_FAILED(EVP_CipherUpdate(ctx, data, &len, data, size), "EVP_CipherUpdate");
-}
-
-bool Crypto::Cipher::result() const
-{
-	std::vector<uint8_t> result(EVP_CIPHER_CTX_block_size(ctx), 0);
-	int len = int(result.size());
-    if(SSL_FAILED(EVP_CipherFinal(ctx, result.data(), &len), "EVP_CipherFinal"))
-        return false;
-    if(result.size() != len)
-        result.resize(len);
-	return true;
-}
-
-bool Crypto::Cipher::setTag(const std::vector<uint8_t> &data) const
-{
-    return !SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, int(data.size()), (void *) data.data()), "EVP_CIPHER_CTX_ctrl");
-}
-
-int
-Crypto::Cipher::blockSize() const
-{
-	return EVP_CIPHER_CTX_get_block_size(ctx);
-}
-
-void
-Crypto::Cipher::clear()
-{
-    EVP_CIPHER_CTX_reset(ctx);
-}
-
 std::vector<uint8_t> Crypto::AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt)
 {
 	AES_KEY aes;
@@ -141,61 +87,43 @@ const EVP_CIPHER *Crypto::cipher(const std::string &algo)
 std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyDataLen,
 	const std::vector<uint8_t> &z, const std::vector<uint8_t> &otherInfo)
 {
-	std::vector<uint8_t> key;
-	uint32_t hashLen = SHA384_DIGEST_LENGTH;
-	if(hashAlg == SHA256_MTH) hashLen = SHA256_DIGEST_LENGTH;
-	else if(hashAlg == SHA384_MTH) hashLen = SHA384_DIGEST_LENGTH;
-	else if(hashAlg == SHA512_MTH) hashLen = SHA512_DIGEST_LENGTH;
-	else return key;
+    std::vector<uint8_t> key;
+    const EVP_MD *md {};
+    if(hashAlg == SHA256_MTH) md = EVP_sha256();
+    else if(hashAlg == SHA384_MTH) md = EVP_sha384();
+    else if(hashAlg == SHA512_MTH) md = EVP_sha512();
+    else {
+        LOG_WARN("Usnupported hash algo {}", hashAlg);
+        return key;
+    }
 
-	SHA256_CTX sha256;
-	SHA512_CTX sha512;
-    std::vector<uint8_t> hash(hashLen, 0);
-    uint8_t intToFourBytes[4];
-
+    uint32_t hashLen = EVP_MD_get_size(md);
     uint32_t reps = keyDataLen / hashLen;
     if (keyDataLen % hashLen > 0)
         reps++;
 
-	for(uint32_t i = 1; i <= reps; i++)
-	{
-		intToFourBytes[0] = uint8_t(i >> 24);
-		intToFourBytes[1] = uint8_t(i >> 16);
-		intToFourBytes[2] = uint8_t(i >> 8);
-		intToFourBytes[3] = uint8_t(i >> 0);
-		switch(hashLen)
-		{
-		case SHA256_DIGEST_LENGTH:
-            if (SSL_FAILED(SHA256_Init(&sha256), "SHA256_Init") ||
-                SSL_FAILED(SHA256_Update(&sha256, intToFourBytes, 4), "SHA256_Update") ||
-                SSL_FAILED(SHA256_Update(&sha256, z.data(), z.size()), "SHA256_Update") ||
-                SSL_FAILED(SHA256_Update(&sha256, otherInfo.data(), otherInfo.size()), "SHA256_Update") ||
-                SSL_FAILED(SHA256_Final(hash.data(), &sha256), "SHA256_Final"))
-                return {};
-			break;
-		case SHA384_DIGEST_LENGTH:
-            if (SSL_FAILED(SHA384_Init(&sha512), "SHA384_Init") ||
-                SSL_FAILED(SHA384_Update(&sha512, intToFourBytes, 4), "SHA384_Update") ||
-                SSL_FAILED(SHA384_Update(&sha512, z.data(), z.size()), "SHA384_Update") ||
-                SSL_FAILED(SHA384_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA384_Update") ||
-                SSL_FAILED(SHA384_Final(hash.data(), &sha512), "SHA384_Final"))
-                return {};
-			break;
-		case SHA512_DIGEST_LENGTH:
-            if (SSL_FAILED(SHA512_Init(&sha512), "SHA512_Init") ||
-                SSL_FAILED(SHA512_Update(&sha512, intToFourBytes, 4), "SHA512_Update") ||
-                SSL_FAILED(SHA512_Update(&sha512, otherInfo.data(), otherInfo.size()), "SHA512_Update") ||
-                SSL_FAILED(SHA512_Final(hash.data(), &sha512), "SHA512_Update"))
-                return {};
-			break;
-        default:
-            LOG_WARN("Usnupported hash length {}", hashLen);
-            return key;
-		}
-		key.insert(key.cend(), hash.cbegin(), hash.cend());
-	}
-	key.resize(size_t(keyDataLen));
-	return key;
+    auto ctx = make_unique_ptr<EVP_MD_CTX_free>(EVP_MD_CTX_new());
+    if(!ctx)
+    {
+        LOG_SSL_ERROR("EVP_MD_CTX_new");
+        return key;
+    }
+
+    std::vector<uint8_t> hash(hashLen, 0);
+    for(uint32_t i = 1; i <= reps; i++)
+    {
+        uint8_t intToFourBytes[4] { uint8_t(i >> 24), uint8_t(i >> 16), uint8_t(i >> 8), uint8_t(i >> 0) };
+        unsigned int size = hashLen;
+        if (SSL_FAILED(EVP_DigestInit(ctx.get(), md), "EVP_DigestInit") ||
+            SSL_FAILED(EVP_DigestUpdate(ctx.get(), intToFourBytes, 4), "EVP_DigestUpdate") ||
+            SSL_FAILED(EVP_DigestUpdate(ctx.get(), z.data(), z.size()), "EVP_DigestUpdate") ||
+            SSL_FAILED(EVP_DigestUpdate(ctx.get(), otherInfo.data(), otherInfo.size()), "EVP_DigestUpdate") ||
+            SSL_FAILED(EVP_DigestFinal(ctx.get(), hash.data(), &size), "EVP_DigestFinal"))
+            return {};
+        key.insert(key.cend(), hash.cbegin(), hash.cend());
+    }
+    key.resize(size_t(keyDataLen));
+    return key;
 }
 
 std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
@@ -231,56 +159,6 @@ Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
     if(SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), result.data(), &size,
             data.data(), data.size()), "EVP_PKEY_encrypt"))
 		return {};
-	return result;
-}
-
-std::vector<uint8_t> Crypto::decrypt(const std::string &method, const std::vector<uint8_t> &key, const std::vector<uint8_t> &data)
-{
-	const EVP_CIPHER *cipher = Crypto::cipher(method);
-	size_t dataSize = data.size();
-	std::vector<uint8_t> iv(data.cbegin(), data.cbegin() + EVP_CIPHER_iv_length(cipher));
-    if(dataSize < iv.size())
-        return {};
-	dataSize -= iv.size();
-
-    LOG_TRACE_KEY("iv {}", iv);
-    LOG_TRACE_KEY("transport {}", key);
-
-    auto ctx = make_unique_ptr<EVP_CIPHER_CTX_free>(EVP_CIPHER_CTX_new());
-    if (!ctx)
-    {
-        LOG_SSL_ERROR("EVP_CIPHER_CTX_new");
-        return {};
-    }
-
-    if (SSL_FAILED(EVP_CipherInit(ctx.get(), cipher, key.data(), iv.data(), 0), "EVP_CipherInit"))
-    {
-        return {};
-    }
-
-	if (EVP_CIPHER_mode(cipher) == EVP_CIPH_GCM_MODE)
-	{
-		std::vector<uint8_t> tag(data.cend() - 16, data.cend());
-        if(dataSize < tag.size())
-            return {};
-        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, int(tag.size()), tag.data());
-		dataSize -= tag.size();
-        LOG_DBG("GCM TAG {}", toHex(tag));
-	}
-
-	int size = 0;
-	std::vector<uint8_t> result(dataSize + size_t(EVP_CIPHER_CTX_block_size(ctx.get())), 0);
-    if (SSL_FAILED(EVP_CipherUpdate(ctx.get(), result.data(), &size, &data[iv.size()], int(dataSize)), "EVP_CipherUpdate"))
-    {
-        return {};
-    }
-
-	int size2 = 0;
-    if (SSL_FAILED(EVP_CipherFinal(ctx.get(), result.data() + size, &size2), "EVP_CipherFinal"))
-    {
-        return {};
-    }
-	result.resize(size_t(size + size2));
 	return result;
 }
 
@@ -608,14 +486,137 @@ EncryptionConsumer::close()
         if(SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
             return CRYPTO_ERROR;
         LOG_DBG("tag: {}", toHex(tag));
-        return dst.write(tag.data(), tag.size());
+        if (dst.write(tag.data(), tag.size()) != tag.size())
+            return IO_ERROR;
     }
-    if(EVP_CIPHER_CTX_flags(ctx.get()) & EVP_CIPH_FLAG_AEAD_CIPHER)
+    else if(EVP_CIPHER_CTX_flags(ctx.get()) & EVP_CIPH_FLAG_AEAD_CIPHER)
     {
         if(SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl"))
             return CRYPTO_ERROR;
         LOG_DBG("tag: {}", toHex(tag));
-        return dst.write(tag.data(), tag.size());
+        if (dst.write(tag.data(), tag.size()) != tag.size())
+            return IO_ERROR;
     }
+    return OK;
+}
+
+DecryptionSource::DecryptionSource(DataSource &src, const std::string &method, const std::vector<unsigned char> &key, size_t ivLen)
+    : DecryptionSource(src, Crypto::cipher(method), key, ivLen)
+{}
+
+DecryptionSource::DecryptionSource(DataSource &src, const EVP_CIPHER *cipher, const std::vector<unsigned char> &key, size_t ivLen)
+    : ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free}
+    , src(src)
+{
+    EVP_CIPHER_CTX_set_flags(ctx.get(), EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
+    if (ivLen == 0)
+        ivLen = EVP_CIPHER_iv_length(cipher);
+    std::array<uint8_t, EVP_MAX_IV_LENGTH> iv {};
+    if(auto rv = src.read(iv.data(), ivLen); size_t(rv) != ivLen)
+        error = rv < 0 ? rv : IO_ERROR;
+    else if(SSL_FAILED(EVP_CipherInit_ex(ctx.get(), cipher, nullptr, key.data(), iv.data(), 0), "EVP_CipherInit_ex"))
+        error = CRYPTO_ERROR;
+    else if(rv = src.read(tag.data(), tag.size()); size_t(rv) != tag.size())
+        error = rv < 0 ? rv : IO_ERROR;
+    LOG_TRACE_KEY("IV: {}", iv);
+}
+
+result_t DecryptionSource::updateAAD(const std::vector<uint8_t> &data)
+{
+    if (error != OK)
+        return error;
+    int len = 0;
+    if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate"))
+        return CRYPTO_ERROR;
+    return OK;
+}
+
+result_t DecryptionSource::read(unsigned char *dst, size_t size)
+{
+    if (error != OK)
+        return error;
+    if (!dst || size == 0)
+        return OK;
+    if(size <= tag.size())
+    {
+        decltype(tag) tmp;
+        auto rv = src.read(tmp.data(), size);
+        if (rv <= 0) {
+            return rv;
+        }
+        size = static_cast<size_t>(rv);
+
+        // Construct new tag value
+        std::move_backward(tmp.begin(), tmp.begin() + size, tmp.end()); // Move existing tag data to the end of tmp
+        std::copy(tag.begin() + size, tag.end(), tmp.begin()); // Fill the beginning of tmp with remaining tag data
+
+        // Copy data to dst and update tag
+        std::copy_n(tag.begin(), size, dst);
+        tag = tmp;
+
+        if (int out = 0;
+            SSL_FAILED(EVP_CipherUpdate(ctx.get(), dst, &out, dst, size), "EVP_CipherUpdate") ||
+            size != out) {
+            return error = CRYPTO_ERROR;
+        }
+        return size;
+    }
+
+    auto rv = src.read(dst + tag.size(), size - tag.size());
+    if (rv <= 0) {
+        return rv;
+    }
+    auto nread = static_cast<size_t>(rv);
+
+    // Prepend tag data to the beginning of dst
+    std::copy(tag.begin(), tag.end(), dst);
+
+    // Handle case where less data was read than requested
+    if (nread < size - tag.size()) {
+        // Copy tag data from the end of dst to the tag and adjust size
+        std::copy_n(std::next(dst, nread), tag.size(), tag.begin());
+        size = nread;
+    } else if (rv = src.read(tag.data(), tag.size()); rv < 0) {
+        return rv;
+    } else if (auto tagSize = static_cast<size_t>(rv); tagSize < tag.size()) {
+        // Handle case where less tag data was read than expected
+        // Move read tag data to the end of tag and fill the beginning with data from dst
+        std::move_backward(tag.begin(), tag.begin() + tagSize, tag.end());
+        size_t more = tag.size() - tagSize;
+        std::copy_n(std::next(dst, size - more), more, tag.data());
+        size -= more;
+    }
+
+    if (int out = 0;
+        SSL_FAILED(EVP_CipherUpdate(ctx.get(), dst, &out, dst, size), "EVP_CipherUpdate") ||
+        size != out) {
+        return error = CRYPTO_ERROR;
+    }
+    return size;
+}
+
+result_t DecryptionSource::close()
+{
+    if (error != OK)
+        return error;
+
+    if (EVP_CIPHER_CTX_mode(ctx.get()) == EVP_CIPH_GCM_MODE) {
+        LOG_DBG("tag: {}", toHex(tag));
+        if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl")) {
+            return error = CRYPTO_ERROR;
+        }
+    }
+    else if(EVP_CIPHER_CTX_flags(ctx.get()) & EVP_CIPH_FLAG_AEAD_CIPHER)
+    {
+        LOG_DBG("tag: {}", toHex(tag));
+        if (SSL_FAILED(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_TAG, int(tag.size()), tag.data()), "EVP_CIPHER_CTX_ctrl")) {
+            return error = CRYPTO_ERROR;
+        }
+    }
+
+    int len = 0;
+    std::vector<uint8_t> buffer(EVP_CIPHER_CTX_block_size(ctx.get()), 0);
+    if (SSL_FAILED(EVP_CipherFinal_ex(ctx.get(), buffer.data(), &len), "EVP_CipherFinal_ex"))
+        return error = CRYPTO_ERROR;
     return OK;
 }
