@@ -63,9 +63,9 @@ static void print_usage(ostream& ofs)
     ofs << "    --key-id - PKCS11 key ID" << endl;
     ofs << "    --key-label - PKCS11 key label" << endl;
     ofs << endl;
-    ofs << "cdoc-tool re-encrypt FILE" << endl;
+    ofs << "cdoc-tool locks FILE" << endl;
     ofs << endl;
-    ofs << "cdoc-tool locks DECRYPT_ARGUMENTS ENCRYPT_ARGUMENTS FILE --out OUTPUTFILE" << endl;
+    ofs << "cdoc-tool re-encrypt DECRYPT_ARGUMENTS ENCRYPT_ARGUMENTS FILE --out OUTPUTFILE" << endl;
     ofs << "  Re-encrypts container for different recipient(s)" << endl;
     ofs << endl;
     ofs << "Common arguments:" << endl;

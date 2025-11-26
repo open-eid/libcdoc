@@ -74,6 +74,7 @@ jobs:
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
         VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/${{ matrix.target }}/vcpkg_installed
     - name: Build
       run: |
         cmake --preset ${{ matrix.target }} "-GUnix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=libcdoc.${{ matrix.target }}
@@ -120,6 +121,7 @@ jobs:
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
         VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/${{ matrix.target }}/vcpkg_installed
     - name: Build
       run: |
         cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${{ env.DEST }}
@@ -175,7 +177,7 @@ jobs:
           "-DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
           "-DSWIG_EXECUTABLE=$swig" `
           -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
-          -DVCPKG_MANIFEST_FEATURES=tests `
+          ${{ matrix.platform == 'x64' && '-DVCPKG_MANIFEST_FEATURES=tests' || '' }} `
           -DCMAKE_INSTALL_LIBDIR=bin
         cmake --build build --config RelWithDebInfo
         ctest -V -C RelWithDebInfo --test-dir build

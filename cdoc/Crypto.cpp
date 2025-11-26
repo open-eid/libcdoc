@@ -455,7 +455,7 @@ EncryptionConsumer::write(const uint8_t *src, size_t size)
         return OK;
     if(error != OK)
         return error;
-    buf.resize(std::max(buf.size(), size + EVP_CIPHER_CTX_block_size(ctx.get()) - 1));
+    buf.resize(std::max<size_t>(buf.size(), size + EVP_CIPHER_CTX_block_size(ctx.get()) - 1));
     int len = int(buf.size());
     if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), buf.data(), &len, src, int(size)), "EVP_CipherUpdate"))
         return CRYPTO_ERROR;
@@ -474,7 +474,7 @@ EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data)
 result_t
 EncryptionConsumer::close()
 {
-    buf.resize(std::max(buf.size(), size_t(EVP_CIPHER_CTX_block_size(ctx.get()))));
+    buf.resize(std::max<size_t>(buf.size(), size_t(EVP_CIPHER_CTX_block_size(ctx.get()))));
     int len = int(buf.size());
     if(SSL_FAILED(EVP_CipherFinal(ctx.get(), buf.data(), &len), "EVP_CipherFinal"))
         return CRYPTO_ERROR;
