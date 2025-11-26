@@ -17,22 +17,12 @@
  */
 
 #include "Tar.h"
+#include "Utils.h"
 
 #include <array>
-#include <sstream>
+#include <cstring>
 
-std::vector<std::string>
-split (const std::string &s, char delim) {
-	std::vector<std::string> result;
-	std::stringstream ss (s);
-	std::string item;
-
-	while (getline (ss, item, delim)) {
-		result.push_back (item);
-	}
-
-	return result;
-}
+using namespace libcdoc;
 
 template<std::size_t SIZE>
 static int64_t fromOctal(const std::array<char,SIZE> &data)
@@ -59,7 +49,7 @@ static void toOctal(std::array<char,SIZE> &data, int64_t value)
 	}
 }
 
-struct Header {
+struct libcdoc::Header {
 	std::array<char,100> name;
 	std::array<char,  8> mode;
 	std::array<char,  8> uid;
@@ -89,9 +79,9 @@ struct Header {
 		return {unsignedSum, signedSum};
 	}
 
-	bool isNull() {
-		Header empty = {};
-		return std::memcmp(this, &empty, sizeof(Header)) == 0;
+    bool isNull() const {
+        static const Header empty{};
+        return *this == empty;
 	}
 
 	bool verify() {
@@ -104,40 +94,13 @@ struct Header {
 			   referenceChecksum == checkSum.second;
 	}
 
-	static const Header Empty;
-	static const int Size;
+    bool operator==(const Header&) const = default;
 };
 
 static int padding(int64_t size)
 {
 	return sizeof(Header) - size % sizeof(Header);
 }
-
-bool
-libcdoc::TAR::files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataConsumer *dst)
-{
-	TarSource tar(src, false);
-	std::string name;
-	int64_t size;
-    while (tar.next(name, size) == OK) {
-		dst->open(name, size);
-		dst->writeAll(tar);
-	}
-	warning = !src->isEof();
-	return true;
-}
-
-int64_t writePadding(libcdoc::DataConsumer *dst, uint64_t size) {
-	std::vector<char> pad(padding(size), 0);
-	return dst->write((const uint8_t *) pad.data(), pad.size()) == pad.size();
-};
-
-int64_t writeHeader (libcdoc::DataConsumer *dst, Header &h, uint64_t size) {
-	h.chksum.fill(' ');
-	toOctal(h.size, size);
-	toOctal(h.chksum, h.checksum().first);
-	return dst->write((const uint8_t *)&h, sizeof(Header)) == sizeof(Header);
-};
 
 std::string toPaxRecord (const std::string &keyword, const std::string &value) {
 	std::string record = ' ' + keyword + '=' + value + '\n';
@@ -146,51 +109,6 @@ std::string toPaxRecord (const std::string &keyword, const std::string &value) {
 		result = std::to_string(len + 1) + record;
 	return result;
 };
-
-bool
-libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
-{
-	std::string name;
-	int64_t size;
-	while (src.next(name, size)) {
-		Header h {};
-		std::string filename(name);
-		std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
-		std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
-
-        // TODO:
-        // write pax record if name contains special symbols
-		if(filename.size() > 100 || size > 07777777) {
-			h.typeflag = 'x';
-			std::string paxData;
-			if(filename.size() > 100)
-				paxData += toPaxRecord("path", filename);
-			if(size > 07777777)
-				paxData += toPaxRecord("size", std::to_string(size));
-			if(!writeHeader(&dst, h, paxData.size()) ||
-				dst.write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
-				!writePadding(&dst, paxData.size()))
-				return false;
-		}
-
-		h.typeflag = '0';
-		if(!writeHeader(&dst, h, size))
-			return false;
-		size_t total_written = 0;
-		while (!src.isEof()) {
-			uint8_t buf[256];
-			auto n_read = src.read(buf, 256);
-			if (n_read < 0) return false;
-			dst.write(buf, n_read);
-			total_written += n_read;
-		}
-		writePadding(&dst, total_written);
-
-	}
-	Header empty = {};
-	return dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header) &&
-		dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header);
-}
 
 libcdoc::TarConsumer::TarConsumer(DataConsumer *dst, bool take_ownership)
 	: _dst(dst), _owned(take_ownership)
@@ -212,16 +130,43 @@ libcdoc::TarConsumer::write(const uint8_t *src, size_t size)
 }
 
 libcdoc::result_t
+libcdoc::TarConsumer::writeHeader(const Header &h) {
+    if(auto rv = _dst->write((const uint8_t *)&h, sizeof(Header)); rv != sizeof(Header))
+        return rv < OK ? rv : OUTPUT_ERROR;
+    return OK;
+}
+
+libcdoc::result_t
+libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) {
+    h.chksum.fill(' ');
+    toOctal(h.size, size);
+    toOctal(h.chksum, h.checksum().first);
+    return writeHeader(h);
+}
+
+libcdoc::result_t
+libcdoc::TarConsumer::writePadding(int64_t size) {
+    std::array<uint8_t,sizeof(libcdoc::Header)> pad {};
+    auto padSize = padding(size);
+    if(auto rv = _dst->write(pad.data(), padSize); rv != padSize)
+        return rv < OK ? rv : OUTPUT_ERROR;
+    return OK;
+}
+
+libcdoc::result_t
 libcdoc::TarConsumer::close()
 {
-	if (_current_size) {
-		writePadding(_dst, _current_size);
-	}
-	Header empty = {};
-	_dst->write((const uint8_t *)&empty, sizeof(Header));
-	_dst->write((const uint8_t *)&empty, sizeof(Header));
+    if (_current_size > 0) {
+        if(auto rv = writePadding(_current_size); rv != OK)
+            return rv;
+    }
+    Header empty = {};
+    if(auto rv = writeHeader(empty); rv != OK)
+        return rv;
+    if(auto rv = writeHeader(empty); rv != OK)
+        return rv;
 	if (_owned) {
-		_dst->close();
+        return _dst->close();
 	}
     return OK;
 }
@@ -235,32 +180,33 @@ libcdoc::TarConsumer::isError()
 libcdoc::result_t
 libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 {
-	if (_current_size) {
-		writePadding(_dst, _current_size);
-	}
-	_current_size = size;
+    if (_current_size > 0) {
+        if(auto rv = writePadding(_current_size); rv != OK)
+            return rv;
+    }
+
+    _current_size = size;
 	Header h {};
-	std::string filename(name);
-	size_t len = name.size();
-	if (len > h.name.size()) len = h.name.size();
-	std::copy(name.cbegin(), name.cbegin() + len, h.name.begin());
+    size_t len = std::min(name.size(), h.name.size());
+    std::copy_n(name.cbegin(), len, h.name.begin());
 
     // TODO: Create pax record if name contains special symbols
-	if(filename.size() > 100 || size > 07777777) {
+    if(name.size() > 100 || size > 07777777) {
 		h.typeflag = 'x';
 		std::string paxData;
-		if(filename.size() > 100)
-			paxData += toPaxRecord("path", filename);
+        if(name.size() > 100)
+            paxData += toPaxRecord("path", name);
 		if(size > 07777777)
 			paxData += toPaxRecord("size", std::to_string(size));
-        return writeHeader(_dst, h, paxData.size()) &&
-            _dst->write((const uint8_t *) paxData.data(), paxData.size()) == paxData.size() &&
-            writePadding(_dst, paxData.size()) ? OK : OUTPUT_ERROR;
-	}
-
+        if (auto rv = writeHeader(h, paxData.size()); rv != OK)
+            return rv;
+        if (auto rv = _dst->write((const uint8_t *) paxData.data(), paxData.size()); rv != paxData.size())
+            return rv < OK ? rv : OUTPUT_ERROR;
+        if (auto rv = writePadding(paxData.size()); rv != OK)
+            return rv;
+    }
 	h.typeflag = '0';
-	if(writeHeader(_dst, h, size) < 0) return OUTPUT_ERROR;
-    return OK;
+    return writeHeader(h, size);
 }
 
 libcdoc::TarSource::TarSource(DataSource *src, bool take_ownership)
