@@ -21,27 +21,25 @@
 
 #include <cdoc/Io.h>
 
-#include <cstring>
 namespace libcdoc {
 
-struct TAR {
-	explicit TAR() = default;
+struct Header;
 
-	static bool files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataConsumer *dst);
-	static bool save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src);
-};
-
-struct TarConsumer : public MultiDataConsumer
+struct TarConsumer final : public MultiDataConsumer
 {
 public:
 	TarConsumer(DataConsumer *dst, bool take_ownership);
 	~TarConsumer();
 
-    libcdoc::result_t write(const uint8_t *src, size_t size) override final;
-    libcdoc::result_t close() override final;
-	bool isError() override final;
-    libcdoc::result_t open(const std::string& name, int64_t size) override final;
+    libcdoc::result_t write(const uint8_t *src, size_t size) final;
+    libcdoc::result_t close() final;
+    bool isError() final;
+    libcdoc::result_t open(const std::string& name, int64_t size) final;
 private:
+    result_t writeHeader(const Header &h);
+    result_t writeHeader(Header &h, int64_t size);
+    result_t writePadding(int64_t size);
+
 	DataConsumer *_dst;
 	bool _owned;
 	int64_t _current_size = 0;
