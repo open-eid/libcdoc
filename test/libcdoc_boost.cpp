@@ -19,10 +19,12 @@
 #define BOOST_TEST_MODULE "C++ Unit Tests for libcdoc"
 
 #include <boost/test/unit_test.hpp>
+#include <codecvt>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <CDocCipher.h>
+#include <CryptoBackend.h>
 #include <Recipient.h>
 #include <Utils.h>
 #include <cdoc/Crypto.h>
@@ -75,14 +77,24 @@ class FixtureBase
 public:
     FixtureBase()
     {
-        // Get path to test data, provided via argument to the unit tests application
-        if (utf::framework::master_test_suite().argc <= 1)
-        {
-            testDataPath = DATA_DIR;
-        }
-        else
-        {
-            testDataPath = utf::framework::master_test_suite().argv[1];
+        int argc = utf::framework::master_test_suite().argc;
+        for (int i = 0; i < argc; i++) {
+            std::string_view arg = utf::framework::master_test_suite().argv[i];
+            if (arg == "--data-path") {
+                if (i >= argc) {
+                    std::cerr << "Missing data path value" << std::endl;
+                    ::exit(1);
+                }
+                i += 1;
+                testDataPath = utf::framework::master_test_suite().argv[i];
+            } else if (arg == "--max-filesize") {
+                if (i >= argc) {
+                    std::cerr << "Missing max filesize value" << std::endl;
+                    ::exit(1);
+                }
+                i += 1;
+                max_filesize = std::stoull(utf::framework::master_test_suite().argv[i]);
+            }
         }
     }
 
@@ -122,9 +134,10 @@ public:
         }
     }
 
-    fs::path testDataPath;
+    fs::path testDataPath = DATA_DIR;
     fs::path sourceFilePath;
     fs::path targetFilePath;
+    size_t max_filesize = 100000000;
 };
 
 /**
@@ -215,6 +228,175 @@ public:
     }
 };
 
+struct PipeSource : public libcdoc::DataSource {
+	PipeSource(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) {}
+
+    libcdoc::result_t read(uint8_t *dst, size_t size) override {
+		size = std::min<size_t>(size, _data.size());
+		std::copy(_data.cbegin(), _data.cbegin() + size, dst);
+        if (_buf.size() < 1024) {
+            size_t newbufsize = _buf.size() + size;
+            if (newbufsize > 1024) newbufsize = 1024;
+            size_t tocopy = newbufsize - _buf.size();
+            _buf.insert(_buf.end(), _data.begin(), _data.begin() + tocopy);
+        }
+        _data.erase(_data.cbegin(), _data.cbegin() + size);
+		return size;
+	}
+
+    libcdoc::result_t seek(size_t pos) override {
+        if (pos <= _buf.size()) {
+            _data.insert(_data.begin(), _buf.begin() + pos, _buf.end());
+            _buf.erase(_buf.begin() + pos, _buf.end());
+            return libcdoc::OK;
+        }
+        return libcdoc::NOT_IMPLEMENTED;
+    }
+    bool isError() override { return false; }
+    bool isEof() override { return _eof; }
+protected:
+	std::vector<uint8_t>& _data;
+    bool& _eof;
+    std::vector<uint8_t> _buf;
+};
+
+struct PipeConsumer : public libcdoc::DataConsumer {
+	PipeConsumer(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) { _eof = false; }
+    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
+		_data.insert(_data.end(), src, src + size);
+		return size;
+	}
+    libcdoc::result_t close() override final { _eof = true; return libcdoc::OK; }
+	virtual bool isError() override final { return false; }
+protected:
+    std::vector<uint8_t>& _data;
+    bool& _eof;
+};
+
+struct PipeCrypto : public libcdoc::CryptoBackend {
+    PipeCrypto(std::string pwd) : _secret(pwd.cbegin(), pwd.cend()) {}
+
+    libcdoc::result_t getSecret(std::vector<uint8_t>& dst, unsigned int idx) {
+        dst = _secret;
+        return libcdoc::OK;
+    };
+
+    std::vector<uint8_t> _secret;
+};
+
+struct PipeWriter {
+    static constexpr size_t BUFSIZE = 1024 * 1024;
+
+    PipeWriter(libcdoc::CDocWriter *writer, const std::vector<libcdoc::FileInfo>& files) : _writer(writer), _files(files), current(-1), cpos(0) {}
+
+    uint8_t getChar(int filenum, size_t pos) {
+        uint64_t x = pos + ((uint64_t) filenum << 40);
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+        x = x ^ (x >> 31);
+        return (uint8_t) (x & 0xff);
+    }
+
+    libcdoc::result_t writeMore() {
+        if (current >= (int) _files.size()) return libcdoc::WORKFLOW_ERROR;
+
+        if ((current < 0) || (cpos >= _files[current].size)) {
+            // Start new file
+            current += 1;
+            cpos = 0;
+            if (current >= (int) _files.size()) {
+                return _writer->finishEncryption();
+            }
+            return _writer->addFile(_files[current].name, _files[current].size);
+        }
+        size_t towrite = _files[current].size - cpos;
+        if (towrite > BUFSIZE) towrite = BUFSIZE;
+        uint8_t buf[BUFSIZE];
+        for (int i = 0; i < towrite; i++) buf[i] = getChar(current, cpos + i);
+        cpos += towrite;
+        return _writer->writeData(buf, towrite);
+    }
+
+    bool isEof() {
+        return current >= (int) _files.size();
+    }
+
+    int current = 0;
+    size_t cpos = 0;
+
+    libcdoc::CDocWriter *_writer;
+    const std::vector<libcdoc::FileInfo>& _files;
+};
+
+BOOST_AUTO_TEST_SUITE(LargeFiles)
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * utf::description("Testing weird and large files"))
+{
+    std::vector<uint8_t> data;
+    bool eof = false;
+    PipeConsumer pipec(data, eof);
+    PipeSource pipes(data, eof);
+    PipeCrypto pcrypto("password");
+
+    // Create writer
+    libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &pipec, false, nullptr, &pcrypto, nullptr);
+    BOOST_TEST(writer != nullptr);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 65536);
+    BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
+    BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
+
+    std::srand(1);
+    std::vector<libcdoc::FileInfo> files;
+    for (size_t i = max_filesize; i != 0; i = i / 1000) {
+        size_t len = std::rand() % 1000;
+        std::u16string u16(len, ' ');
+        for (int i = 0; i < len; i++) u16[i] = std::rand() % 10000 + 32;
+        std::string u8 = std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.to_bytes(u16);
+        files.emplace_back(u8, i);
+        files.emplace_back(u8, 0);
+    }
+
+    PipeWriter wrt(writer, files);
+
+    // Create reader
+    libcdoc::CDocReader *reader = libcdoc::CDocReader::createReader(&pipes, false, nullptr, &pcrypto, nullptr);
+    BOOST_TEST(reader != nullptr);
+
+    // Fill buffer
+    while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+        BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+    }
+    std::vector<uint8_t> fmk;
+    BOOST_TEST(reader->getFMK(fmk, 0) == libcdoc::OK);
+    BOOST_TEST(reader->beginDecryption(fmk) == libcdoc::OK);
+    libcdoc::FileInfo fi;
+    for (int cfile = 0; cfile < files.size(); cfile++) {
+        // Fill buffer
+        while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+            BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+        }
+        // Get file
+        BOOST_TEST(reader->nextFile(fi) == libcdoc::OK);
+        BOOST_TEST(fi.name == files[cfile].name);
+        BOOST_TEST(fi.size == files[cfile].size);
+        for (size_t pos = 0; pos < files[cfile].size; pos += wrt.BUFSIZE) {
+            // Fill buffer
+            while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+                BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+            }
+            size_t toread = files[cfile].size - pos;
+            if (toread > wrt.BUFSIZE) toread = wrt.BUFSIZE;
+            uint8_t buf[wrt.BUFSIZE], cbuf[wrt.BUFSIZE];
+            BOOST_TEST(reader->readData(buf, toread) == toread);
+            for (size_t i = 0; i < toread; i++) cbuf[i] = wrt.getChar(cfile, pos + i);
+            BOOST_TEST(std::memcmp(buf, cbuf, toread) == 0);
+        }
+    }
+    BOOST_TEST(reader->nextFile(fi) == libcdoc::END_OF_STREAM);
+    BOOST_TEST(reader->finishDecryption() == libcdoc::OK);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
 

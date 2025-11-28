@@ -24,6 +24,8 @@
 
 using namespace libcdoc;
 
+constexpr unsigned int BLOCKSIZE = 512;
+
 template<std::size_t SIZE>
 static int64_t fromOctal(const std::array<char,SIZE> &data)
 {
@@ -72,7 +74,7 @@ struct libcdoc::Header {
 	{
 		int64_t unsignedSum = 0;
 		int64_t signedSum = 0;
-		for (size_t i = 0, size = sizeof(Header); i < size; i++) {
+		for (size_t i = 0, size = BLOCKSIZE; i < size; i++) {
 			unsignedSum += ((unsigned char*) this)[i];
 			signedSum += ((signed char*) this)[i];
 		}
@@ -97,9 +99,11 @@ struct libcdoc::Header {
     bool operator==(const Header&) const = default;
 };
 
+static_assert (sizeof(Header) == BLOCKSIZE, "Header struct size is incorrect");
+
 static int padding(int64_t size)
 {
-	return sizeof(Header) - size % sizeof(Header);
+	return BLOCKSIZE * ((size + BLOCKSIZE - 1) / BLOCKSIZE) - size;
 }
 
 std::string toPaxRecord (const std::string &keyword, const std::string &value) {
@@ -131,7 +135,7 @@ libcdoc::TarConsumer::write(const uint8_t *src, size_t size)
 
 libcdoc::result_t
 libcdoc::TarConsumer::writeHeader(const Header &h) {
-    if(auto rv = _dst->write((const uint8_t *)&h, sizeof(Header)); rv != sizeof(Header))
+    if(auto rv = _dst->write((const uint8_t *)&h, BLOCKSIZE); rv != BLOCKSIZE)
         return rv < OK ? rv : OUTPUT_ERROR;
     return OK;
 }
@@ -146,7 +150,7 @@ libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) {
 
 libcdoc::result_t
 libcdoc::TarConsumer::writePadding(int64_t size) {
-    std::array<uint8_t,sizeof(libcdoc::Header)> pad {};
+    static std::array<uint8_t,BLOCKSIZE> pad {};
     auto padSize = padding(size);
     if(auto rv = _dst->write(pad.data(), padSize); rv != padSize)
         return rv < OK ? rv : OUTPUT_ERROR;
@@ -269,14 +273,14 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 		}
 	}
 	while (!_src->isEof()) {
-		int64_t result = _src->read((uint8_t *)&h, sizeof(Header));
-		if (result != sizeof(Header)) {
+		int64_t result = _src->read((uint8_t *)&h, BLOCKSIZE);
+		if (result != BLOCKSIZE) {
 			_error = INPUT_STREAM_ERROR;
 			return _error;
 		}
 		if (h.isNull()) {
-			result = _src->read((uint8_t *)&h, sizeof(Header));
-			if (result != sizeof(Header)) {
+			result = _src->read((uint8_t *)&h, BLOCKSIZE);
+			if (result != BLOCKSIZE) {
 				_error = INPUT_STREAM_ERROR;
 				return _error;
 			}
@@ -299,8 +303,8 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			}
 			std::string paxData(pax_in.data(), pax_in.size());
 			_src->skip(padding(h_size));
-			result = _src->read((uint8_t *)&h, sizeof(Header));
-			if (result != sizeof(Header)) {
+			result = _src->read((uint8_t *)&h, BLOCKSIZE);
+			if (result != BLOCKSIZE) {
 				_error = INPUT_STREAM_ERROR;
 				return _error;
 			}
