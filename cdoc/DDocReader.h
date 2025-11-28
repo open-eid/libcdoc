@@ -18,26 +18,23 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <cstdint>
+#include "XmlReader.h"
 
 namespace libcdoc {
 
-struct DataSource;
 struct MultiDataConsumer;
 
-class DDOCReader
+struct DDOCReader: public XMLReader
 {
-public:
+    using XMLReader::XMLReader;
 	struct File
 	{
 		std::string name, mime;
 		std::vector<uint8_t> data;
 	};
-	static int parse(libcdoc::DataSource *src, libcdoc::MultiDataConsumer *dst);
+    int64_t parse(MultiDataConsumer *dst);
 
-	static std::vector<File> files(const std::vector<uint8_t> &data);
+    int64_t files(std::vector<DDOCReader::File> &files);
 };
 
 } // namespace libcdoc

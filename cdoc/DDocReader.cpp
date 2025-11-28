@@ -19,52 +19,50 @@
 #include "DDocReader.h"
 #include "CDoc.h"
 #include "Io.h"
-#include "XmlReader.h"
 
 using namespace libcdoc;
 
-int
-DDOCReader::parse(libcdoc::DataSource *src, libcdoc::MultiDataConsumer *dst)
+int64_t
+DDOCReader::parse(MultiDataConsumer *dst)
 {
-	XMLReader reader(src);
-	while(reader.read()) {
-		if(reader.isEndElement()) continue;
-		// EncryptedData
-		if(!reader.isElement("DataFile")) continue;
-		std::string name = reader.attribute("Filename");
-		std::vector<uint8_t> content = reader.readBase64();
-        int result = dst->open(name, content.size());
-        if (result != libcdoc::OK) return result;
-        int64_t n_written = dst->write(content.data(), content.size());
-        if (n_written < 0) return (int) n_written;
-        result = dst->close();
-        if (result != libcdoc::OK) return result;
+    while(read()) {
+        if(isEndElement())
+            continue;
+        // EncryptedData
+        if(!isElement("DataFile"))
+            continue;
+        std::string name = attribute("Filename");
+        std::vector<uint8_t> content = readBase64();
+        if (auto rv = dst->open(name, content.size()); rv != libcdoc::OK)
+            return rv;
+        if (auto rv = dst->write(content.data(), content.size()); rv < 0)
+            return rv;
+        if (auto rv = dst->close(); rv != libcdoc::OK)
+            return rv;
     }
     return (dst->isError()) ? libcdoc::IO_ERROR : libcdoc::OK;
 }
 
 struct DDocFileListConsumer : public libcdoc::MultiDataConsumer {
-	std::vector<DDOCReader::File> files;
+    std::vector<DDOCReader::File> &files;
 
-	explicit DDocFileListConsumer() = default;
-	int64_t write(const uint8_t *src, size_t size) override final {
-		DDOCReader::File& file = files.back();
-		file.data.insert(file.data.end(), src, src + size);
-		return size;
-	}
-    libcdoc::result_t close() override final { return libcdoc::OK; }
-	bool isError() override final { return false; }
-    libcdoc::result_t open(const std::string& name, int64_t size) override final {
-		files.push_back({name, "application/octet-stream", {}});
-		return libcdoc::OK;
-	}
+    DDocFileListConsumer(std::vector<DDOCReader::File> &_files): files(_files) {}
+    int64_t write(const uint8_t *src, size_t size) final {
+        DDOCReader::File& file = files.back();
+        file.data.insert(file.data.end(), src, src + size);
+        return size;
+    }
+    libcdoc::result_t close() final { return libcdoc::OK; }
+    bool isError() final { return false; }
+    libcdoc::result_t open(const std::string& name, int64_t /*size*/) final {
+        files.push_back({name, "application/octet-stream", {}});
+        return libcdoc::OK;
+    }
 };
 
-std::vector<DDOCReader::File>
-DDOCReader::files(const std::vector<uint8_t> &data)
+int64_t
+DDOCReader::files(std::vector<DDOCReader::File> &files)
 {
-	libcdoc::VectorSource src(data);
-	DDocFileListConsumer list;
-	parse(&src, &list);
-	return std::move(list.files);
+    DDocFileListConsumer list{files};
+    return parse(&list);
 }

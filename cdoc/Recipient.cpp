@@ -38,21 +38,31 @@ constexpr string_view LABELPREFIX{"data:"};
  */
 constexpr string_view LABELBASE64IND{";base64,"};
 
+/**
+ * @brief EID type values for machine-readable label
+ */
+static constexpr std::string_view eid_strs[] = {
+    "Unknown",
+    "ID-card",
+    "Digi-ID",
+    "Digi-ID E-RESIDENT"
+};
+
 Recipient
-Recipient::makeSymmetric(const std::string& label, int32_t kdf_iter)
+Recipient::makeSymmetric(std::string label, int32_t kdf_iter)
 {
 	Recipient rcpt(Type::SYMMETRIC_KEY);
-	rcpt.label = label;
+	rcpt.label = std::move(label);
 	rcpt.kdf_iter = kdf_iter;
 	return rcpt;
 }
 
 Recipient
-Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& public_key, PKType pk_type)
+Recipient::makePublicKey(std::string label, const std::vector<uint8_t>& public_key, PKType pk_type)
 {
     if (public_key.empty()) return Recipient(Type::NONE);
     Recipient rcpt(Type::PUBLIC_KEY);
-    rcpt.label = label;
+    rcpt.label = std::move(label);
     rcpt.pk_type = pk_type;
     if (pk_type == PKType::ECC && public_key[0] == 0x30) {
         // 0x30 identifies SEQUENCE tag in ASN.1 encoding
@@ -67,26 +77,20 @@ Recipient::makePublicKey(const std::string& label, const std::vector<uint8_t>& p
 Recipient
 Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
 {
-	Recipient rcpt(Type::CERTIFICATE);
-	rcpt.label = std::move(label);
+    Recipient rcpt(Type::PUBLIC_KEY);
+    rcpt.label = std::move(label);
     rcpt.cert = std::move(cert);
-	Certificate ssl(rcpt.cert);
-    rcpt.rcpt_key = ssl.getPublicKey();
-    rcpt.pk_type = (ssl.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
-	return rcpt;
-}
-
-Recipient
-Recipient::makeEID(std::vector<uint8_t> cert)
-{
-    auto label = BuildLabelEID(cert);
-    return makeCertificate(std::move(label), std::move(cert));
+    Certificate x509(rcpt.cert);
+    rcpt.rcpt_key = x509.getPublicKey();
+    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
+    rcpt.expiry_ts = x509.getNotAfter();
+    return rcpt;
 }
 
 Recipient
 Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id)
 {
-    Recipient rcpt(Type::SERVER);
+    Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = std::move(label);
     rcpt.pk_type = pk_type;
     if (pk_type == PKType::ECC && public_key[0] == 0x30) {
@@ -101,12 +105,12 @@ Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType
 }
 
 Recipient
-Recipient::makeEIDServer(std::vector<uint8_t> cert, std::string server_id)
+Recipient::makeServer(std::string label, std::vector<uint8_t> cert, std::string server_id)
 {
     Certificate x509(cert);
-    auto label = BuildLabelEID(cert);
-    return makeServer(std::move(label),
-        x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
+    Recipient rcpt = makeServer(std::move(label), x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
+    rcpt.cert = cert;
+    return std::move(rcpt);
 }
 
 Recipient
@@ -135,112 +139,10 @@ Recipient::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
     return rcpt_key == public_key;
 }
 
-static constexpr std::string_view type_strs[] = {
-    "Unknown",
-    "ID-card",
-    "Digi-ID",
-    "Digi-ID E-RESIDENT"
-};
-
-std::string
-Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components)
+static Recipient::EIDType
+getEIDType(const std::vector<std::string>& policies)
 {
-    std::ostringstream ofs;
-    ofs << LABELPREFIX;
-    bool first = true;
-    for (auto& [key, value] : components) {
-        if (!value.empty()) {
-            if (!first) ofs << '&';
-            ofs << libcdoc::urlEncode(key) << '=' << libcdoc::urlEncode(value);
-            first = false;
-        }
-    }
-    return ofs.str();
-}
-
-std::string
-Recipient::BuildLabelEID(int version, EIDType type, std::string_view cn, std::string_view serial_number, std::string_view last_name, std::string_view first_name)
-{
-    // In case of cards issued to an organization the first name (and last name) are missing. We ommit these parts.
-    if (first_name.empty()) {
-        return buildLabel({
-            {"v", std::to_string(version)},
-            {"type", type_strs[type]},
-            {"cn", cn},
-            {"serial_number", serial_number}
-        });
-    } else {
-        return buildLabel({
-            {"v", std::to_string(version)},
-            {"type", type_strs[type]},
-            {"cn", cn},
-            {"serial_number", serial_number},
-            {"last_name", last_name},
-            {"first_name", first_name}
-        });
-    }
-}
-
-std::string
-Recipient::BuildLabelEID(const std::vector<uint8_t>& cert)
-{
-    Certificate x509(cert);
-    return BuildLabelEID(CDoc2::KEYLABELVERSION, getEIDType(x509.policies()), x509.getCommonName(), x509.getSerialNumber(), x509.getSurname(), x509.getGivenName());
-}
-
-std::string
-Recipient::BuildLabelCertificate(int version, std::string_view file, std::string_view cn, const std::vector<uint8_t>& cert_sha1)
-{
-    return buildLabel({
-        {"v", std::to_string(version)},
-        {"type", "cert"},
-        {"file", file},
-        {"cn", cn},
-        {"cert_sha1", toHex(cert_sha1)}
-    });
-}
-
-std::string
-Recipient::BuildLabelCertificate(std::string_view file, const std::vector<uint8_t>& cert)
-{
-    Certificate x509(cert);
-    return BuildLabelCertificate(CDoc2::KEYLABELVERSION, file, x509.getCommonName(), x509.getDigest());
-}
-
-std::string
-Recipient::BuildLabelPublicKey(int version, const std::string file)
-{
-    return buildLabel({
-        {"v", std::to_string(version)},
-        {"type", "pub_key"},
-        {"file", file}
-    });
-}
-
-std::string
-Recipient::BuildLabelSymmetricKey(int version, const std::string& label, const std::string file)
-{
-    return buildLabel({
-        {"v", std::to_string(version)},
-        {"type", "secret"},
-        {"label", label},
-        {"file", file}
-    });
-}
-
-std::string
-Recipient::BuildLabelPassword(int version, const std::string& label)
-{
-    return buildLabel({
-        {"v", std::to_string(version)},
-        {"type", "pw"},
-        {"label", label}
-    });
-}
-
-Recipient::EIDType Recipient::getEIDType(const std::vector<std::string>& policies)
-{
-    for (std::vector<std::string>::const_reference policy : policies)
+    for (const auto& policy : policies)
     {
         if (policy.starts_with("1.3.6.1.4.1.51361.1.1.3") ||
             policy.starts_with("1.3.6.1.4.1.51361.1.2.3")) {
@@ -262,6 +164,108 @@ Recipient::EIDType Recipient::getEIDType(const std::vector<std::string>& policie
 
     // If the execution reaches so far then EID type determination failed.
     return Recipient::EIDType::Unknown;
+}
+
+static void
+buildLabel(std::ostream& ofs, std::string_view type, const std::initializer_list<std::pair<std::string_view, std::string_view>> &components)
+{
+    ofs << LABELPREFIX;
+    ofs << "v" << '=' << std::to_string(CDoc2::KEYLABELVERSION) << '&'
+        << "type" << '=' << type;
+    for (auto& [key, value] : components) {
+        if (value.empty())
+            continue;
+        ofs << '&';
+        ofs << urlEncode(key) << '=' << urlEncode(value);
+    }
+}
+
+static void
+BuildLabelEID(std::ostream& ofs, Recipient::EIDType type, const Certificate& x509)
+{
+    buildLabel(ofs, eid_strs[type], {
+        {"cn", x509.getCommonName()},
+        {"serial_number", x509.getSerialNumber()},
+        {"last_name", x509.getSurname()},
+        {"first_name", x509.getGivenName()},
+    });
+}
+
+static void
+BuildLabelCertificate(std::ostream &ofs, std::string_view file, const Certificate& x509)
+{
+    buildLabel(ofs, "cert", {
+        {"file", file},
+        {"cn", x509.getCommonName()},
+        {"cert_sha1", toHex(x509.getDigest())}
+    });
+}
+
+static void
+BuildLabelPublicKey(std::ostream &ofs, const std::string file)
+{
+    buildLabel(ofs, "pub_key", {
+        {"file", file}
+    });
+}
+
+static void
+BuildLabelSymmetricKey(std::ostream &ofs, const std::string& label, const std::string file)
+{
+    buildLabel(ofs, "secret", {
+        {"label", label},
+        {"file", file}
+    });
+}
+
+static void
+BuildLabelPassword(std::ostream &ofs, const std::string& label)
+{
+    buildLabel(ofs, "pw", {
+        {"label", label}
+    });
+}
+
+std::string
+Recipient::getLabel(const std::vector<std::pair<std::string_view, std::string_view>> &extra) const
+{
+    LOG_DBG("Generating label");
+    if (!label.empty()) return label;
+    std::ostringstream ofs;
+    switch(type) {
+        case NONE:
+            LOG_DBG("The recipient is not initialized");
+            break;
+        case SYMMETRIC_KEY:
+            if (kdf_iter > 0) {
+                BuildLabelPassword(ofs, key_name);
+            } else {
+                BuildLabelSymmetricKey(ofs, key_name, file_name);
+            }
+            break;
+        case PUBLIC_KEY:
+            if (!cert.empty()) {
+                Certificate x509(cert);
+                if (auto type = getEIDType(x509.policies()); type != EIDType::Unknown) {
+                    BuildLabelEID(ofs, type, x509);
+                } else {
+                    BuildLabelCertificate(ofs, file_name, x509);
+                }
+            } else {
+                BuildLabelPublicKey(ofs, file_name);
+            }
+            break;
+        case KEYSHARE:
+            break;
+    }
+    for (auto& [key, value] : extra) {
+        if (value.empty())
+            continue;
+        ofs << '&';
+        ofs << urlEncode(key) << '=' << urlEncode(value);
+    }
+    LOG_DBG("Generated label: {}", ofs.str());
+    return ofs.str();
 }
 
 map<string, string> Recipient::parseLabel(const string& label)

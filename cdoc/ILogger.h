@@ -134,6 +134,8 @@ public:
      */
     static ILogger* getLogger();
 
+    static void setLogger(ILogger *logger);
+
 protected:
     /**
      * @brief Minimum level of log messages to log.

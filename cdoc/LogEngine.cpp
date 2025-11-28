@@ -57,6 +57,15 @@ struct LogEngine final : public ILogger
         return tmp;
     }
 
+    void setLogger(ILogger *logger) {
+        lock_guard<mutex> guard(loggers_protector);
+        while (!loggers.empty()) {
+            delete loggers.begin()->second;
+            loggers.erase(loggers.begin()->first);
+        }
+        loggers[0] = logger;
+    }
+
 private:
     // Current Cookie value
     int currentLoggerCookie = 0;
@@ -90,5 +99,12 @@ ILogger::getLogger()
 {
     return &defaultLogEngine;
 }
+
+void
+ILogger::setLogger(ILogger *logger)
+{
+    defaultLogEngine.setLogger(logger);
+}
+
 
 }

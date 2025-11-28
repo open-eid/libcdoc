@@ -20,6 +20,8 @@
 
 #include "CDocReader.h"
 
+#include <functional>
+
 class Token;
 
 class CDoc1Reader : public libcdoc::CDocReader
@@ -43,7 +45,8 @@ public:
 private:
 	CDoc1Reader(const CDoc1Reader &) = delete;
 	CDoc1Reader &operator=(const CDoc1Reader &) = delete;
-    libcdoc::result_t decryptData(const std::vector<uint8_t>& fmk, std::string& mime, std::vector<uint8_t>& data);
+    libcdoc::result_t decryptData(const std::vector<uint8_t>& fmk,
+        const std::function<libcdoc::result_t(libcdoc::DataSource &src, const std::string &mime)>& f);
 	class Private;
 	Private *d;
 };

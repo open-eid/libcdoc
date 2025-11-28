@@ -28,30 +28,6 @@
 
 namespace libcdoc {
 
-struct CipherSource : public ChainedSource {
-	bool _fail = false;
-	libcdoc::Crypto::Cipher *_cipher;
-	uint32_t _block_size;
-	CipherSource(DataSource *src, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
-		: ChainedSource(src, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
-
-    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
-		if (_fail) return INPUT_ERROR;
-		size_t n_read = _src->read(dst, _block_size * (size / _block_size));
-		if (n_read) {
-			if((n_read % _block_size) || !_cipher->update(dst, n_read)) {
-				_fail = true;
-				return INPUT_ERROR;
-			}
-		}
-		return n_read;
-	}
-
-	virtual bool isError() override final {
-		return _fail || ChainedSource::isError();
-	};
-};
-
 struct ZConsumer : public ChainedConsumer {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
 	z_stream _s {};

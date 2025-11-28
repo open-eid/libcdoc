@@ -41,9 +41,9 @@ static void print_usage(ostream& ofs)
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;
     ofs << "    [label]:cert:CERTIFICATE_HEX - public key from certificate" << endl;
-    ofs << "    [label]:skey:SECRET_KEY_HEX - AES key" << endl;
     ofs << "    [label]:pkey:SECRET_KEY_HEX - public key" << endl;
     ofs << "    [label]:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
+    ofs << "    [label]:skey:SECRET_KEY_HEX - AES key" << endl;
     ofs << "    [label]:pw:PASSWORD - Derive key using PWBKDF" << endl;
     ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
     ofs << "    [label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
@@ -63,9 +63,9 @@ static void print_usage(ostream& ofs)
     ofs << "    --key-id - PKCS11 key ID" << endl;
     ofs << "    --key-label - PKCS11 key label" << endl;
     ofs << endl;
-    ofs << "cdoc-tool re-encrypt FILE" << endl;
+    ofs << "cdoc-tool locks FILE" << endl;
     ofs << endl;
-    ofs << "cdoc-tool locks DECRYPT_ARGUMENTS ENCRYPT_ARGUMENTS FILE --out OUTPUTFILE" << endl;
+    ofs << "cdoc-tool re-encrypt DECRYPT_ARGUMENTS ENCRYPT_ARGUMENTS FILE --out OUTPUTFILE" << endl;
     ofs << "  Re-encrypts container for different recipient(s)" << endl;
     ofs << endl;
     ofs << "Common arguments:" << endl;
@@ -283,6 +283,9 @@ static int ParseAndEncrypt(int argc, char *argv[])
     ToolConf conf;
     RecipientInfoVector rcpts;
 
+    //
+    // Parse all arguments into ToolConf structure
+    //
     int arg_idx = 0;
     while (arg_idx < argc) {
         int result = parse_common(conf, arg_idx, argc, argv);

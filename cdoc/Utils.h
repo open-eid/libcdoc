@@ -83,6 +83,8 @@ std::vector<std::string> JsonToStringArray(std::string_view json);
 // Get time in seconds since the Epoch
 
 double getTime();
+double timeFromISO(std::string_view iso);
+std::string timeToISO(double time);
 
 static std::vector<uint8_t>
 readAllBytes(std::istream& ifs)
@@ -116,56 +118,13 @@ readAllBytes(std::string_view filename)
 int parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash = false);
 std::string buildURL(const std::string& host, int port);
 
-std::string urlEncode(std::string_view src);
+struct urlEncode {
+    std::string_view src;
+    friend std::ostream& operator<<(std::ostream& escaped, urlEncode src);
+};
+
 std::string urlDecode(const std::string &src);
 
 } // namespace libcdoc
-
-// A source implementation that always keeps last 16 bytes in tag
-
-struct TaggedSource : public libcdoc::DataSource {
-	std::vector<uint8_t> tag;
-	libcdoc::DataSource *_src;
-	bool _owned;
-
-	TaggedSource(libcdoc::DataSource *src, bool take_ownership, size_t tag_size) : tag(tag_size), _src(src), _owned(take_ownership) {
-		tag.resize(tag.size());
-		_src->read(tag.data(), tag.size());
-	}
-	~TaggedSource() {
-		if (_owned) delete(_src);
-	}
-
-    libcdoc::result_t seek(size_t pos) override final {
-        if (!_src->seek(pos)) return libcdoc::INPUT_STREAM_ERROR;
-        if (_src->read(tag.data(), tag.size()) != tag.size()) return libcdoc::INPUT_STREAM_ERROR;
-        return libcdoc::OK;
-	}
-
-    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
-		std::vector<uint8_t> t(tag.size());
-		uint8_t *tmp = t.data();
-		size_t nread = _src->read(dst, size);
-		if (nread >= tag.size()) {
-			std::copy(dst + nread - tag.size(), dst + nread, tmp);
-			std::copy_backward(dst, dst + nread - tag.size(), dst + nread);
-			std::copy(tag.cbegin(), tag.cend(), dst);
-			std::copy(tmp, tmp + tag.size(), tag.begin());
-		} else {
-			std::copy(dst, dst + nread, tmp);
-			std::copy(tag.cbegin(), tag.cbegin() + nread, dst);
-			std::copy(tag.cbegin() + nread, tag.cend(), tag.begin());
-			std::copy(tmp, tmp + nread, tag.end() - nread);
-		}
-		return nread;
-	}
-
-	virtual bool isError() override final {
-		return _src->isError();
-	}
-	virtual bool isEof() override final {
-		return _src->isEof();
-	}
-};
 
 #endif // UTILS_H

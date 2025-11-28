@@ -224,11 +224,11 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
 // Post request and fetch response
 //
 static libcdoc::result_t
-post(httplib::SSLClient& cli, const std::string& path, const std::string& req, httplib::Response& rsp)
+post(httplib::SSLClient& cli, const std::string& path, httplib::Headers& hdrs, const std::string& req, httplib::Response& rsp)
 {
     // Capture TLS and HTTP errors
     libcdoc::LOG_DBG("POST: {} {}", path, req);
-    httplib::Result res = cli.Post(path, req, "application/json");
+    httplib::Result res = cli.Post(path, hdrs, req, "application/json");
     if (!res) {
         error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
         return libcdoc::NetworkBackend::NETWORK_ERROR;
@@ -267,8 +267,9 @@ get(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path, pi
 }
 
 libcdoc::result_t
-libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type)
+libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string& type, uint64_t expiry_ts)
 {
+    LOG_DBG("Sendkey");
     picojson::object obj = {
         {"recipient_id", picojson::value(libcdoc::toBase64(rcpt_key))},
         {"ephemeral_key_material", picojson::value(libcdoc::toBase64(key_material))},
@@ -288,8 +289,14 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     if (result = setProxy(cli, this); result != OK) return result;
 
     std::string full = path + "/key-capsules";
+    httplib::Headers hdrs;
+    if (expiry_ts) {
+        std::string expiry_str = timeToISO(expiry_ts);
+        LOG_DBG("Expiry time: {}", expiry_str);
+        hdrs.emplace(std::make_pair("x-expiry-time", expiry_str));
+    }
     httplib::Response rsp;
-    result = post(cli, full, req_str, rsp);
+    result = post(cli, full, hdrs, req_str, rsp);
     if (result != libcdoc::OK) return result;
 
     std::string location = rsp.get_header_value("Location");
@@ -298,28 +305,13 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         return NETWORK_ERROR;
     }
     error = {};
-
     /* Remove /key-capsules/ */
     dst.transaction_id = location.substr(14);
 
-    // Calculate expiry time
-    auto now = std::chrono::system_clock::now();
-    // Get a days-precision chrono::time_point
-    auto sd = floor<std::chrono::days>(now);
-    // Record the time of day
-    auto time_of_day = now - sd;
-    // Convert to a y/m/d calendar data structure
-    std::chrono::year_month_day ymd = sd;
-    // Add the months
-    ymd += std::chrono::months{6};
-    // Add some policy for overflowing the day-of-month if desired
-    if (!ymd.ok())
-        ymd = ymd.year()/ymd.month()/std::chrono::last;
-    // Convert back to system_clock::time_point
-    std::chrono::system_clock::time_point later = std::chrono::sys_days{ymd} + time_of_day;
-    auto ttt = std::chrono::system_clock::to_time_t(later);
-
-    dst.expiry_time = ttt;
+    std::string expiry_str = rsp.get_header_value("x-expiry-time");
+    LOG_DBG("Server expiry: {}", expiry_str);
+    dst.expiry_time = uint64_t(timeFromISO(expiry_str));
+    LOG_DBG("Server expiry timestamp: {}", dst.expiry_time);
 
     return OK;
 }
@@ -348,8 +340,9 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
     if (result = setProxy(cli, this); result != OK) return result;
 
     std::string full = path + "/key-shares";
+    httplib::Headers hdrs;
     httplib::Response rsp;
-    result = post(cli, full, req_str, rsp);
+    result = post(cli, full, hdrs, req_str, rsp);
     if (result != libcdoc::OK) return result;
 
     std::string location = rsp.get_header_value("Location");
@@ -421,8 +414,9 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
     if (result = setProxy(cli, this); result != OK) return result;
 
     std::string full = path + "/key-shares/" + share_id + "/nonce";
+    httplib::Headers hdrs;
     httplib::Response rsp;
-    result = post(cli, full, "", rsp);
+    result = post(cli, full, hdrs, "", rsp);
     if (result != libcdoc::OK) return result;
 
     LOG_DBG("Response: {}", rsp.body);
@@ -710,8 +704,9 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     std::string full = path + "/certificatechoice/" + rcpt_id;
     LOG_DBG("SmartID path: {}", full);
+    httplib::Headers hdrs;
     httplib::Response rsp;
-    result = post(cli, full, query.serialize(), rsp);
+    result = post(cli, full, hdrs, query.serialize(), rsp);
     if (result != libcdoc::OK) return result;
 
 
@@ -773,7 +768,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     full = path + "/authentication/" + rcpt_id;
     LOG_DBG("SmartID path: {}", full);
-    result = post(cli, full, query.serialize(), rsp);
+    result = post(cli, full, hdrs, query.serialize(), rsp);
     if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
     picojson::parse(v, rsp.body);
@@ -857,8 +852,9 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     std::string full = path + "/authentication";
     LOG_DBG("Mobile ID path: {}", full);
+    httplib::Headers hdrs;
     httplib::Response rsp;
-    result = post(cli, full, query.serialize(), rsp);
+    result = post(cli, full, hdrs, query.serialize(), rsp);
     if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
 

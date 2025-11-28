@@ -446,7 +446,6 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 %ignore libcdoc::Recipient::rcpt_key;
 %ignore libcdoc::Recipient::cert;
-%ignore libcdoc::Recipient::buildLabel(std::vector<std::pair<std::string_view, std::string_view>> components);
 %extend libcdoc::Recipient {
     std::vector<uint8_t> getRcptKey() {
         return $self->rcpt_key;
@@ -459,13 +458,6 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
     }
     void setCert(const std::vector<uint8_t>& value) {
         $self->cert = value;
-    }
-    static std::string buildLabel(const std::vector<std::string>& values) {
-        std::vector<std::pair<std::string_view, std::string_view>> vec;
-        for (size_t i = 0; (i + 1) < values.size(); i += 2) {
-            vec.push_back({values[i], values[i + 1]});
-        }
-        return libcdoc::Recipient::buildLabel(vec);
     }
 };
 

@@ -171,53 +171,54 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
     result = finishDecryption();
     return result;
 #else
-    std::string mime;
-    std::vector<uint8_t> data;
-    if (auto result = CDoc1Reader::decryptData(fmk, mime, data); result != OK) {
-        return result;
-    }
-	libcdoc::VectorSource vsrc(data);
-	if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
-        LOG_DBG("Contains DDoc content {}", mime);
-        auto result = DDOCReader::parse(&vsrc, dst);
-        if (result != libcdoc::OK) {
-            setLastError("Failed to parse DDOC file");
-            LOG_ERROR("{}", last_error);
+    return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
+        if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
+            LOG_DBG("Contains DDoc content {}", mime);
+            auto rv = DDOCReader(&src).parse(dst);
+            if (rv != libcdoc::OK) {
+                setLastError("Failed to parse DDOC file");
+                LOG_ERROR("{}", last_error);
+            }
+            return rv;
         }
-        return result;
-    }
-	dst->open(d->properties["Filename"], data.size());
-	dst->writeAll(vsrc);
-	dst->close();
-    return libcdoc::OK;
+        if(auto rv = dst->open(d->properties["Filename"], -1/*data.size()*/); rv != OK)
+            return rv;
+        if(auto rv = dst->writeAll(src); rv < OK)
+            return rv;
+        return dst->close();
+    });
 #endif
 }
 
 libcdoc::result_t
 CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
-    std::string mime;
-    std::vector<uint8_t> data;
-    if (auto result = CDoc1Reader::decryptData(fmk, mime, data); result != OK) {
-        return result;
-    }
-    if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
-        LOG_DBG("Contains DDoc content {}", mime);
-        d->files = DDOCReader::files(data);
-    } else {
+    setLastError({});
+    return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
+        if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
+            LOG_DBG("Contains DDoc content {}", mime);
+            auto rv = DDOCReader(&src).files(d->files);
+            if (rv != libcdoc::OK) {
+                setLastError("Failed to parse DDOC file");
+                LOG_ERROR("{}", last_error);
+                d->files.clear();
+            }
+            return rv;
+        }
+        std::vector<uint8_t> data;
+        VectorConsumer vsrc(data);
+        if(auto rv = vsrc.writeAll(src); rv < OK) {
+            setLastError("Cannot parse container");
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
         d->files.push_back({
             d->properties["Filename"],
             "application/octet-stream",
             std::move(data)
         });
-    }
-    if (d->files.empty()) {
-        setLastError("Cannot parse container");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::IO_ERROR;
-    }
-    setLastError({});
-    return libcdoc::OK;
+        return OK;
+    });
 }
 
 libcdoc::result_t
@@ -361,10 +362,10 @@ CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 /*
  * Returns decrypted data
  * @param key Transport key to used for decrypt data
- * @param mime decrypted mime type
- * @param data decrypted data
+ * @param f callback with DataSource and mime data
  */
-result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& mime, std::vector<uint8_t>& data)
+result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk,
+    const std::function<libcdoc::result_t(libcdoc::DataSource &src, const std::string &mime)>& f)
 {
     if (fmk.empty()) {
         setLastError("FMK is missing");
@@ -384,6 +385,7 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& 
         return result;
     }
 
+    std::vector<unsigned char> b64;
     XMLReader reader(d->dsrc, false);
     int skipKeyInfo = 0;
     while (reader.read()) {
@@ -397,26 +399,29 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk, std::string& 
         // EncryptedData/CipherData/CipherValue
         else if(reader.isElement("CipherValue"))
         {
-            data = libcdoc::Crypto::decrypt(d->method, fmk, reader.readBase64());
+            b64 = reader.readBase64();
             break;
         }
     }
 
-    if(data.empty()) {
+    if(b64.empty()) {
+        setLastError("Failed to decode base64 data");
+        return libcdoc::IO_ERROR;
+    }
+    VectorSource src(b64);
+    libcdoc::DecryptionSource dec(src, d->method, fmk);
+    if(dec.isError()) {
         setLastError("Failed to decrypt data, verify if FMK is correct");
-        return libcdoc::CRYPTO_ERROR;
+        return CRYPTO_ERROR;
     }
     setLastError({});
+
     if (d->mime == MIME_ZLIB) {
-        libcdoc::VectorSource vsrc(data);
-        libcdoc::ZSource zsrc(&vsrc);
-        std::vector<uint8_t> tmp;
-        libcdoc::VectorConsumer vcons(tmp);
-        vcons.writeAll(zsrc);
-        data = std::move(tmp);
-        mime = d->properties["OriginalMimeType"];
+        libcdoc::ZSource zsrc(&dec);
+        if(auto rv = f(zsrc, d->properties["OriginalMimeType"]); rv < OK)
+            return rv;
     }
-    else
-        mime = d->mime;
-    return libcdoc::OK;
+    else if(auto rv = f(dec, d->mime); rv < OK)
+        return rv;
+    return dec.close();
 }

@@ -62,24 +62,7 @@ XMLReader::XMLReader(libcdoc::DataSource *src, bool delete_on_close)
     d->reader = xmlReaderForIO(Private::xmlInputReadCallback, nullptr, d, nullptr, nullptr, XML_PARSE_HUGE);
 }
 
-XMLReader::XMLReader(std::istream *ifs, bool delete_on_close)
-	: XMLReader(new libcdoc::IStreamSource(ifs, delete_on_close), true)
-{
-}
-
-XMLReader::XMLReader(const std::string &file)
-	: d(new Private)
-{
-	d->reader = xmlReaderForFile(file.c_str(), nullptr, XML_PARSE_HUGE);
-}
-
-XMLReader::XMLReader(const std::vector<uint8_t> &data)
-	: d(new Private)
-{
-	d->reader = xmlReaderForMemory((const char*)data.data(), int(data.size()), nullptr, nullptr, XML_PARSE_HUGE);
-}
-
-XMLReader::~XMLReader()
+XMLReader::~XMLReader() noexcept
 {
 	xmlFreeTextReader(d->reader);
 	if(d->_src && d->_delete_src) delete d->_src;

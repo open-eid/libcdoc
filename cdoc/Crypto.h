@@ -22,6 +22,8 @@
 
 #include "utils/memory.h"
 
+#include <array>
+
 using EVP_CIPHER_CTX = struct evp_cipher_ctx_st;
 using EVP_CIPHER = struct evp_cipher_st;
 using EVP_PKEY = struct evp_pkey_st;
@@ -36,19 +38,6 @@ class Crypto
 {
 public:
 	using EVP_PKEY_ptr = unique_free_t<EVP_PKEY>;
-
-	struct Cipher {
-		EVP_CIPHER_CTX *ctx;
-		Cipher(const EVP_CIPHER *cipher, const std::vector<uint8_t> &key, const std::vector<uint8_t> &iv, bool encrypt = true);
-		~Cipher();
-		bool updateAAD(const std::vector<uint8_t> &data) const;
-		bool update(uint8_t *data, int size) const;
-		bool result() const;
-		static constexpr int tagLen() { return 16; }
-		bool setTag(const std::vector<uint8_t> &data) const;
-		int blockSize() const;
-		void clear();
-	};
 
 	static constexpr std::string_view KWAES128_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes128";
 	static constexpr std::string_view KWAES192_MTH = "http://www.w3.org/2001/04/xmlenc#kw-aes192";
@@ -81,7 +70,6 @@ public:
 	static std::vector<uint8_t> concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z, const std::vector<uint8_t> &otherInfo);
 	static std::vector<uint8_t> concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 		const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo);
-	static std::vector<uint8_t> decrypt(const std::string &method, const std::vector<uint8_t> &key, const std::vector<uint8_t> &data);
 	static std::vector<uint8_t> encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data);
 	static std::vector<uint8_t> decodeBase64(const uint8_t *data);
 	static std::vector<uint8_t> deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPKey);
@@ -129,13 +117,31 @@ struct EncryptionConsumer final : public DataConsumer {
     result_t write(const uint8_t *src, size_t size) final;
     result_t writeAAD(const std::vector<uint8_t> &data);
     result_t close() final;
-    bool isError() final { return error != OK; }
+    bool isError() final { return error != OK || dst.isError(); }
 
 private:
     unique_free_t<EVP_CIPHER_CTX> ctx;
     DataConsumer &dst;
     result_t error = OK;
     std::vector<uint8_t> buf;
+};
+
+struct DecryptionSource final : public DataSource {
+    DecryptionSource(DataSource &src, const std::string &method, const std::vector<unsigned char> &key, size_t ivLen = 0);
+    DecryptionSource(DataSource &src, const EVP_CIPHER *cipher, const std::vector<unsigned char> &key, size_t ivLen = 0);
+    CDOC_DISABLE_MOVE_COPY(DecryptionSource)
+
+    result_t read(unsigned char* dst, size_t size) final;
+    result_t updateAAD(const std::vector<uint8_t>& data);
+    result_t close();
+    bool isError() final { return error != OK || src.isError(); }
+    bool isEof() final { return src.isEof(); }
+
+private:
+    unique_free_t<EVP_CIPHER_CTX> ctx;
+    DataSource &src;
+    result_t error = OK;
+    std::array<uint8_t, 16> tag {};
 };
 
 }; // namespace libcdoc

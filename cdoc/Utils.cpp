@@ -55,6 +55,33 @@ getTime()
     return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+#if defined(_WIN32) || defined(_WIN64)
+#define timegm _mkgmtime
+#endif
+
+double
+timeFromISO(std::string_view iso)
+{
+    std::istringstream in{std::string(iso.data(), iso.size())};
+    std::tm t = {};
+    in >> std::get_time(&t, "%Y-%m-%dT%TZ");
+    return timegm(&t);
+}
+
+std::string
+timeToISO(double time)
+{
+#ifdef __cpp_lib_format
+    auto expiry_tp = std::chrono::system_clock::time_point{std::chrono::seconds{time_t(time)}};
+    return std::format("{:%FT%TZ}", expiry_tp);
+#else
+    char buf[sizeof "2011-10-08T07:07:09Z"];
+    time_t tstamp = (time_t) time;
+    strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", gmtime(&tstamp));
+    return std::string(buf);
+#endif
+}
+
 int
 parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash)
 {
@@ -91,14 +118,13 @@ buildURL(const std::string& host, int port)
     return std::string("https://") + host + ":" + std::to_string(port) + "/";
 }
 
-std::string
-urlEncode(std::string_view src)
+std::ostream&
+operator<<(std::ostream& escaped, urlEncode src)
 {
-    std::ostringstream escaped;
     escaped.fill('0');
     escaped << std::hex;
 
-    for (auto c : src) {
+    for (auto c : src.src) {
         // Keep alphanumeric and other accepted characters intact
         if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             escaped << c;
@@ -109,7 +135,7 @@ urlEncode(std::string_view src)
         escaped << '%' << std::setw(2) << int((unsigned char) c);
         escaped << std::nouppercase;
     }
-    return escaped.str();
+    return escaped;
 }
 
 std::string

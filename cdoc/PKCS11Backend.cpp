@@ -427,12 +427,17 @@ libcdoc::PKCS11Backend::deriveECDH1(std::vector<uint8_t>& dst, const std::vector
 	CK_ECDH1_DERIVE_PARAMS ecdh_parms = { CKD_NULL, 0, nullptr, CK_ULONG(public_key.size()), CK_BYTE_PTR(public_key.data()) };
 	CK_MECHANISM mech = { CKM_ECDH1_DERIVE, &ecdh_parms, sizeof(CK_ECDH1_DERIVE_PARAMS) };
 	CK_BBOOL _false = CK_FALSE;
+    CK_BBOOL _true = CK_TRUE;
 	CK_OBJECT_CLASS newkey_class = CKO_SECRET_KEY;
 	CK_KEY_TYPE newkey_type = CKK_GENERIC_SECRET;
-	std::vector<CK_ATTRIBUTE> newkey_template{
-		{CKA_TOKEN, &_false, sizeof(_false)},
-		{CKA_CLASS, &newkey_class, sizeof(newkey_class)},
-		{CKA_KEY_TYPE, &newkey_type, sizeof(newkey_type)}
+    CK_ULONG value_len = (public_key.size() - 1) / 2;
+    std::array newkey_template{
+        CK_ATTRIBUTE{CKA_TOKEN, &_false, sizeof(_false)},
+        CK_ATTRIBUTE{CKA_CLASS, &newkey_class, sizeof(newkey_class)},
+        CK_ATTRIBUTE{CKA_KEY_TYPE, &newkey_type, sizeof(newkey_type)},
+        CK_ATTRIBUTE{CKA_SENSITIVE, &_false, sizeof(_false)},
+        CK_ATTRIBUTE{CKA_EXTRACTABLE, &_true, sizeof(_true)},
+        CK_ATTRIBUTE{CKA_VALUE_LEN, &value_len, sizeof(value_len)},
 	};
 	CK_OBJECT_HANDLE newkey = CK_INVALID_HANDLE;
 	unsigned long p11result = d->f->C_DeriveKey(d->session, &mech, d->key, newkey_template.data(), CK_ULONG(newkey_template.size()), &newkey);
