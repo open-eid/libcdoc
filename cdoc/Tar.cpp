@@ -150,7 +150,7 @@ libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) {
 
 libcdoc::result_t
 libcdoc::TarConsumer::writePadding(int64_t size) {
-    static std::array<uint8_t,BLOCKSIZE> pad {};
+    static const std::array<uint8_t,BLOCKSIZE> pad {};
     auto padSize = padding(size);
     if(auto rv = _dst->write(pad.data(), padSize); rv != padSize)
         return rv < OK ? rv : OUTPUT_ERROR;
