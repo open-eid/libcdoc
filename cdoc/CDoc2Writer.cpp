@@ -493,6 +493,7 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
         LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
+    if (name.empty() || !libcdoc::isValidUtf8(name)) return libcdoc::DATA_FORMAT_ERROR;
     if(auto rv = tar->open(name, size); rv < 0) {
         setLastError(tar->getLastErrorStr(rv));
         LOG_ERROR("{}", last_error);

@@ -86,6 +86,8 @@ double getTime();
 double timeFromISO(std::string_view iso);
 std::string timeToISO(double time);
 
+bool isValidUtf8 (std::string str);
+
 static std::vector<uint8_t>
 readAllBytes(std::istream& ifs)
 {
