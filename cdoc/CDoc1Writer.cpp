@@ -292,6 +292,7 @@ CDoc1Writer::addFile(const std::string& name, size_t size)
 {
     if(!d)
         return WORKFLOW_ERROR;
+    if (name.empty() || !libcdoc::isValidUtf8(name)) return libcdoc::DATA_FORMAT_ERROR;
 	d->files.push_back({name, size, {}});
 	return libcdoc::OK;
 }
