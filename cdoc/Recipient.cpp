@@ -142,8 +142,13 @@ Recipient::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
 static Recipient::EIDType
 getEIDType(const std::vector<std::string>& policies)
 {
-    for (const auto& policy : policies)
+    for (const auto& pol : policies)
     {
+        std::string_view policy = pol;
+        if (policy.starts_with("2.999.")) { // Zetes TEST OID prefix
+            policy = policy.substr(6);
+        }
+
         if (policy.starts_with("1.3.6.1.4.1.51361.1.1.3") ||
             policy.starts_with("1.3.6.1.4.1.51361.1.2.3")) {
             return Recipient::EIDType::DigiID;
