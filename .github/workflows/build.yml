@@ -155,15 +155,6 @@ jobs:
       with:
         path: ${{ github.workspace }}/vcpkg_cache
         key: vcpkg-${{ matrix.image }}-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
-    - name: Prepare vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: ./vcpkg.json
-        runVcpkgInstall: true
-        runVcpkgFormatString: "[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `$[env.VCPKG_DEFAULT_TRIPLET]`, `--x-feature`, `tests`]"
-      env:
-        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
-        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/vcpkg_installed
     - name: Install dependencies
       run: winget install --silent --accept-source-agreements --accept-package-agreements swig doxygen
     - uses: actions/setup-java@v4
@@ -171,10 +162,12 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
     - name: Build
+      env:
+        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
       run: |
         $swig = (Get-Item "$env:LOCALAPPDATA\Microsoft\WinGet\Links\swig.exe").Target
         cmake -A ${{ matrix.platform }} -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo `
-          "-DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
+          "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
           "-DSWIG_EXECUTABLE=$swig" `
           -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
           ${{ matrix.platform == 'x64' && '-DVCPKG_MANIFEST_FEATURES=tests' || '' }} `
