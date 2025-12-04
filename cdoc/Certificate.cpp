@@ -89,32 +89,51 @@ Certificate::getNotAfter() const
 #endif
 }
 
-
-
-std::vector<std::string>
-Certificate::policies() const
+Certificate::EIDType
+Certificate::getEIDType() const
 {
-    constexpr int PolicyBufferLen = 50;
-    std::vector<std::string> list;
-
     if(!cert)
-        return list;
+        return Unknown;
 
     auto cp = make_unique_cast<CERTIFICATEPOLICIES_free>(X509_get_ext_d2i(
         cert.get(), NID_certificate_policies, nullptr, nullptr));
     if(!cp)
-        return list;
+        return Unknown;
 
+    constexpr int PolicyBufferLen = 50;
+    char buf[PolicyBufferLen + 1]{};
     for(int i = 0; i < sk_POLICYINFO_num(cp.get()); i++) {
         POLICYINFO *pi = sk_POLICYINFO_value(cp.get(), i);
-        char buf[PolicyBufferLen + 1]{};
         int len = OBJ_obj2txt(buf, PolicyBufferLen, pi->policyid, 1);
-        if(len != NID_undef) {
-            list.push_back(std::string(buf));
+        if(len == NID_undef) {
+            continue;
+        }
+
+        std::string_view policy(buf, size_t(len));
+        if (policy.starts_with("2.999.")) { // Zetes TEST OID prefix
+            policy = policy.substr(6);
+        }
+
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.3") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2.3")) {
+            return DigiID;
+        }
+
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.4") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2.4")) {
+            return DigiID_EResident;
+        }
+
+        if (policy.starts_with("1.3.6.1.4.1.51361.1.1") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.1") ||
+            policy.starts_with("1.3.6.1.4.1.51361.1.2") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.2")) {
+            return IDCard;
         }
     }
 
-    return list;
+    // If the execution reaches so far then EID type determination failed.
+    return Unknown;
 }
 
 std::vector<uint8_t>

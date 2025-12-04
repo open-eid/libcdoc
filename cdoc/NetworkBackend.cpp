@@ -293,7 +293,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     if (expiry_ts) {
         std::string expiry_str = timeToISO(expiry_ts);
         LOG_DBG("Expiry time: {}", expiry_str);
-        hdrs.emplace(std::make_pair("x-expiry-time", expiry_str));
+        hdrs.emplace("x-expiry-time", expiry_str);
     }
     httplib::Response rsp;
     result = post(cli, full, hdrs, req_str, rsp);
@@ -306,12 +306,18 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     }
     error = {};
     /* Remove /key-capsules/ */
-    dst.transaction_id = location.substr(14);
+    location.erase(0, 14);
+    dst.transaction_id = std::move(location);
 
     std::string expiry_str = rsp.get_header_value("x-expiry-time");
     LOG_DBG("Server expiry: {}", expiry_str);
-    dst.expiry_time = uint64_t(timeFromISO(expiry_str));
-    LOG_DBG("Server expiry timestamp: {}", dst.expiry_time);
+    if (expiry_str.empty()) {
+        dst.expiry_time = expiry_ts;
+        LOG_DBG("Given expiry timestamp: {}", dst.expiry_time);
+    } else {
+        dst.expiry_time = uint64_t(timeFromISO(expiry_str));
+        LOG_DBG("Server expiry timestamp: {}", dst.expiry_time);
+    }
 
     return OK;
 }
