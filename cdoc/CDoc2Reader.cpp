@@ -50,7 +50,7 @@ std::string
 libcdoc::CDoc2::getSaltForExpand(const std::string& label)
 {
     std::ostringstream oss;
-    oss << libcdoc::CDoc2::KEK.data() << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) << label;
+    oss << libcdoc::CDoc2::KEK << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) << label;
     return oss.str();
 }
 
@@ -59,9 +59,10 @@ std::string
 libcdoc::CDoc2::getSaltForExpand(const std::vector<uint8_t>& key_material, const std::vector<uint8_t>& rcpt_key)
 {
     std::ostringstream oss;
-    oss << libcdoc::CDoc2::KEK.data() << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) <<
-        std::string(rcpt_key.cbegin(), rcpt_key.cend()) <<
-            std::string(key_material.cbegin(), key_material.cend());
+    oss << libcdoc::CDoc2::KEK
+        << cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR)
+        << std::string_view((const char*)rcpt_key.data(), rcpt_key.size())
+        << std::string_view((const char*)key_material.data(), key_material.size());
     return oss.str();
 }
 
@@ -128,7 +129,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         std::vector<uint8_t> kek_pm;
         crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx);
         LOG_DBG("password2");
-        kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
         if (kek.empty()) return libcdoc::CRYPTO_ERROR;
         LOG_DBG("password3");
     } else if (lock.type == Lock::Type::SYMMETRIC_KEY) {
@@ -137,10 +138,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
         std::vector<uint8_t> kek_pm;
         crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx);
-        kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
+        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
 
         LOG_DBG("Label: {}", lock.label);
-        LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+        LOG_DBG("info: {}", toHex(info_str));
         LOG_TRACE_KEY("salt: {}", lock.getBytes(Lock::SALT));
         LOG_TRACE_KEY("kek_pm: {}", kek_pm);
         LOG_TRACE_KEY("kek: {}", kek);
@@ -200,9 +201,9 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(Lock::Params::RCPT_KEY));
 
-            LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+            LOG_DBG("info: {}", toHex(info_str));
 
-            kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
+            kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
         }
     } else  if (lock.type == Lock::Type::SHARE_SERVER) {
         /* SALT */
@@ -322,7 +323,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         LOG_ERROR("{}", last_error);
         return libcdoc::CRYPTO_ERROR;
     }
-    std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()));
+    std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
 
     LOG_TRACE_KEY("xor: {}", lock.encrypted_fmk);
     LOG_TRACE_KEY("fmk: {}", fmk);
@@ -386,7 +387,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
         }
     }
     priv->_at_nonce = false;
-    std::vector<uint8_t> cek = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()));
+    std::vector<uint8_t> cek = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::CEK);
     LOG_TRACE_KEY("cek: {}", cek);
 
     priv->dec = std::make_unique<libcdoc::DecryptionSource>(*priv->_src, EVP_chacha20_poly1305(), cek, libcdoc::CDoc2::NONCE_LEN);

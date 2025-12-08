@@ -446,6 +446,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 %ignore libcdoc::Recipient::rcpt_key;
 %ignore libcdoc::Recipient::cert;
+%ignore libcdoc::Recipient::getLabel; 
 %extend libcdoc::Recipient {
     std::vector<uint8_t> getRcptKey() {
         return $self->rcpt_key;

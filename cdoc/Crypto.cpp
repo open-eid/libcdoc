@@ -243,7 +243,7 @@ uint32_t Crypto::keySize(const std::string &algo)
 }
 
 std::vector<uint8_t>
-Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, const std::vector<uint8_t> &info, int len, int mode)
+Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, std::string_view info, int len, int mode)
 {
     auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx)
@@ -259,7 +259,7 @@ Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, 
         SSL_FAILED(EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_hkdf_md") ||
         SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_key(ctx.get(), key.data(), int(key.size())), "EVP_PKEY_CTX_set1_hkdf_key") ||
         (!salt.empty() && SSL_FAILED(EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), salt.data(), int(salt.size())), "EVP_PKEY_CTX_set1_hkdf_salt")) ||
-        (!info.empty() && SSL_FAILED(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info")) ||
+        (!info.empty() && SSL_FAILED(EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), (uint8_t*)info.data(), int(info.size())), "EVP_PKEY_CTX_add1_hkdf_info")) ||
         SSL_FAILED(EVP_PKEY_derive(ctx.get(), out.data(), &outlen), "EVP_PKEY_derive"))
 		return {};
 
@@ -267,7 +267,7 @@ Crypto::hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, 
 }
 
 std::vector<uint8_t>
-Crypto::expand(const std::vector<uint8_t> &key, const std::vector<uint8_t> &info, int len)
+Crypto::expand(const std::vector<uint8_t> &key, std::string_view info, int len)
 {
 	return hkdf(key, {}, info, len, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY);
 }

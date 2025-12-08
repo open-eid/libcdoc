@@ -63,8 +63,8 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
         return rv;
     }
 
-    auto hhk = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::HMAC.cbegin(), libcdoc::CDoc2::HMAC.cend()});
-    auto cek = libcdoc::Crypto::expand(fmk, {libcdoc::CDoc2::CEK.cbegin(), libcdoc::CDoc2::CEK.cend()});
+    auto hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
+    auto cek = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::CEK);
     std::fill(fmk.begin(), fmk.end(), 0);
     LOG_TRACE_KEY("cek: {}", cek);
     LOG_TRACE_KEY("hhk: {}", hhk);
@@ -202,6 +202,25 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
         const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
         if (rcpt.isPKI()) {
             std::vector<uint8_t> key_material, kek;
+            std::string send_url;
+            if(rcpt.isKeyServer()) {
+                if(!conf) {
+                    setLastError("Configuration is missing");
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::CONFIGURATION_ERROR;
+                }
+                if(!network) {
+                    setLastError("Network backend is missing");
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::CONFIGURATION_ERROR;
+                }
+                send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
+                if (send_url.empty()) {
+                    setLastError("Missing keyserver URL for ID " + rcpt.server_id);
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::CONFIGURATION_ERROR;
+                }
+            }
             if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
                 crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
                 if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
@@ -218,9 +237,25 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 key_material = libcdoc::Crypto::encrypt(publicKey.get(), RSA_PKCS1_OAEP_PADDING, kek);
 
                 LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
-                LOG_TRACE_KEY("kek: {}", kek);
-                LOG_TRACE_KEY("fmk_xor_kek: {}", xor_key);
                 LOG_TRACE_KEY("enc_kek: {}", key_material);
+                LOG_TRACE_KEY("kek: {}", kek);
+                LOG_TRACE_KEY("xor: {}", xor_key);
+                if(rcpt.isKeyServer()) {
+                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
+                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "rsa", rcpt.expiry_ts);
+                    if (result < 0) {
+                        setLastError(network->getLastErrorStr(result));
+                        LOG_ERROR("{}", last_error);
+                        return libcdoc::IO_ERROR;
+                    }
+
+                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
+                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
+
+                    fb_rcpts.push_back(createRSAServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key));
+                } else {
+                    fb_rcpts.push_back(createRSACapsule(builder, rcpt, key_material, xor_key));
+                }
             } else {
                 auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
                 if(!publicKey) {
@@ -232,12 +267,9 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), publicKey.get());
                 key_material = libcdoc::Crypto::toPublicKeyDer(ephKey.get());
                 std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
-                std::string info_str = std::string() + libcdoc::CDoc2::KEK.data() +
-                                       cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
-                                       std::string(rcpt.rcpt_key.cbegin(), rcpt.rcpt_key.cend()) +
-                                       std::string(key_material.cbegin(), key_material.cend());
+                std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, rcpt.rcpt_key);
 
-                kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
+                kek = libcdoc::Crypto::expand(kekPm, info_str, fmk.size());
                 if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
                     setLastError("Internal error");
                     LOG_ERROR("{}", last_error);
@@ -249,30 +281,11 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_TRACE_KEY("ephPublicKeyDer: {}", key_material);
                 LOG_TRACE_KEY("sharedSecret: {}", sharedSecret);
                 LOG_TRACE_KEY("kekPm: {}", kekPm);
-            }
-            LOG_TRACE_KEY("kek: {}", kek);
-            LOG_TRACE_KEY("xor: {}", xor_key);
-
-            if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
+                LOG_TRACE_KEY("kek: {}", kek);
+                LOG_TRACE_KEY("xor: {}", xor_key);
                 if(rcpt.isKeyServer()) {
-                    if(!conf) {
-                        setLastError("Configuration is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    if(!network) {
-                        setLastError("Network backend is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
-                    if (send_url.empty()) {
-                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "RSA", rcpt.expiry_ts);
+                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1", rcpt.expiry_ts);
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);
@@ -282,46 +295,9 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     LOG_DBG("Keyserver Id: {}", rcpt.server_id);
                     LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
 
-                    auto record = createRSAServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key);
-                    fb_rcpts.push_back(std::move(record));
+                    fb_rcpts.push_back(createECCServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key));
                 } else {
-                    auto record = createRSACapsule(builder, rcpt, key_material, xor_key);
-                    fb_rcpts.push_back(std::move(record));
-                }
-            } else {
-                if(rcpt.isKeyServer()) {
-                    if(!conf) {
-                        setLastError("Configuration is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    if(!network) {
-                        setLastError("Network backend is missing");
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    std::string send_url = conf->getValue(rcpt.server_id, libcdoc::Configuration::KEYSERVER_SEND_URL);
-                    if (send_url.empty()) {
-                        setLastError("Missing keyserver URL for ID " + rcpt.server_id);
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::CONFIGURATION_ERROR;
-                    }
-                    libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    int result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1", rcpt.expiry_ts);
-                    if (result < 0) {
-                        setLastError(network->getLastErrorStr(result));
-                        LOG_ERROR("{}", last_error);
-                        return libcdoc::IO_ERROR;
-                    }
-
-                    LOG_DBG("Keyserver Id: {}", rcpt.server_id);
-                    LOG_DBG("Transaction Id: {}", cinfo.transaction_id);
-
-                    auto record = createECCServerCapsule(builder, rcpt, cinfo.transaction_id, cinfo.expiry_time, xor_key);
-                    fb_rcpts.push_back(std::move(record));
-                } else {
-                    auto record = createECCCapsule(builder, rcpt, key_material, xor_key);
-                    fb_rcpts.push_back(std::move(record));
+                    fb_rcpts.push_back(createECCCapsule(builder, rcpt, key_material, xor_key));
                 }
             }
         } else if (rcpt.isSymmetric()) {
@@ -344,11 +320,11 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 setLastError(crypto->getLastErrorStr(result));
                 return result;
             }
-            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), libcdoc::CDoc2::KEY_LEN);
+            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
 
             LOG_DBG("Label: {}", rcpt.label);
             LOG_DBG("KDF iter: {}", rcpt.kdf_iter);
-            LOG_DBG("info: {}", toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())));
+            LOG_DBG("info: {}", toHex(info_str));
             LOG_TRACE_KEY("salt: {}", salt);
             LOG_TRACE_KEY("pw_salt: {}", pw_salt);
             LOG_TRACE_KEY("kek_pm: {}", kek_pm);
@@ -361,11 +337,9 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 return libcdoc::CRYPTO_ERROR;
             }
             if (rcpt.kdf_iter > 0) {
-                auto offs = createPasswordCapsule(builder, rcpt, salt, pw_salt, xor_key);
-                fb_rcpts.push_back(std::move(offs));
+                fb_rcpts.push_back(createPasswordCapsule(builder, rcpt, salt, pw_salt, xor_key));
             } else {
-                auto offs = createSymmetricKeyCapsule(builder, rcpt, salt, xor_key);
-                fb_rcpts.push_back(std::move(offs));
+                fb_rcpts.push_back(createSymmetricKeyCapsule(builder, rcpt, salt, xor_key));
             }
         } else if (rcpt.isKeyShare()) {
             std::string url_list = conf->getValue(rcpt.server_id, libcdoc::Configuration::SHARE_SERVER_URLS);
@@ -405,7 +379,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             // KEK_i = HKDF_Expand(KEK_i_pm, "CDOC2kek" + FMKEncryptionMethod + RecipientInfo_i, L)
             std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
             LOG_DBG("Info: {}", info_str);
-            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()));
+            std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str);
             LOG_TRACE_KEY("kek: {}", kek);
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
             if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
