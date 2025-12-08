@@ -76,8 +76,8 @@ public:
 	static Key generateKey(const std::string &method);
 	static uint32_t keySize(const std::string &algo);
 
-	static std::vector<uint8_t> hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, const std::vector<uint8_t> &info, int len = 32, int mode = 0);
-	static std::vector<uint8_t> expand(const std::vector<uint8_t> &key, const std::vector<uint8_t> &info, int len = 32);
+    static std::vector<uint8_t> hkdf(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, std::string_view info, int len = 32, int mode = 0);
+    static std::vector<uint8_t> expand(const std::vector<uint8_t> &key, std::string_view info, int len = 32);
 	static std::vector<uint8_t> extract(const std::vector<uint8_t> &key, const std::vector<uint8_t> &salt, int len = 32);
 	static std::vector<uint8_t> sign_hmac(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data);
 
