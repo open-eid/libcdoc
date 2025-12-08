@@ -32,10 +32,17 @@ namespace libcdoc {
 
 class Certificate {
 public:
-	enum Algorithm {
+	enum Algorithm : unsigned char {
 		RSA,
 		ECC
 	};
+
+    enum EIDType : unsigned char {
+        Unknown,
+        IDCard,
+        DigiID,
+        DigiID_EResident
+    };
 
     unique_free_t<X509> cert;
 
@@ -46,7 +53,7 @@ public:
 	std::string getSurname() const;
     std::string getSerialNumber() const;
 
-	std::vector<std::string> policies() const;
+    EIDType getEIDType() const;
 
 	std::vector<uint8_t> getPublicKey() const;
     Algorithm getAlgorithm() const;

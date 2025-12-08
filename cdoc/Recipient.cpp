@@ -24,6 +24,9 @@
 #include "ILogger.h"
 #include "Utils.h"
 
+#include <algorithm>
+#include <chrono>
+
 using namespace std;
 
 namespace libcdoc {
@@ -58,38 +61,10 @@ Recipient::makeSymmetric(std::string label, int32_t kdf_iter)
 }
 
 Recipient
-Recipient::makePublicKey(std::string label, const std::vector<uint8_t>& public_key, PKType pk_type)
+Recipient::makePublicKey(std::string label, std::vector<uint8_t> public_key, PKType pk_type)
 {
-    if (public_key.empty()) return Recipient(Type::NONE);
-    Recipient rcpt(Type::PUBLIC_KEY);
-    rcpt.label = std::move(label);
-    rcpt.pk_type = pk_type;
-    if (pk_type == PKType::ECC && public_key[0] == 0x30) {
-        // 0x30 identifies SEQUENCE tag in ASN.1 encoding
-        auto evp = Crypto::fromECPublicKeyDer(public_key);
-        rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
-    } else {
-        rcpt.rcpt_key = public_key;
-    }
-	return rcpt;
-}
-
-Recipient
-Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
-{
-    Recipient rcpt(Type::PUBLIC_KEY);
-    rcpt.label = std::move(label);
-    rcpt.cert = std::move(cert);
-    Certificate x509(rcpt.cert);
-    rcpt.rcpt_key = x509.getPublicKey();
-    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
-    rcpt.expiry_ts = x509.getNotAfter();
-    return rcpt;
-}
-
-Recipient
-Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id)
-{
+    if (public_key.empty())
+        return {Type::NONE};
     Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = std::move(label);
     rcpt.pk_type = pk_type;
@@ -100,26 +75,53 @@ Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType
     } else {
         rcpt.rcpt_key = std::move(public_key);
     }
+	return rcpt;
+}
+
+Recipient
+Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
+{
+    Certificate x509(cert);
+    if (!x509.cert)
+        return {Type::NONE};
+    Recipient rcpt(Type::PUBLIC_KEY);
+    rcpt.label = std::move(label);
+    rcpt.cert = std::move(cert);
+    rcpt.rcpt_key = x509.getPublicKey();
+    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
+    rcpt.expiry_ts = x509.getNotAfter();
+    return rcpt;
+}
+
+Recipient
+Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id)
+{
+    Recipient rcpt = makePublicKey(std::move(label), std::move(public_key), pk_type);
     rcpt.server_id = std::move(server_id);
+    const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
+    const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
+    rcpt.expiry_ts = uint64_t(expiry_ts);
     return rcpt;
 }
 
 Recipient
 Recipient::makeServer(std::string label, std::vector<uint8_t> cert, std::string server_id)
 {
-    Certificate x509(cert);
-    Recipient rcpt = makeServer(std::move(label), x509.getPublicKey(), x509.getAlgorithm() == Certificate::Algorithm::RSA ? RSA : ECC, std::move(server_id));
-    rcpt.cert = cert;
-    return std::move(rcpt);
+    Recipient rcpt = makeCertificate(std::move(label), std::move(cert));
+    rcpt.server_id = std::move(server_id);
+    const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
+    const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
+    rcpt.expiry_ts = std::min(rcpt.expiry_ts, uint64_t(expiry_ts)); 
+    return rcpt;
 }
 
 Recipient
-Recipient::makeShare(const std::string& label, const std::string& server_id, const std::string& recipient_id)
+Recipient::makeShare(std::string label, std::string server_id, std::string recipient_id)
 {
     Recipient rcpt(Type::KEYSHARE);
-    rcpt.label = label;
-    rcpt.server_id = server_id;
-    rcpt.id = recipient_id;
+    rcpt.label = std::move(label);
+    rcpt.server_id = std::move(server_id);
+    rcpt.id = std::move(recipient_id);
     return rcpt;
 }
 
@@ -139,54 +141,20 @@ Recipient::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
     return rcpt_key == public_key;
 }
 
-static Recipient::EIDType
-getEIDType(const std::vector<std::string>& policies)
-{
-    for (const auto& pol : policies)
-    {
-        std::string_view policy = pol;
-        if (policy.starts_with("2.999.")) { // Zetes TEST OID prefix
-            policy = policy.substr(6);
-        }
-
-        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.3") ||
-            policy.starts_with("1.3.6.1.4.1.51361.1.2.3")) {
-            return Recipient::EIDType::DigiID;
-        }
-
-        if (policy.starts_with("1.3.6.1.4.1.51361.1.1.4") ||
-            policy.starts_with("1.3.6.1.4.1.51361.1.2.4")) {
-            return Recipient::EIDType::DigiID_EResident;
-        }
-
-        if (policy.starts_with("1.3.6.1.4.1.51361.1.1") ||
-            policy.starts_with("1.3.6.1.4.1.51455.1.1") ||
-            policy.starts_with("1.3.6.1.4.1.51361.1.2") ||
-            policy.starts_with("1.3.6.1.4.1.51455.1.2")) {
-            return Recipient::EIDType::IDCard;
-        }
-    }
-
-    // If the execution reaches so far then EID type determination failed.
-    return Recipient::EIDType::Unknown;
-}
-
 static void
-buildLabel(std::ostream& ofs, std::string_view type, const std::initializer_list<std::pair<std::string_view, std::string_view>> &components)
+buildLabel(std::ostream& ofs, std::string_view type, std::initializer_list<std::pair<std::string_view, std::string_view>> components)
 {
     ofs << LABELPREFIX;
     ofs << "v" << '=' << std::to_string(CDoc2::KEYLABELVERSION) << '&'
         << "type" << '=' << type;
-    for (auto& [key, value] : components) {
-        if (value.empty())
-            continue;
-        ofs << '&';
-        ofs << urlEncode(key) << '=' << urlEncode(value);
+    for (const auto& [key, value] : components) {
+        if (!value.empty())
+            ofs << '&' << urlEncode(key) << '=' << urlEncode(value);
     }
 }
 
 static void
-BuildLabelEID(std::ostream& ofs, Recipient::EIDType type, const Certificate& x509)
+BuildLabelEID(std::ostream& ofs, Certificate::EIDType type, const Certificate& x509)
 {
     buildLabel(ofs, eid_strs[type], {
         {"cn", x509.getCommonName()},
@@ -197,7 +165,7 @@ BuildLabelEID(std::ostream& ofs, Recipient::EIDType type, const Certificate& x50
 }
 
 static void
-BuildLabelCertificate(std::ostream &ofs, std::string_view file, const Certificate& x509)
+BuildLabelCertificate(std::ostream &ofs, const std::string& file, const Certificate& x509)
 {
     buildLabel(ofs, "cert", {
         {"file", file},
@@ -207,7 +175,7 @@ BuildLabelCertificate(std::ostream &ofs, std::string_view file, const Certificat
 }
 
 static void
-BuildLabelPublicKey(std::ostream &ofs, const std::string file)
+BuildLabelPublicKey(std::ostream &ofs, const std::string& file)
 {
     buildLabel(ofs, "pub_key", {
         {"file", file}
@@ -215,7 +183,7 @@ BuildLabelPublicKey(std::ostream &ofs, const std::string file)
 }
 
 static void
-BuildLabelSymmetricKey(std::ostream &ofs, const std::string& label, const std::string file)
+BuildLabelSymmetricKey(std::ostream &ofs, const std::string& label, const std::string& file)
 {
     buildLabel(ofs, "secret", {
         {"label", label},
@@ -251,8 +219,8 @@ Recipient::getLabel(const std::vector<std::pair<std::string_view, std::string_vi
         case PUBLIC_KEY:
             if (!cert.empty()) {
                 Certificate x509(cert);
-                if (auto type = getEIDType(x509.policies()); type != EIDType::Unknown) {
-                    BuildLabelEID(ofs, type, x509);
+                if (auto eid = x509.getEIDType(); eid != Certificate::Unknown) {
+                    BuildLabelEID(ofs, eid, x509);
                 } else {
                     BuildLabelCertificate(ofs, file_name, x509);
                 }
@@ -263,11 +231,9 @@ Recipient::getLabel(const std::vector<std::pair<std::string_view, std::string_vi
         case KEYSHARE:
             break;
     }
-    for (auto& [key, value] : extra) {
-        if (value.empty())
-            continue;
-        ofs << '&';
-        ofs << urlEncode(key) << '=' << urlEncode(value);
+    for (const auto& [key, value] : extra) {
+        if (!value.empty())
+            ofs << '&' << urlEncode(key) << '=' << urlEncode(value);
     }
     LOG_DBG("Generated label: {}", ofs.str());
     return ofs.str();
