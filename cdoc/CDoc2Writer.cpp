@@ -470,10 +470,18 @@ libcdoc::result_t
 CDoc2Writer::beginEncryption()
 {
     last_error.clear();
-    if(!recipients.empty()) {
-        LOG_ERROR("Encryption workflow already started");
-        setLastError("Encryption workflow already started");
+    if(recipients.empty()) {
+        setLastError("No recipients added");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
     }
+    if(tar) {
+        setLastError("Encryption already started");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
+    if(auto rv = writeHeader(recipients); rv < 0)
+        return rv;
     return libcdoc::OK;
 }
 
@@ -481,9 +489,11 @@ libcdoc::result_t
 CDoc2Writer::addFile(const std::string& name, size_t size)
 {
     if(!tar) {
-        if(auto rv = writeHeader(recipients); rv < 0)
-            return rv;
+        setLastError("Encryption not started");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
     }
+    if (name.empty() || !libcdoc::isValidUtf8(name)) return libcdoc::DATA_FORMAT_ERROR;
     if(auto rv = tar->open(name, size); rv < 0) {
         setLastError(tar->getLastErrorStr(rv));
         LOG_ERROR("{}", last_error);

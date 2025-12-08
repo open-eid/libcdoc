@@ -82,6 +82,28 @@ timeToISO(double time)
 #endif
 }
 
+bool
+isValidUtf8 (std::string str)
+{
+    const uint8_t *s = (const uint8_t *) str.data();
+    const uint8_t *e = s + str.size();
+    while (s < e) {
+        size_t s_len = e - s;
+        if ((s[0] & 0x80) == 0x0) {
+            s += 1;
+        } else if (((s[0] & 0xe0) == 0xc0) && (s_len >= 2) && ((s[1] & 0xc0) == 0x80)) {
+            s += 2;
+        } else if (((*s & 0xf0) == 0xe0) && (s_len >= 3) && ((s[1] & 0xc0) == 0x80) && ((s[2] & 0xc0) == 0x80)) {
+            s += 3;
+        } else if (((*s & 0xf8) == 0xf0) && (s_len >= 4) && ((s[1] & 0xc0) == 0x80) && ((s[2] & 0xc0) == 0x80) && ((s[3] & 0xc0) == 0x80)) {
+            s += 4;
+        } else {
+            return false;
+        }
+    }
+	return true;
+}
+
 int
 parseURL(const std::string& url, std::string& host, int& port, std::string& path, bool end_with_slash)
 {
