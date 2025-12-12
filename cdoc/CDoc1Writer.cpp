@@ -56,7 +56,6 @@ struct CDoc1Writer::Private final: public XMLWriter
     std::string documentFormat = "ENCDOC-XML|1.1";
     std::string &lastError;
     std::vector<FileEntry> files;
-    std::vector<Recipient> rcpts;
 
     int64_t writeEncryptionProperties(bool use_ddoc);
     int64_t writeKeyInfo(bool use_ddoc, const std::vector<Recipient> &rcpts, const Crypto::Key& transportKey);
@@ -233,7 +232,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
     if(keys.empty())
         return WORKFLOW_ERROR;
     RET_ERROR(beginEncryption());
-    d->rcpts = keys;
+    rcpts = keys;
     Crypto::Key transportKey = Crypto::generateKey(d->method);
 	int n_components = src.getNumComponents();
 	bool use_ddoc = (n_components > 1) || (n_components == libcdoc::NOT_IMPLEMENTED);
@@ -272,7 +271,7 @@ CDoc1Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 libcdoc::result_t
 CDoc1Writer::beginEncryption()
 {
-    if(!dst)
+    if(d)
         return WORKFLOW_ERROR;
     d = std::make_unique<Private>(*dst, last_error);
     return libcdoc::OK;
@@ -281,9 +280,9 @@ CDoc1Writer::beginEncryption()
 libcdoc::result_t
 CDoc1Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
-    if(!d)
+    if(d)
         return WORKFLOW_ERROR;
-	d->rcpts.push_back(rcpt);
+	rcpts.push_back(rcpt);
     return libcdoc::OK;
 }
 
@@ -309,12 +308,12 @@ CDoc1Writer::writeData(const uint8_t *src, size_t size)
 libcdoc::result_t
 CDoc1Writer::finishEncryption()
 {
-    if(!d || d->rcpts.empty() || d->files.empty())
+    if(!d || rcpts.empty() || d->files.empty())
         return WORKFLOW_ERROR;
 	bool use_ddoc = d->files.size() > 1;
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
 
-    RET_ERROR(d->writeKeyInfo(use_ddoc, d->rcpts, transportKey));
+    RET_ERROR(d->writeKeyInfo(use_ddoc, rcpts, transportKey));
     RET_ERROR(d->writeElement(Private::DENC, "CipherData", [&] {
         return d->writeBase64Element(Private::DENC, "CipherValue", [&](DataConsumer &dst) -> int64_t {
             EncryptionConsumer enc(dst, d->method, transportKey);

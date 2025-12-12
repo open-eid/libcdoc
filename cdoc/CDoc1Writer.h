@@ -38,6 +38,7 @@ public:
 
 private:
     CDOC_DISABLE_COPY(CDoc1Writer)
+    std::vector<libcdoc::Recipient> rcpts;
     struct Private;
     std::unique_ptr<Private> d;
 };
