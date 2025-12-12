@@ -23,8 +23,6 @@
 #include "json/jwt.h"
 #include "json/picojson/picojson.h"
 
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <openssl/evp.h>
 #include <openssl/http.h>
 
@@ -60,9 +58,9 @@ getTime()
 #endif
 
 double
-timeFromISO(std::string_view iso)
+timeFromISO(const std::string& iso)
 {
-    std::istringstream in{std::string(iso.data(), iso.size())};
+    std::istringstream in{iso};
     std::tm t = {};
     in >> std::get_time(&t, "%Y-%m-%dT%TZ");
     return timegm(&t);
