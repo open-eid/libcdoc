@@ -40,14 +40,14 @@ static const std::string MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignment
 static const std::string MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
 static const std::string MIME_DDOC_OLD = "http://www.sk.ee/DigiDoc/1.3.0/digidoc.xsd";
 
-constexpr auto SUPPORTED_METHODS = std::to_array({
+constexpr std::array SUPPORTED_METHODS {
     libcdoc::Crypto::AES128CBC_MTH, libcdoc::Crypto::AES192CBC_MTH, libcdoc::Crypto::AES256CBC_MTH,
     libcdoc::Crypto::AES128GCM_MTH, libcdoc::Crypto::AES192GCM_MTH, libcdoc::Crypto::AES256GCM_MTH
-});
+};
 
-constexpr auto SUPPORTED_KWAES = std::to_array({
+constexpr std::array SUPPORTED_KWAES {
     libcdoc::Crypto::KWAES128_MTH, libcdoc::Crypto::KWAES192_MTH, libcdoc::Crypto::KWAES256_MTH
-});
+};
 
 /*
  * @class CDoc1Reader
@@ -174,7 +174,7 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
     return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
         if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
             LOG_DBG("Contains DDoc content {}", mime);
-            auto rv = DDOCReader(&src).parse(dst);
+            auto rv = DDOCReader(src).parse(dst);
             if (rv != libcdoc::OK) {
                 setLastError("Failed to parse DDOC file");
                 LOG_ERROR("{}", last_error);
@@ -197,7 +197,7 @@ CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
         if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
             LOG_DBG("Contains DDoc content {}", mime);
-            auto rv = DDOCReader(&src).files(d->files);
+            auto rv = DDOCReader(src).files(d->files);
             if (rv != libcdoc::OK) {
                 setLastError("Failed to parse DDOC file");
                 LOG_ERROR("{}", last_error);
@@ -282,7 +282,7 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 		return out;
 	};
 
-    XMLReader reader(d->dsrc, false);
+    XMLReader reader(*d->dsrc);
 	while (reader.read()) {
 		if(reader.isEndElement())
 			continue;
@@ -386,7 +386,7 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk,
     }
 
     std::vector<unsigned char> b64;
-    XMLReader reader(d->dsrc, false);
+    XMLReader reader(*d->dsrc);
     int skipKeyInfo = 0;
     while (reader.read()) {
         // EncryptedData/KeyInfo

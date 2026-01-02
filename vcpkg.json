@@ -7,7 +7,7 @@
     {
       "name": "libxml2",
       "default-features": false,
-      "platform": "!osx & !ios"
+      "platform": "!osx"
     },
     {
       "name": "flatbuffers",
@@ -21,7 +21,7 @@
   "features": {
     "tests": { "description": "Build tests", "dependencies": ["boost-test"] }
   },
-  "builtin-baseline": "bc38a15b0bee8bc48a49ea267cc32fbb49aedfc4",
+  "builtin-baseline": "34a03aca6ccf1e42ac0c7b35803b2566c2f15b2b",
   "vcpkg-configuration": {
     "overlay-triplets": ["./vcpkg-triplets"]
   }
