@@ -19,87 +19,72 @@
 #include "XmlReader.h"
 
 #include "Crypto.h"
-#include "Io.h"
 
 #include <libxml/xmlreader.h>
 
 using namespace libcdoc;
 
-typedef const xmlChar *pcxmlChar;
+using pcxmlChar = const xmlChar *;
 
-struct XMLReader::Private
+#if LIBXML_VERSION >= 21300
+constexpr int XML_READ_FLAGS = XML_PARSE_NONET|XML_PARSE_HUGE|XML_PARSE_NODICT|XML_PARSE_NO_XXE;
+#else
+constexpr int XML_READ_FLAGS = XML_PARSE_NONET|XML_PARSE_HUGE|XML_PARSE_NODICT;
+#endif
+
+static std::string tostring(pcxmlChar tmp)
 {
-	xmlTextReaderPtr reader = nullptr;
-
-	libcdoc::DataSource *_src = nullptr;
-	bool _delete_src = false;
-
-	std::string tostring(const xmlChar *tmp)
-	{
-		std::string result;
-		if(!tmp)
-			return result;
-		result = (const char*)tmp;
-		return result;
-	}
-
-	static int xmlInputReadCallback (void *context, char *buffer, int len);
-};
-
-int
-XMLReader::Private::xmlInputReadCallback (void *context, char *buffer, int len)
-{
-    auto *d = reinterpret_cast<XMLReader::Private *>(context);
-    auto result = d->_src->read((uint8_t *) buffer, len);
-    return result >= 0 ? result : -1;
+    std::string result;
+    if(!tmp)
+        return result;
+    result = (const char*)tmp;
+    return result;
 }
 
-XMLReader::XMLReader(libcdoc::DataSource *src, bool delete_on_close)
-	: d(new Private)
-{
-	d->_src = src;
-	d->_delete_src = delete_on_close;
-    d->reader = xmlReaderForIO(Private::xmlInputReadCallback, nullptr, d, nullptr, nullptr, XML_PARSE_HUGE);
-}
+XMLReader::XMLReader(libcdoc::DataSource &src)
+    : d(xmlReaderForIO([](void *context, char *buffer, int len) -> int {
+        auto *src = reinterpret_cast<DataSource *>(context);
+        auto result = src->read((uint8_t *) buffer, len);
+        return result >= OK ? result : -1;
+    }, nullptr, &src, nullptr, nullptr, XML_READ_FLAGS))
+{}
 
 XMLReader::~XMLReader() noexcept
 {
-	xmlFreeTextReader(d->reader);
-	if(d->_src && d->_delete_src) delete d->_src;
-	delete d;
+    xmlFreeTextReader(d);
 }
 
 std::string XMLReader::attribute(const char *attr) const
 {
-	xmlChar *tmp = xmlTextReaderGetAttribute(d->reader, pcxmlChar(attr));
-	std::string result = d->tostring(tmp);
-	xmlFree(tmp);
-	return result;
+    xmlChar *tmp = xmlTextReaderGetAttribute(d, pcxmlChar(attr));
+    std::string result = tostring(tmp);
+    xmlFree(tmp);
+    return result;
 }
 
 bool XMLReader::isEndElement() const
 {
-	return xmlTextReaderNodeType(d->reader) == XML_READER_TYPE_END_ELEMENT;
+    return xmlTextReaderNodeType(d) == XML_READER_TYPE_END_ELEMENT;
 }
 
 bool XMLReader::isElement(const char *elem) const
 {
-	return xmlStrEqual(xmlTextReaderConstLocalName(d->reader), pcxmlChar(elem)) == 1;
+    return xmlStrEqual(xmlTextReaderConstLocalName(d), pcxmlChar(elem)) == 1;
 }
 
 bool XMLReader::read()
 {
-	return xmlTextReaderRead(d->reader) == 1;
+    return xmlTextReaderRead(d) == 1;
 }
 
 std::vector<uint8_t> XMLReader::readBase64()
 {
-	xmlTextReaderRead(d->reader);
-	return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d->reader));
+    xmlTextReaderRead(d);
+    return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d));
 }
 
 std::string XMLReader::readText()
 {
-	xmlTextReaderRead(d->reader);
-	return d->tostring(xmlTextReaderConstValue(d->reader));
+    xmlTextReaderRead(d);
+    return tostring(xmlTextReaderConstValue(d));
 }

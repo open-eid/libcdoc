@@ -22,7 +22,11 @@ jobs:
       DEBEMAIL: github-actions@github.com
     steps:
     - name: Install dependencies
-      run: apt update -qq && apt install --no-install-recommends -y lsb-release build-essential devscripts debhelper lintian pkg-config ${UBUNTU_DEPS} doxygen swig openjdk-17-jdk-headless libpython3-dev python3-setuptools libboost-test-dev
+      run: |
+        echo 'path-exclude=/usr/share/man/*'      >  /etc/dpkg/dpkg.cfg.d/99-nodocs
+        echo 'path-exclude=/usr/share/doc/*'      >> /etc/dpkg/dpkg.cfg.d/99-nodocs
+        echo 'path-exclude=/usr/share/doc-base/*' >> /etc/dpkg/dpkg.cfg.d/99-nodocs
+        apt update -qq && apt install --no-install-recommends -y lsb-release build-essential devscripts debhelper lintian pkg-config ${UBUNTU_DEPS} doxygen swig openjdk-17-jdk-headless libpython3-dev python3-setuptools libboost-test-dev
     - name: Checkout
       uses: actions/checkout@v5
     - name: Setup changelog
@@ -46,13 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        include:
-        - target: androidarm
-          triplet: arm-neon-android
-        - target: androidarm64
-          triplet: arm64-android
-        - target: androidx86_64
-          triplet: x64-android
+        target: [androidarm, androidarm64, androidx86_64]
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -61,21 +59,15 @@ jobs:
       run: |
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
         echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+        echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
     - name: Cache vcpkg
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/vcpkg_cache
         key: vcpkg-${{ matrix.target }}-${{ hashFiles('vcpkg.json') }}
-    - name: Prepare vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: ./vcpkg.json
-        runVcpkgInstall: true
+    - name: Build
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
-        VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
-        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/${{ matrix.target }}/vcpkg_installed
-    - name: Build
       run: |
         cmake --preset ${{ matrix.target }} "-GUnix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=libcdoc.${{ matrix.target }}
         cmake --build --preset ${{ matrix.target }}
@@ -92,11 +84,6 @@ jobs:
     strategy:
       matrix:
         target: [macos, iphoneos, iphonesimulator]
-        include:
-          - target: iphoneos
-            triplet: arm64-ios
-          - target: iphonesimulator
-            triplet: arm64-ios-simulator
     env:
       DEST: ${{ github.workspace }}/${{ matrix.target }}
     steps:
@@ -112,18 +99,11 @@ jobs:
       with:
         path: ${{ github.workspace }}/vcpkg_cache
         key: vcpkg-${{ matrix.target }}-${{ hashFiles('vcpkg.json') }}
-    - name: Prepare vcpkg
-      if: matrix.target != 'macos'
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: ./vcpkg.json
-        runVcpkgInstall: true
+    - name: Build
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
-        VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
-        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/${{ matrix.target }}/vcpkg_installed
-    - name: Build
       run: |
+        export VCPKG_ROOT=${VCPKG_INSTALLATION_ROOT}
         cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${{ env.DEST }}
         cmake --build --preset ${{ matrix.target }}
     - name: Test
@@ -146,7 +126,6 @@ jobs:
     env:
       CXXFLAGS: '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' # https://github.com/actions/runner-images/issues/10004
       DEST: ${{ github.workspace }}/${{ matrix.image }}_${{ matrix.platform }}
-      VCPKG_DEFAULT_TRIPLET: ${{ matrix.platform }}-windows-static-md
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -169,7 +148,7 @@ jobs:
         cmake -A ${{ matrix.platform }} -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo `
           "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
           "-DSWIG_EXECUTABLE=$swig" `
-          -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.platform }}-windows-static-md `
           ${{ matrix.platform == 'x64' && '-DVCPKG_MANIFEST_FEATURES=tests' || '' }} `
           -DCMAKE_INSTALL_LIBDIR=bin
         cmake --build build --config RelWithDebInfo
@@ -249,7 +228,7 @@ jobs:
     - name: Install dependencies
       run: sudo apt update -qq && sudo apt install --no-install-recommends -y ${UBUNTU_DEPS}
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: cpp
         queries: +security-and-quality
@@ -262,7 +241,7 @@ jobs:
           -DBUILD_TOOLS=NO
         cmake --build build
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@v4
       with:
         upload: False
         output: sarif-results
@@ -277,6 +256,6 @@ jobs:
         input: sarif-results/cpp.sarif
         output: sarif-results/cpp.sarif
     - name: Upload results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: sarif-results/cpp.sarif

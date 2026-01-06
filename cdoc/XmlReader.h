@@ -19,9 +19,10 @@
 #pragma once
 
 #include <cstdint>
-#include <istream>
 #include <string>
 #include <vector>
+
+struct _xmlTextReader;
 
 namespace libcdoc {
 
@@ -30,7 +31,7 @@ struct DataSource;
 class XMLReader
 {
 public:
-	XMLReader(libcdoc::DataSource *src, bool delete_on_close = false);
+    XMLReader(libcdoc::DataSource &src);
     virtual ~XMLReader() noexcept;
 
 	std::string attribute(const char *attr) const;
@@ -41,8 +42,7 @@ public:
 	std::string readText();
 
 private:
-	struct Private;
-	Private *d;
+    _xmlTextReader *d;
 };
 
 } // namespace libcdoc
