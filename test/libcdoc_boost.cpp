@@ -28,7 +28,8 @@
 #include <Recipient.h>
 #include <Utils.h>
 #include <cdoc/Crypto.h>
-#include <cdoc/Io.h>
+
+#include "pipe.h"
 
 #ifndef DATA_DIR
 #define DATA_DIR "."
@@ -228,110 +229,57 @@ public:
     }
 };
 
-struct PipeSource : public libcdoc::DataSource {
-	PipeSource(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) {}
-
-    libcdoc::result_t read(uint8_t *dst, size_t size) override {
-		size = std::min<size_t>(size, _data.size());
-		std::copy(_data.cbegin(), _data.cbegin() + size, dst);
-        if (_buf.size() < 1024) {
-            size_t newbufsize = _buf.size() + size;
-            if (newbufsize > 1024) newbufsize = 1024;
-            size_t tocopy = newbufsize - _buf.size();
-            _buf.insert(_buf.end(), _data.begin(), _data.begin() + tocopy);
-        }
-        _data.erase(_data.cbegin(), _data.cbegin() + size);
-		return size;
+static int
+unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
+{
+	if ((uval < 0x80) && (size >= 1)) {
+		d[0] = (uint8_t) uval;
+		return 1;
+	} else if ((uval < 0x800) && (size >= 2)) {
+		d[0] = 0xc0 | (uval >> 6);
+		d[1] = 0x80 | (uval & 0x3f);
+		return 2;
+	} else if ((uval < 0x10000) && (size >= 3)) {
+		d[0] = 0xe0 | (uval >> 12);
+		d[1] = 0x80 | ((uval >> 6) & 0x3f);
+		d[2] = 0x80 | (uval & 0x3f);
+		return 3;
+	} else if ((uval < 0x110000) && (size >= 4)) {
+		d[0] = 0xf0 | (uval >> 18);
+		d[1] = 0x80 | ((uval >> 12) & 0x3f);
+		d[2] = 0x80 | ((uval >> 6) & 0x3f);
+		d[3] = 0x80 | (uval & 0x3f);
+		return 4;
 	}
+	return 0;
+}
 
-    libcdoc::result_t seek(size_t pos) override {
-        if (pos <= _buf.size()) {
-            _data.insert(_data.begin(), _buf.begin() + pos, _buf.end());
-            _buf.erase(_buf.begin() + pos, _buf.end());
-            return libcdoc::OK;
-        }
-        return libcdoc::NOT_IMPLEMENTED;
+static std::string
+utf16_to_utf8(const std::u16string& utf16)
+{
+    std::string utf8;
+    for (char16_t c16 : utf16) {
+        char c[4];
+        utf8.append(c, unicode_to_utf8(c16, (uint8_t *) c, 4));
     }
-    bool isError() override { return false; }
-    bool isEof() override { return _eof; }
-protected:
-	std::vector<uint8_t>& _data;
-    bool& _eof;
-    std::vector<uint8_t> _buf;
-};
+    return utf8;
+}
 
-struct PipeConsumer : public libcdoc::DataConsumer {
-	PipeConsumer(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) { _eof = false; }
-    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
-		_data.insert(_data.end(), src, src + size);
-		return size;
-	}
-    libcdoc::result_t close() override final { _eof = true; return libcdoc::OK; }
-	virtual bool isError() override final { return false; }
-protected:
-    std::vector<uint8_t>& _data;
-    bool& _eof;
-};
-
-struct PipeCrypto : public libcdoc::CryptoBackend {
-    PipeCrypto(std::string pwd) : _secret(pwd.cbegin(), pwd.cend()) {}
-
-    libcdoc::result_t getSecret(std::vector<uint8_t>& dst, unsigned int idx) {
-        dst = _secret;
-        return libcdoc::OK;
-    };
-
-    std::vector<uint8_t> _secret;
-};
-
-struct PipeWriter {
-    static constexpr size_t BUFSIZE = 1024 * 1024;
-
-    PipeWriter(libcdoc::CDocWriter *writer, const std::vector<libcdoc::FileInfo>& files) : _writer(writer), _files(files), current(-1), cpos(0) {}
-
-    uint8_t getChar(int filenum, size_t pos) {
-        uint64_t x = pos + ((uint64_t) filenum << 40);
-        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-        x = x ^ (x >> 31);
-        return (uint8_t) (x & 0xff);
-    }
-
-    libcdoc::result_t writeMore() {
-        if (current >= (int) _files.size()) return libcdoc::WORKFLOW_ERROR;
-
-        if ((current < 0) || (cpos >= _files[current].size)) {
-            // Start new file
-            current += 1;
-            cpos = 0;
-            if (current >= (int) _files.size()) {
-                return _writer->finishEncryption();
-            }
-            return _writer->addFile(_files[current].name, _files[current].size);
-        }
-        size_t towrite = _files[current].size - cpos;
-        if (towrite > BUFSIZE) towrite = BUFSIZE;
-        uint8_t buf[BUFSIZE];
-        for (int i = 0; i < towrite; i++) buf[i] = getChar(current, cpos + i);
-        cpos += towrite;
-        return _writer->writeData(buf, towrite);
-    }
-
-    bool isEof() {
-        return current >= (int) _files.size();
-    }
-
-    int current = 0;
-    size_t cpos = 0;
-
-    libcdoc::CDocWriter *_writer;
-    const std::vector<libcdoc::FileInfo>& _files;
-};
+static std::string
+gen_random_filename()
+{
+    size_t len = std::rand() % 1000 + 1;
+    std::u16string u16(len, ' ');
+    for (int i = 0; i < len; i++) u16[i] = std::rand() % 10000 + 32;
+    return utf16_to_utf8(u16);
+}
 
 BOOST_AUTO_TEST_SUITE(LargeFiles)
 
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * utf::description("Testing weird and large files"))
 {
+    std::srand(1);
+
     std::vector<uint8_t> data;
     bool eof = false;
     PipeConsumer pipec(data, eof);
@@ -345,16 +293,14 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
     BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
     BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
 
-    std::srand(1);
+    // List of files: 0, 0, max_size...0
     std::vector<libcdoc::FileInfo> files;
-    for (size_t i = max_filesize; i != 0; i = i / 1000) {
-        size_t len = std::rand() % 1000;
-        std::u16string u16(len, ' ');
-        for (int i = 0; i < len; i++) u16[i] = std::rand() % 10000 + 32;
-        std::string u8 = std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.to_bytes(u16);
-        files.emplace_back(u8, i);
-        files.emplace_back(u8, 0);
+    files.emplace_back(gen_random_filename(), 0);
+    files.emplace_back(gen_random_filename(), 0);
+    for (size_t size = max_filesize; size != 0; size = size / 1000) {
+        files.emplace_back(gen_random_filename(), size);
     }
+    files.emplace_back(gen_random_filename(), 0);
 
     PipeWriter wrt(writer, files);
 
