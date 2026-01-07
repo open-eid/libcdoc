@@ -475,8 +475,8 @@ inputSecret(std::string_view text)
     SetConsoleMode(hStdin, mode);
 #else
     tcsetattr(STDIN_FILENO, TCSANOW, &o);
-#endif
     cout << endl;
+#endif
     return result;
 }
 
