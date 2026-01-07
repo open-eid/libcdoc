@@ -229,13 +229,49 @@ public:
     }
 };
 
+static int
+unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
+{
+	if ((uval < 0x80) && (size >= 1)) {
+		d[0] = (uint8_t) uval;
+		return 1;
+	} else if ((uval < 0x800) && (size >= 2)) {
+		d[0] = 0xc0 | (uval >> 6);
+		d[1] = 0x80 | (uval & 0x3f);
+		return 2;
+	} else if ((uval < 0x10000) && (size >= 3)) {
+		d[0] = 0xe0 | (uval >> 12);
+		d[1] = 0x80 | ((uval >> 6) & 0x3f);
+		d[2] = 0x80 | (uval & 0x3f);
+		return 3;
+	} else if ((uval < 0x110000) && (size >= 4)) {
+		d[0] = 0xf0 | (uval >> 18);
+		d[1] = 0x80 | ((uval >> 12) & 0x3f);
+		d[2] = 0x80 | ((uval >> 6) & 0x3f);
+		d[3] = 0x80 | (uval & 0x3f);
+		return 4;
+	}
+	return 0;
+}
+
+static std::string
+utf16_to_utf8(const std::u16string& utf16)
+{
+    std::string utf8;
+    for (char16_t c16 : utf16) {
+        char c[4];
+        utf8.append(c, unicode_to_utf8(c16, (uint8_t *) c, 4));
+    }
+    return utf8;
+}
+
 static std::string
 gen_random_filename()
 {
-    size_t len = std::rand() % 1000;
+    size_t len = std::rand() % 1000 + 1;
     std::u16string u16(len, ' ');
     for (int i = 0; i < len; i++) u16[i] = std::rand() % 10000 + 32;
-    return std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.to_bytes(u16);
+    return utf16_to_utf8(u16);
 }
 
 BOOST_AUTO_TEST_SUITE(LargeFiles)
@@ -265,6 +301,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
         files.emplace_back(gen_random_filename(), size);
     }
     files.emplace_back(gen_random_filename(), 0);
+
     PipeWriter wrt(writer, files);
 
     // Create reader
