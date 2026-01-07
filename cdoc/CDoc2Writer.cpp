@@ -537,18 +537,25 @@ CDoc2Writer::finishEncryption()
 libcdoc::result_t
 CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
+    for (auto rcpt : keys) {
+        if(auto rv = addRecipient(rcpt); rv != libcdoc::OK)
+            return rv;
+    }
     if(auto rv = beginEncryption(); rv < 0)
-        return rv;
-    if(auto rv = writeHeader(keys); rv < 0)
         return rv;
     std::string name;
     int64_t size;
-    while(src.next(name, size) == libcdoc::OK) {
-        if(tar->open(name, size) < 0 || tar->writeAll(src) < 0)
-        {
-            tar.reset();
-            return libcdoc::IO_ERROR;
-        }
+    auto result = src.next(name, size);
+    while(result == libcdoc::OK) {
+        if (result = tar->open(name, size); result != libcdoc::OK)
+            break;
+        if (result = tar->writeAll(src); result != libcdoc::OK)
+            break;
+        result = src.next(name, size);
+    }
+    if (result != libcdoc::END_OF_STREAM) {
+        tar.reset();
+        return result;
     }
     return finishEncryption();
 }

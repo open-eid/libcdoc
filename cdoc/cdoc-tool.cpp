@@ -502,6 +502,18 @@ static int ParseAndDecrypt(int argc, char *argv[])
         conf.out = ".";
     }
 
+    // Ask secret if not provided
+    if (ldata.secret[0] == '?') {
+        ldata.secret.clear();
+        cout << "Enter secret: ";
+        int ch = std::getchar();
+        while (ch != '\n') {
+            ldata.secret.push_back((uint8_t) ch);
+            ch = std::getchar();
+        }
+        cout << std::endl;
+    }
+
     CDocCipher cipher;
     RcptInfo rcpt {RcptInfo::ANY, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
     if (ldata.lock_idx != -1) {

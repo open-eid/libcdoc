@@ -316,14 +316,25 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			std::stringstream ss(paxData);
 			for(const std::string &data: split(paxData, '\n')) {
 				if(data.empty()) break;
-				const auto &headerValue = split(data, '=');
-				const auto &lenKeyword = split(headerValue[0], ' ');
-				if(data.size() + 1 != stoi(lenKeyword[0])) {
+				size_t eq_pos = data.find_first_of('=');
+				if (eq_pos == std::string::npos) {
 					_error = DATA_FORMAT_ERROR;
 					return _error;
 				}
-				if(lenKeyword[1] == "path") h_name = headerValue[1];
-				if(lenKeyword[1] == "size") h_size = stoi(headerValue[1]);
+				std::string headerValue = data.substr(eq_pos + 1, data.size() - eq_pos - 1);
+				size_t sp_pos = data.find_first_of(' ');
+				if ((sp_pos == std::string::npos) || (sp_pos >= eq_pos)) {
+					_error = DATA_FORMAT_ERROR;
+					return _error;
+				}
+				std::string lenStr = data.substr(0, sp_pos);
+				std::string keyWord = data.substr(sp_pos + 1, eq_pos - sp_pos - 1);
+				if(data.size() + 1 != stoi(lenStr)) {
+					_error = DATA_FORMAT_ERROR;
+					return _error;
+				}
+				if(keyWord == "path") h_name = std::move(headerValue);
+				if(keyWord == "size") h_size = stoi(headerValue);
 			}
 		}
 		if(h.typeflag == '0' || h.typeflag == 0) {
