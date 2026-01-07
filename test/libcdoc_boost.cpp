@@ -297,7 +297,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
     std::vector<libcdoc::FileInfo> files;
     files.emplace_back(gen_random_filename(), 0);
     files.emplace_back(gen_random_filename(), 0);
-    for (size_t size = max_filesize; size != 0; size = size / 1000) {
+    for (size_t size = max_filesize; size != 0; size = size / 100) {
         files.emplace_back(gen_random_filename(), size);
     }
     files.emplace_back(gen_random_filename(), 0);
