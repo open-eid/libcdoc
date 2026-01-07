@@ -333,7 +333,7 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 					_error = DATA_FORMAT_ERROR;
 					return _error;
 				}
-				if(keyWord == "path") h_name = headerValue;
+				if(keyWord == "path") h_name = std::move(headerValue);
 				if(keyWord == "size") h_size = stoi(headerValue);
 			}
 		}
