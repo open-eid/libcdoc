@@ -17,6 +17,10 @@
  */
 
 #include <iostream>
+#ifndef _WIN32
+#include <termios.h>
+#include <unistd.h>
+#endif
 
 #include "CDocCipher.h"
 #include "ConsoleLogger.h"
@@ -449,6 +453,32 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
     return 0;
 }
 
+static std::string
+inputSecret(std::string_view text)
+{
+    cout << text;
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(hStdin, &mode);
+    SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT);
+#else
+    termios o {};
+    tcgetattr(STDIN_FILENO, &o);
+    termios n = o;
+    n.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &n);
+#endif
+    string result;
+    getline(std::cin, result);
+#ifdef _WIN32
+    SetConsoleMode(hStdin, mode);
+#else
+    tcsetattr(STDIN_FILENO, TCSANOW, &o);
+    cout << endl;
+#endif
+    return result;
+}
 
 //
 // cdoc-tool decrypt ARGUMENTS FILE [OUTPU_DIR]
@@ -504,14 +534,8 @@ static int ParseAndDecrypt(int argc, char *argv[])
 
     // Ask secret if not provided
     if (ldata.secret[0] == '?') {
-        ldata.secret.clear();
-        cout << "Enter secret: ";
-        int ch = std::getchar();
-        while (ch != '\n') {
-            ldata.secret.push_back((uint8_t) ch);
-            ch = std::getchar();
-        }
-        cout << std::endl;
+        std::string secret = inputSecret("Enter password: ");
+        ldata.secret.assign(secret.cbegin(), secret.cend());
     }
 
     CDocCipher cipher;
