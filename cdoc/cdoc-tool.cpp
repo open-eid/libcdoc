@@ -461,6 +461,7 @@ inputSecret(std::string_view text)
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode = 0;
     GetConsoleMode(hStdin, &mode);
+    SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT);
 #else
     termios o {};
     tcgetattr(STDIN_FILENO, &o);
