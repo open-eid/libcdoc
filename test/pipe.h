@@ -77,7 +77,7 @@ struct PipeCrypto : public libcdoc::CryptoBackend {
 };
 
 struct PipeWriter {
-    static constexpr size_t BUFSIZE = 1024 * 1024;
+    static constexpr size_t BUFSIZE = 1024 * 16;
 
     PipeWriter(libcdoc::CDocWriter *writer, const std::vector<libcdoc::FileInfo>& files) : _writer(writer), _files(files), current(-1), cpos(0) {}
 

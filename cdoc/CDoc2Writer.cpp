@@ -549,7 +549,7 @@ CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
     while(result == libcdoc::OK) {
         if (result = tar->open(name, size); result != libcdoc::OK)
             break;
-        if (result = tar->writeAll(src); result != libcdoc::OK)
+        if (result = tar->writeAll(src); result < 0)
             break;
         result = src.next(name, size);
     }
