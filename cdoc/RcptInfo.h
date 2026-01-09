@@ -47,6 +47,9 @@ struct RcptInfo {
     };
 
     Type type;
+    // Locks label
+    std::string label;
+    // Certificate for encryption
     std::vector<uint8_t> cert;
     // Pin or password
     std::vector<uint8_t> secret;
@@ -56,8 +59,6 @@ struct RcptInfo {
     std::string key_file_name;
     // ID code for shares server
     std::string id;
-    // Locks label
-    std::string label;
 };
 
 }

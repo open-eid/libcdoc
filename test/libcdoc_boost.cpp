@@ -32,7 +32,7 @@
 #include "pipe.h"
 
 #ifndef DATA_DIR
-#define DATA_DIR "."
+#define DATA_DIR "data"
 #endif
 
 namespace btools = boost::test_tools;
@@ -45,6 +45,8 @@ using namespace std;
  * @brief Unencrypted file name.
  */
 constexpr string_view SourceFile("test_data.txt");
+constexpr string_view SourceFile2("test_data2.txt");
+constexpr string_view SourceFile3("test_data3.txt");
 
 /**
  * @brief Encrypted file name.
@@ -52,8 +54,10 @@ constexpr string_view SourceFile("test_data.txt");
 constexpr string_view TargetFile("test_data.txt.cdoc");
 constexpr string_view ECPrivKeyFile("ec-secp384r1-priv.der");
 constexpr string_view ECPubKeyFile("ec-secp384r1-pub.der");
+constexpr string_view ECCertFile("ec-secp384r1-cert.der");
 constexpr string_view RSAPrivKeyFile("rsa_2048_priv.der");
 constexpr string_view RSAPubKeyFile("rsa_2048_pub.der");
+constexpr string_view RSACertFile("rsa_2048_cert.der");
 
 const string Label("Proov");
 
@@ -110,34 +114,46 @@ public:
         target /= fileName;
     }
 
-    /**
-     * @brief Checks if the file exists in the test data path.
-     *
-     * The method prepends the fileName with the test data path and checks its existence. If the file does not
-     * exist then appropriate message is appended to returned predicate_result object and the value of the object
-     * is set to false.
-     * @param fileName the name of the file thats existence has to be checked.
-     * @return predicate_result object with the check result.
-     */
-    boost::test_tools::predicate_result DoesFileExist(const string& fileName) const
+    std::string formTargetFile(const std::string_view name) const
     {
-        fs::path file(testDataPath);
-        file /= fileName;
-        if (fs::exists(file))
-        {
-            return true;
+        fs::path path(fs::path(tmpDataPath) / name);
+        if (fs::exists(path)) {
+            error_code e;
+            fs::remove(path, e);
+            if(e) BOOST_TEST_MESSAGE("Failed to remove file");
         }
-        else
-        {
-            btools::predicate_result res(false);
-            res.message() << "File " << file << " does not exist";
-            return res;
-        }
+        return path.string();
+    }
+
+    std::string checkDataFile(const std::string_view name) const
+    {
+        fs::path path(fs::path(testDataPath) / name);
+        BOOST_TEST_REQUIRE(fs::exists(path), "file " << name << " does not exist");
+        return path.string();
+    }
+
+    std::string checkTargetFile(const std::string_view name) const
+    {
+        fs::path path(fs::path(tmpDataPath) / name);
+        BOOST_TEST_REQUIRE(fs::exists(path), "file " << name << " does not exist");
+        return path.string();
+    }
+
+    std::vector<uint8_t> fetchDataFile(const std::string_view name) const
+    {
+        fs::path path(fs::path(testDataPath) / name);
+        BOOST_TEST_REQUIRE(fs::exists(path), "file " << name << " does not exist");
+        return libcdoc::readAllBytes(path.string());
     }
 
     fs::path testDataPath = DATA_DIR;
+    fs::path tmpDataPath = fs::path(DATA_DIR) / "tmp";
     fs::path sourceFilePath;
-    fs::path targetFilePath;
+    fs::path sourceFilePath2;
+    fs::path sourceFilePath3;
+
+    std::vector<std::string> sources = {"test_data.txt", "test_data2.txt", "test_data3.txt"};
+
     size_t max_filesize = 100000000;
 };
 
@@ -153,18 +169,8 @@ public:
 
         // Setup source, unencrypted file path
         FormFilePath(SourceFile, sourceFilePath);
-
-        // Setup target, encrypted file path
-        FormFilePath(TargetFile, targetFilePath);
-
-        // Remove target file if it exists
-        if (fs::exists(targetFilePath))
-        {
-            error_code e;
-            fs::remove(targetFilePath, e);
-            if(e)
-                BOOST_TEST_MESSAGE("Failed to remove file");
-        }
+        FormFilePath(SourceFile2, sourceFilePath2);
+        FormFilePath(SourceFile3, sourceFilePath3);
     }
 
     ~EncryptFixture() { BOOST_TEST_MESSAGE("Encrypt fixture deardown"); }
@@ -218,9 +224,6 @@ public:
 
         // Setup source, encrypted file path
         FormFilePath(TargetFile, sourceFilePath);
-
-        // Setup target, unencrypted file path
-        FormFilePath(SourceFile, targetFilePath);
     }
 
     ~DecryptFixture()
@@ -229,6 +232,70 @@ public:
     }
 };
 
+static void
+encrypt(unsigned int version, const std::vector<std::string>& files, const std::string& container, std::vector<libcdoc::RcptInfo>& rcpts) {
+    libcdoc::ToolConf conf;
+    for (auto file : files) {
+        conf.input_files.push_back(file);
+    }
+    conf.out = container;
+    conf.cdocVersion = version;
+
+    libcdoc::CDocCipher cipher;
+    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
+
+    BOOST_TEST(fs::exists(fs::path(container)), "File " << container << " does not exist");
+}
+
+static void
+encryptV1(const std::vector<std::string>& files, const std::string& container, const std::vector<uint8_t>& cert) {
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::CERT, {}, cert}
+    };
+    encrypt(1, files, container, rcpts);
+}
+
+static void
+encryptV2(const std::vector<std::string>& files, const std::string& container, const std::vector<uint8_t>& cert) {
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::CERT, {}, cert}
+    };
+    encrypt(2, files, container, rcpts);
+}
+
+static void
+decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, libcdoc::RcptInfo& rcpt)
+{
+    libcdoc::ToolConf conf;
+    conf.input_files.push_back(container);
+    conf.out = dir;
+
+    libcdoc::CDocCipher cipher;
+    if (rcpt.label.empty()) {
+        BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt), 0);
+    } else {
+        BOOST_CHECK_EQUAL(cipher.Decrypt(conf, rcpt.label, rcpt), 0);
+    }
+
+    fs::path path(dir);
+    for (auto file : files) {
+        BOOST_TEST(fs::exists(path / fs::path(file).filename()), "File " << file << " does not exist");
+    }
+
+    path = fs::path(container);
+    if (fs::exists(path)) {
+        error_code e;
+        fs::remove(path, e);
+        if(e)
+            BOOST_TEST_MESSAGE("Failed to remove file");    }
+}
+
+static void
+decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, const std::vector<uint8_t>& key)
+{
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, {}, key};
+    decrypt(files, container, dir, rcpt);
+}
 static int
 unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
 {
@@ -344,258 +411,141 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
 
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
+// CDoc2 password and label
 
+BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture, * utf::description("Encrypting a file with password and given label"))
 {
-    // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = targetFilePath.string();
-
-    libcdoc::RcptInfo rcpt;
-    rcpt.type = libcdoc::RcptInfo::PASSWORD;
-    rcpt.secret.assign(Password.cbegin(), Password.cend());
-    rcpt.label = Label;
-
-    libcdoc::RecipientInfoVector rcpts {rcpt};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
-
-    // Validate the encrypted file
-    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::PASSWORD, Label, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
+    };
+    encrypt(2, {checkDataFile(sources[0])}, formTargetFile("PasswordUsageWithoutLabel.cdoc"), rcpts);
 }
-
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
         * utf::depends_on("PasswordUsageWithLabel/EncryptWithPasswordAndLabel")
         * utf::description("Decrypting a file with password and given label"))
 {
-    // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-
-    auto tmp = testDataPath / "tmp";
-    fs::remove_all(tmp);
-    fs::create_directory(tmp);
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = tmp.string();
-
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
-
-    // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, Label, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())};
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath, rcpt);
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
+// CDoc2 password and label
 
+BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture, * utf::description("Encrypting a file with password and without label"))
 {
-    // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.gen_label = true;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = targetFilePath.string();
-
-    libcdoc::RcptInfo rcpt;
-    rcpt.type = libcdoc::RcptInfo::PASSWORD;
-    rcpt.secret.assign(Password.cbegin(), Password.cend());
-
-    libcdoc::RecipientInfoVector rcpts {rcpt};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
-
-    // Validate the encrypted file
-    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::PASSWORD, {}, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
+    };
+    encrypt(2, {checkDataFile(sources[0])}, formTargetFile("PasswordUsageWithoutLabel.cdoc"), rcpts);
 }
-
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture,
                                    * utf::depends_on("PasswordUsageWithoutLabel/EncryptWithPasswordWithoutLabel")
                                    * utf::description("Decrypting a file with password and label index"))
 {
-    // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = testDataPath.string();
-
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, vector<uint8_t>(Password.cbegin(), Password.cend())};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt), 0);
-
-    // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath, std::vector<uint8_t>(Password.cbegin(), Password.cend()));
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(AESKeyUsage)
+// CDoc2 AES key
 
+BOOST_AUTO_TEST_SUITE(AESKeyUsage)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture, * utf::description("Encrypting a file with symmetric AES key"))
 {
-    // Check if the source, unecrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = targetFilePath.string();
-
-    libcdoc::RcptInfo rcpt;
-    rcpt.type = libcdoc::RcptInfo::SKEY;
-    rcpt.secret = std::move(libcdoc::fromHex(AESKey));
-    rcpt.label = Label;
-
-    libcdoc::RecipientInfoVector rcpts {rcpt};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
-
-    // Validate the encrypted file
-    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::SKEY, {}, {}, libcdoc::fromHex(AESKey)}
+    };
+    encrypt(2, {checkDataFile(sources[0])}, formTargetFile("AESKeyUsage.cdoc"), rcpts);
 }
-
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
                      * utf::depends_on("AESKeyUsage/EncryptWithAESKey")
                      * utf::description("Decrypting a file with with symmetric AES key"))
 {
-    // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = testDataPath.string();
-
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::fromHex(AESKey)};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
-
-    // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("AESKeyUsage.cdoc"), tmpDataPath, libcdoc::fromHex(AESKey));
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(ECKeyUsage)
+// CDoc2 EC public/private key
 
+BOOST_AUTO_TEST_SUITE(ECKeyUsage)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKey, EncryptFixture, * utf::description("Encrypting a file with EC key"))
 {
-    // Check if the source and public key file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-    fs::path keyPath;
-    FormFilePath(ECPubKeyFile, keyPath);
-    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = targetFilePath.string();
-
-    libcdoc::RcptInfo rcpt;
-    rcpt.type = libcdoc::RcptInfo::PKEY;
-    rcpt.secret = libcdoc::readAllBytes(keyPath.string());
-    rcpt.label = Label;
-
-    libcdoc::RecipientInfoVector rcpts {rcpt};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
-
-    // Validate the encrypted file
-    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(ECPubKeyFile)}
+    };
+    encrypt(2, {checkDataFile(sources[0])}, formTargetFile("ECKeyUsage.cdoc"), rcpts);
 }
-
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKey, DecryptFixture,
                      * utf::depends_on("ECKeyUsage/EncryptWithECKey")
                      * utf::description("Decrypting a file with with EC private key"))
 {
-    // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-    fs::path keyPath;
-    FormFilePath(ECPrivKeyFile, keyPath);
-    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = testDataPath.string();
-
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::readAllBytes(keyPath.string())};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
-
-    // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(RSAKeyUsage)
+// CDoc2 RSA public/private key
 
+BOOST_AUTO_TEST_SUITE(RSAKeyUsage)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithRSAKey, EncryptFixture, * utf::description("Encrypting a file with RSA key"))
 {
-    // Check if the source and public key file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-    fs::path keyPath;
-    FormFilePath(RSAPubKeyFile, keyPath);
-    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = targetFilePath.string();
-
-    libcdoc::RcptInfo rcpt;
-    rcpt.type = libcdoc::RcptInfo::PKEY;
-    rcpt.secret = libcdoc::readAllBytes(keyPath.string());
-    rcpt.label = Label;
-
-    libcdoc::RecipientInfoVector rcpts {rcpt};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Encrypt(conf, rcpts), 0);
-
-    // Validate the encrypted file
-    BOOST_TEST(ValidateEncryptedFile(targetFilePath));
+    std::vector<libcdoc::RcptInfo> rcpts {
+        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(RSAPubKeyFile)}
+    };
+    encrypt(2, {checkDataFile(sources[0])}, formTargetFile("RSAKeyUsage.cdoc"), rcpts);
 }
-
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKey, DecryptFixture,
                      * utf::depends_on("RSAKeyUsage/EncryptWithRSAKey")
                      * utf::description("Decrypting a file with with RSA private key"))
 {
-    // Check if the source, encrypted file exists
-    BOOST_TEST_REQUIRE(fs::exists(sourceFilePath), "File " << sourceFilePath << " must exists");
-    fs::path keyPath;
-    FormFilePath(RSAPrivKeyFile, keyPath);
-    BOOST_TEST_REQUIRE(fs::exists(keyPath), "File " << keyPath << " must exists");
-
-    libcdoc::ToolConf conf;
-    conf.input_files.push_back(sourceFilePath.string());
-    conf.out = testDataPath.string();
-
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, libcdoc::readAllBytes(keyPath.string())};
-
-    libcdoc::CDocCipher cipher;
-    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, Label, rcpt), 0);
-
-    // Check if the encrypted file exists
-    BOOST_TEST(fs::exists(targetFilePath), "File " << targetFilePath << " exists");
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsage.cdoc"), tmpDataPath, fetchDataFile(RSAPrivKeyFile));
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE(MachineLabelParsing)
+// CDoc1 tests
 
+BOOST_AUTO_TEST_SUITE(CDoc1ECKeySingle)
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1, EncryptFixture, * utf::description("Encrypting a file with EC key in CDoc1 format"))
+{
+    encryptV1({checkDataFile(sources[0])}, formTargetFile("ECKeyUsageV1.cdoc"), fetchDataFile(ECCertFile));
+}
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1, DecryptFixture,
+                     * utf::depends_on("CDoc1ECKeySingle/EncryptWithECKeyV1")
+                     * utf::description("Decrypting a file in CDoc1 format with with EC private key"))
+{
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsageV1.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
+}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(CDoc1ECKeyMulti)
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1Multi, EncryptFixture, * utf::description("Encrypting multiple files with EC key in CDoc1 format"))
+{
+    encryptV1({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, formTargetFile("ECKeyUsageV1Multi.cdoc"), fetchDataFile(ECCertFile));
+}
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1Multi, DecryptFixture,
+                     * utf::depends_on("CDoc1ECKeyMulti/EncryptWithECKeyV1Multi")
+                     * utf::description("Decrypting multiple files in CDoc1 format with with EC private key"))
+{
+    decrypt({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, checkTargetFile("ECKeyUsageV1Multi.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
+}
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(CDoc1RSAKeySingle)
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithRSAKeyV1, EncryptFixture, * utf::description("Encrypting a file with RSA key in CDoc1 format"))
+{
+    encryptV1({checkDataFile(sources[0])}, formTargetFile("RSAKeyUsageV1.cdoc"), fetchDataFile(RSACertFile));
+}
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKeyV1, DecryptFixture,
+                     * utf::depends_on("CDoc1RSAKeySingle/EncryptWithRSAKeyV1")
+                     * utf::description("Decrypting a file in CDoc1 format with with RSA private key"))
+{
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsageV1.cdoc"), tmpDataPath, fetchDataFile(RSAPrivKeyFile));
+}
+BOOST_AUTO_TEST_SUITE_END()
+
+// Label parsing
+
+BOOST_AUTO_TEST_SUITE(MachineLabelParsing)
 BOOST_AUTO_TEST_CASE(PlainLabelParsing)
 {
     const string label("data:v=1&type=ID-card&serial_number=PNOEE-38001085718&cn=J%C3%95EORG%2CJAAK-KRISTJAN%2C38001085718");
@@ -643,11 +593,9 @@ BOOST_AUTO_TEST_CASE(Base64LabelParsingWithMediaType)
         }
     }
 }
-
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(StreamingDecryption)
-
 using BufTypes = std::tuple<std::array<uint8_t, 4>, std::array<uint8_t, 16>, std::array<uint8_t, 20>, std::array<uint8_t, 36>>;
 BOOST_AUTO_TEST_CASE_TEMPLATE(constructor, Buf, BufTypes)
 {

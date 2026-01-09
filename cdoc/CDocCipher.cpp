@@ -227,9 +227,9 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
 };
 
-int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, const vector<string>& files)
+int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, const vector<string>& files)
 {
-    for (const libcdoc::Recipient& rcpt : keys) {
+    for (const libcdoc::Recipient& rcpt : rcpts) {
         int64_t result = writer.addRecipient(rcpt);
         if (result != libcdoc::OK) return result;
     }
@@ -262,7 +262,7 @@ int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& keys, c
 #define PUSH true
 
 static bool
-fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, RecipientInfoIdMap& crypto_rcpts, const RecipientInfoVector& recipients)
+fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, RecipientInfoIdMap& crypto_rcpts, const std::vector<libcdoc::RcptInfo>& recipients)
 {
     int idx = 0;
     for (const auto& rcpt : recipients) {
@@ -329,7 +329,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
     return true;
 }
 
-int CDocCipher::Encrypt(ToolConf& conf, RecipientInfoVector& recipients)
+int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipients)
 {
     RecipientInfoIdMap crypto_rcpts;
     ToolCrypto crypto(crypto_rcpts);
@@ -550,7 +550,7 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
 }
 
 int
-CDocCipher::ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lock_label, const RcptInfo& lock_info, RecipientInfoVector& recipients)
+CDocCipher::ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lock_label, const RcptInfo& lock_info, std::vector<libcdoc::RcptInfo>& recipients)
 {
     // Decryption part
     RecipientInfoIdMap dec_info;

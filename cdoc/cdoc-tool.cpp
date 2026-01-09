@@ -44,7 +44,7 @@ static void print_usage(ostream& ofs)
     ofs << "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;
-    ofs << "    [label]:cert:CERTIFICATE_HEX - public key from certificate" << endl;
+    ofs << "    [label]:cert:CERTIFICATE_FILE - public key from certificate" << endl;
     ofs << "    [label]:pkey:SECRET_KEY_HEX - public key" << endl;
     ofs << "    [label]:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
     ofs << "    [label]:skey:SECRET_KEY_HEX - AES key" << endl;
@@ -140,7 +140,7 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
 }
 
 static int
-parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, char *argv[])
+parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, int argc, char *argv[])
 {
     string_view arg(argv[arg_idx]);
     if ((arg != "--rcpt") || ((arg_idx + 1) >= argc)) return 0;
@@ -285,7 +285,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     LOG_INFO("Encrypting");
 
     ToolConf conf;
-    RecipientInfoVector rcpts;
+    std::vector<libcdoc::RcptInfo> rcpts;
 
     //
     // Parse all arguments into ToolConf structure
@@ -325,7 +325,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     }
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -352,7 +352,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
@@ -539,7 +539,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
+    RcptInfo rcpt {RcptInfo::ANY, {}, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
     if (ldata.lock_idx != -1) {
         return cipher.Decrypt(conf, ldata.lock_idx, rcpt);
     } else {
@@ -550,7 +550,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
 static int ParseAndReEncrypt(int argc, char *argv[])
 {
     ToolConf conf;
-    RecipientInfoVector rcpts;
+    std::vector<libcdoc::RcptInfo> rcpts;
     LockData ldata;
 
     int arg_idx = 0;
@@ -596,7 +596,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -619,7 +619,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
@@ -627,7 +627,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
+    RcptInfo rcpt {RcptInfo::ANY, {}, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
     if (ldata.lock_idx != -1) {
         return cipher.ReEncrypt(conf, ldata.lock_idx, ldata.lock_label, rcpt, rcpts);
     }

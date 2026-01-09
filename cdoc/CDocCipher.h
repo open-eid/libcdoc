@@ -30,8 +30,7 @@
 namespace libcdoc
 {
 
-typedef typename std::map<int, RcptInfo>         RecipientInfoIdMap;
-typedef typename std::vector<RcptInfo>           RecipientInfoVector;
+typedef typename std::map<int, RcptInfo> RecipientInfoIdMap;
 
 class CDocCipher
 {
@@ -40,12 +39,12 @@ public:
     CDocCipher(const CDocCipher&) = delete;
     CDocCipher(CDocCipher&&) = delete;
 
-    int Encrypt(ToolConf& conf, RecipientInfoVector& recipients);
+    int Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipients);
 
     int Decrypt(ToolConf& conf, int idx_base_1, const RcptInfo& recipient);
     int Decrypt(ToolConf& conf, const std::string& label, const RcptInfo& recipient);
 
-    int ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lock_label, const RcptInfo& lock_info, RecipientInfoVector& recipients);
+    int ReEncrypt(ToolConf& conf, int lock_idx_base_1, const std::string& lock_label, const RcptInfo& lock_info, std::vector<libcdoc::RcptInfo>& recipients);
 
     void Locks(const char* file) const;
 
