@@ -539,7 +539,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .lock_idx=ldata.lock_idx - 1, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}};
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
     return cipher.Decrypt(conf, rcpt);
 }
 
@@ -623,7 +623,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .lock_idx=ldata.lock_idx, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}};
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx};
     if (ldata.lock_idx != -1) {
         return cipher.ReEncrypt(conf, rcpt, rcpts);
     }

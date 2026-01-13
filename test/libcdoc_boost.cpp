@@ -289,7 +289,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
 static void
 decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, const std::vector<uint8_t>& key)
 {
-    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .lock_idx=0, .secret=key};
+    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .secret=key, .lock_idx=0};
     decrypt(files, container, dir, rcpt);
 }
 static int
