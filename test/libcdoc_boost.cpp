@@ -101,6 +101,14 @@ public:
                 max_filesize = std::stoull(utf::framework::master_test_suite().argv[i]);
             }
         }
+        if (!fs::exists(testDataPath)) {
+            std::cerr << "Path " << testDataPath << " does not exist!" << std::endl;
+            ::exit(1);
+        }
+        tmpDataPath = fs::path(DATA_DIR) / "tmp";
+        if (!fs::exists(tmpDataPath)) {
+            fs::create_directories(tmpDataPath);
+        }
     }
 
     /**
@@ -147,7 +155,7 @@ public:
     }
 
     fs::path testDataPath = DATA_DIR;
-    fs::path tmpDataPath = fs::path(DATA_DIR) / "tmp";
+    fs::path tmpDataPath;
     fs::path sourceFilePath;
     fs::path sourceFilePath2;
     fs::path sourceFilePath3;
