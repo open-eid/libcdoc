@@ -440,7 +440,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
                                    * utf::depends_on("PasswordUsageWithoutLabel/EncryptWithPasswordWithoutLabel")
                                    * utf::description("Decrypting a file with password and label index"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath, std::vector<uint8_t>(Password.cbegin(), Password.cend()));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath.string(), std::vector<uint8_t>(Password.cbegin(), Password.cend()));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -458,7 +458,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithAESKey, DecryptFixture,
                      * utf::depends_on("AESKeyUsage/EncryptWithAESKey")
                      * utf::description("Decrypting a file with with symmetric AES key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("AESKeyUsage.cdoc"), tmpDataPath, libcdoc::fromHex(AESKey));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("AESKeyUsage.cdoc"), tmpDataPath.string(), libcdoc::fromHex(AESKey));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -476,7 +476,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKey, DecryptFixture,
                      * utf::depends_on("ECKeyUsage/EncryptWithECKey")
                      * utf::description("Decrypting a file with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -494,7 +494,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKey, DecryptFixture,
                      * utf::depends_on("RSAKeyUsage/EncryptWithRSAKey")
                      * utf::description("Decrypting a file with with RSA private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsage.cdoc"), tmpDataPath, fetchDataFile(RSAPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsage.cdoc"), tmpDataPath.string(), fetchDataFile(RSAPrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -509,7 +509,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1, DecryptFixture,
                      * utf::depends_on("CDoc1ECKeySingle/EncryptWithECKeyV1")
                      * utf::description("Decrypting a file in CDoc1 format with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsageV1.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsageV1.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -522,7 +522,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1Multi, DecryptFixture,
                      * utf::depends_on("CDoc1ECKeyMulti/EncryptWithECKeyV1Multi")
                      * utf::description("Decrypting multiple files in CDoc1 format with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, checkTargetFile("ECKeyUsageV1Multi.cdoc"), tmpDataPath, fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, checkTargetFile("ECKeyUsageV1Multi.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -535,7 +535,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKeyV1, DecryptFixture,
                      * utf::depends_on("CDoc1RSAKeySingle/EncryptWithRSAKeyV1")
                      * utf::description("Decrypting a file in CDoc1 format with with RSA private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsageV1.cdoc"), tmpDataPath, fetchDataFile(RSAPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsageV1.cdoc"), tmpDataPath.string(), fetchDataFile(RSAPrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
