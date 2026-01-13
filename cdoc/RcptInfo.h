@@ -24,10 +24,19 @@
 namespace libcdoc {
 
 struct RcptInfo {
-    enum Type {
-        // Detect type from container
-        ANY,
+    // PKCS11/NCrypt data
+    // NB! PIN is stored in secret
+    struct PKCS11Info {
+        long slot = 0;
+        std::vector<uint8_t> key_id;
+        std::string key_label;
+    };
 
+    enum Type {
+        // For decryption (use the lock type)
+        LOCK,
+
+        // For encryption
         // Certificate from file
         CERT,
         // Password from command line
@@ -53,12 +62,15 @@ struct RcptInfo {
     std::vector<uint8_t> cert;
     // Pin or password
     std::vector<uint8_t> secret;
-    long slot = 0;
-    std::vector<uint8_t> key_id;
-    std::string key_label;
+    // PKCS11-specific info
+    PKCS11Info p11;
+
+    // Keyfile name for automatic labels
     std::string key_file_name;
     // ID code for shares server
     std::string id;
+    // Lock index
+    int lock_idx = -1;
 };
 
 }

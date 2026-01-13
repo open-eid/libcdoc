@@ -202,10 +202,10 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
 
         size_t last_char_idx;
         if (parts[2].starts_with("0x")) {
-            rcpt.slot = std::stoul(parts[2].substr(2), &last_char_idx, 16);
+            rcpt.p11.slot = std::stoul(parts[2].substr(2), &last_char_idx, 16);
             last_char_idx += 2;
         } else {
-            rcpt.slot = std::stoul(parts[2], &last_char_idx);
+            rcpt.p11.slot = std::stoul(parts[2], &last_char_idx);
         }
         if (last_char_idx < parts[2].size()) {
             LOG_ERROR("Slot is not a number");
@@ -215,31 +215,31 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
         if (parts.size() > 3) {
             rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
             if (parts.size() > 4) {
-                if (!parts[4].empty()) rcpt.key_id = fromHex(parts[4]);
+                if (!parts[4].empty()) rcpt.p11.key_id = fromHex(parts[4]);
                 if (parts.size() > 5)
-                    rcpt.key_label = parts[5];
+                    rcpt.p11.key_label = parts[5];
             }
         }
 
 #ifndef NDEBUG
         // For debugging
         LOG_DBG("Method: {}", method);
-        LOG_DBG("Slot: {}", rcpt.slot);
+        LOG_DBG("Slot: {}", rcpt.p11.slot);
         if (!rcpt.secret.empty()) {
             string str(rcpt.secret.cbegin(), rcpt.secret.cend());
             LOG_TRACE("Pin: {}", str);
         }
-        if (!rcpt.key_id.empty())
-            LOG_DBG("Key ID: {}", toHex(rcpt.key_id));
-        if (!rcpt.key_label.empty())
-            LOG_DBG("Key label: {}", rcpt.key_label);
+        if (!rcpt.p11.key_id.empty())
+            LOG_DBG("Key ID: {}", toHex(rcpt.p11.key_id));
+        if (!rcpt.p11.key_label.empty())
+            LOG_DBG("Key label: {}", rcpt.p11.key_label);
 #endif
     } else if (method == "ncrypt") {
         // label:ncrypt:key_label[:pin]
         rcpt.type = RcptInfo::NCRYPT;
 
         if (parts.size() > 2) {
-            rcpt.key_label = parts[2];
+            rcpt.p11.key_label = parts[2];
             if (parts.size() > 3) {
                 rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
             }
@@ -248,13 +248,13 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
 #ifndef NDEBUG
         // For debugging
         cout << "Method: " << method << endl;
-        cout << "Slot: " << rcpt.slot << endl;
+        cout << "Slot: " << rcpt.p11.slot << endl;
         if (!rcpt.secret.empty())
             cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
-        if (!rcpt.key_id.empty())
-            cout << "Key ID: " << toHex(rcpt.key_id) << endl;
-        if (!rcpt.key_label.empty())
-            cout << "Key label: " << rcpt.key_label << endl;
+        if (!rcpt.p11.key_id.empty())
+            cout << "Key ID: " << toHex(rcpt.p11.key_id) << endl;
+        if (!rcpt.p11.key_label.empty())
+            cout << "Key label: " << rcpt.p11.key_label << endl;
 #endif
     } else if (method == "share") {
         // label:share:RECIPIENT_ID
@@ -539,12 +539,8 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
-    if (ldata.lock_idx != -1) {
-        return cipher.Decrypt(conf, ldata.lock_idx, rcpt);
-    } else {
-        return cipher.Decrypt(conf, ldata.lock_label, rcpt);
-    }
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .lock_idx=ldata.lock_idx - 1, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}};
+    return cipher.Decrypt(conf, rcpt);
 }
 
 static int ParseAndReEncrypt(int argc, char *argv[])
@@ -627,9 +623,9 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .lock_idx=ldata.lock_idx, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}};
     if (ldata.lock_idx != -1) {
-        return cipher.ReEncrypt(conf, ldata.lock_idx, ldata.lock_label, rcpt, rcpts);
+        return cipher.ReEncrypt(conf, rcpt, rcpts);
     }
     return true;
 }

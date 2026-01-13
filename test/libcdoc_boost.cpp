@@ -271,11 +271,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
     conf.out = dir;
 
     libcdoc::CDocCipher cipher;
-    if (rcpt.label.empty()) {
-        BOOST_CHECK_EQUAL(cipher.Decrypt(conf, 1, rcpt), 0);
-    } else {
-        BOOST_CHECK_EQUAL(cipher.Decrypt(conf, rcpt.label, rcpt), 0);
-    }
+    BOOST_CHECK_EQUAL(cipher.Decrypt(conf, rcpt), 0);
 
     fs::path path(dir);
     for (auto file : files) {
@@ -293,7 +289,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
 static void
 decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, const std::vector<uint8_t>& key)
 {
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, {}, {}, key};
+    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .lock_idx=0, .secret=key};
     decrypt(files, container, dir, rcpt);
 }
 static int
@@ -425,7 +421,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
         * utf::depends_on("PasswordUsageWithLabel/EncryptWithPasswordAndLabel")
         * utf::description("Decrypting a file with password and given label"))
 {
-    libcdoc::RcptInfo rcpt {libcdoc::RcptInfo::ANY, Label, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())};
+    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .label=Label, .secret=std::vector<uint8_t>(Password.cbegin(), Password.cend())};
     decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath, rcpt);
 }
 BOOST_AUTO_TEST_SUITE_END()
