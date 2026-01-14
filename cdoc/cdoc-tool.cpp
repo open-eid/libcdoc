@@ -44,7 +44,7 @@ static void print_usage(ostream& ofs)
     ofs << "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;
-    ofs << "    [label]:cert:CERTIFICATE_HEX - public key from certificate" << endl;
+    ofs << "    [label]:cert:CERTIFICATE_FILE - public key from certificate" << endl;
     ofs << "    [label]:pkey:SECRET_KEY_HEX - public key" << endl;
     ofs << "    [label]:pfkey:PUB_KEY_FILE - path to DER file with EC (secp384r1 curve) public key" << endl;
     ofs << "    [label]:skey:SECRET_KEY_HEX - AES key" << endl;
@@ -140,7 +140,7 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
 }
 
 static int
-parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, char *argv[])
+parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, int argc, char *argv[])
 {
     string_view arg(argv[arg_idx]);
     if ((arg != "--rcpt") || ((arg_idx + 1) >= argc)) return 0;
@@ -202,10 +202,10 @@ parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, c
 
         size_t last_char_idx;
         if (parts[2].starts_with("0x")) {
-            rcpt.slot = std::stoul(parts[2].substr(2), &last_char_idx, 16);
+            rcpt.p11.slot = std::stoul(parts[2].substr(2), &last_char_idx, 16);
             last_char_idx += 2;
         } else {
-            rcpt.slot = std::stoul(parts[2], &last_char_idx);
+            rcpt.p11.slot = std::stoul(parts[2], &last_char_idx);
         }
         if (last_char_idx < parts[2].size()) {
             LOG_ERROR("Slot is not a number");
@@ -215,31 +215,31 @@ parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, c
         if (parts.size() > 3) {
             rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
             if (parts.size() > 4) {
-                if (!parts[4].empty()) rcpt.key_id = fromHex(parts[4]);
+                if (!parts[4].empty()) rcpt.p11.key_id = fromHex(parts[4]);
                 if (parts.size() > 5)
-                    rcpt.key_label = parts[5];
+                    rcpt.p11.key_label = parts[5];
             }
         }
 
 #ifndef NDEBUG
         // For debugging
         LOG_DBG("Method: {}", method);
-        LOG_DBG("Slot: {}", rcpt.slot);
+        LOG_DBG("Slot: {}", rcpt.p11.slot);
         if (!rcpt.secret.empty()) {
             string str(rcpt.secret.cbegin(), rcpt.secret.cend());
             LOG_TRACE("Pin: {}", str);
         }
-        if (!rcpt.key_id.empty())
-            LOG_DBG("Key ID: {}", toHex(rcpt.key_id));
-        if (!rcpt.key_label.empty())
-            LOG_DBG("Key label: {}", rcpt.key_label);
+        if (!rcpt.p11.key_id.empty())
+            LOG_DBG("Key ID: {}", toHex(rcpt.p11.key_id));
+        if (!rcpt.p11.key_label.empty())
+            LOG_DBG("Key label: {}", rcpt.p11.key_label);
 #endif
     } else if (method == "ncrypt") {
         // label:ncrypt:key_label[:pin]
         rcpt.type = RcptInfo::NCRYPT;
 
         if (parts.size() > 2) {
-            rcpt.key_label = parts[2];
+            rcpt.p11.key_label = parts[2];
             if (parts.size() > 3) {
                 rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
             }
@@ -248,13 +248,13 @@ parse_rcpt(ToolConf& conf, RecipientInfoVector& rcpts, int& arg_idx, int argc, c
 #ifndef NDEBUG
         // For debugging
         cout << "Method: " << method << endl;
-        cout << "Slot: " << rcpt.slot << endl;
+        cout << "Slot: " << rcpt.p11.slot << endl;
         if (!rcpt.secret.empty())
             cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
-        if (!rcpt.key_id.empty())
-            cout << "Key ID: " << toHex(rcpt.key_id) << endl;
-        if (!rcpt.key_label.empty())
-            cout << "Key label: " << rcpt.key_label << endl;
+        if (!rcpt.p11.key_id.empty())
+            cout << "Key ID: " << toHex(rcpt.p11.key_id) << endl;
+        if (!rcpt.p11.key_label.empty())
+            cout << "Key label: " << rcpt.p11.key_label << endl;
 #endif
     } else if (method == "share") {
         // label:share:RECIPIENT_ID
@@ -285,7 +285,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     LOG_INFO("Encrypting");
 
     ToolConf conf;
-    RecipientInfoVector rcpts;
+    std::vector<libcdoc::RcptInfo> rcpts;
 
     //
     // Parse all arguments into ToolConf structure
@@ -325,7 +325,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     }
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -352,7 +352,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
@@ -539,18 +539,14 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
-    if (ldata.lock_idx != -1) {
-        return cipher.Decrypt(conf, ldata.lock_idx, rcpt);
-    } else {
-        return cipher.Decrypt(conf, ldata.lock_label, rcpt);
-    }
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
+    return cipher.Decrypt(conf, rcpt);
 }
 
 static int ParseAndReEncrypt(int argc, char *argv[])
 {
     ToolConf conf;
-    RecipientInfoVector rcpts;
+    std::vector<libcdoc::RcptInfo> rcpts;
     LockData ldata;
 
     int arg_idx = 0;
@@ -596,7 +592,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -619,7 +615,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](RecipientInfoVector::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
@@ -627,9 +623,9 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    RcptInfo rcpt {RcptInfo::ANY, {}, ldata.secret, ldata.slot, ldata.key_id, ldata.key_label};
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx};
     if (ldata.lock_idx != -1) {
-        return cipher.ReEncrypt(conf, ldata.lock_idx, ldata.lock_label, rcpt, rcpts);
+        return cipher.ReEncrypt(conf, rcpt, rcpts);
     }
     return true;
 }
