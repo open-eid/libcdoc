@@ -66,7 +66,7 @@ struct ToolWin : public libcdoc::WinBackend {
 
     result_t connectToKey(int idx, bool priv) {
         if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        libcdoc::RcptInfo rcpt = rcpts.at(idx);
+        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
         return useKey(rcpt.p11.key_label, std::string(rcpt.secret.cbegin(), rcpt.secret.cend()));
     }
 };
@@ -99,7 +99,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
         if (p11) return p11->decryptRSA(dst, data, oaep, idx);
         if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        libcdoc::RcptInfo rcpt = rcpts.at(idx);
+        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
         const uint8_t *p = rcpt.secret.data();
 
@@ -131,7 +131,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {
         if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        libcdoc::RcptInfo rcpt = rcpts.at(idx);
+        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
         const uint8_t *p = rcpt.secret.data();
 
@@ -184,7 +184,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
         if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        libcdoc::RcptInfo rcpt = rcpts.at(idx);
+        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
         secret = rcpt.secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }

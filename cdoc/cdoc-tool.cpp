@@ -325,7 +325,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
     }
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -352,7 +352,7 @@ static int ParseAndEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;
@@ -592,7 +592,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     if (!conf.gen_label) {
         // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.label.empty();}) };
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
         if (rcpt_wo_label != rcpts.cend()) {
             if (rcpts.size() > 1) {
                 LOG_ERROR("Not all Recipients have label");
@@ -615,7 +615,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
     // CDOC1 is supported only for encryption with certificate.
     if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](std::vector<libcdoc::RcptInfo>::const_reference rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
         if (rcpt_type_non_cert != rcpts.cend()) {
             LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
             return 1;

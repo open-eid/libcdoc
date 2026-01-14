@@ -418,7 +418,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc2 password and label
 
 BOOST_AUTO_TEST_SUITE(PasswordUsageWithLabel)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture, * utf::description("Encrypting a file with password and given label"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture,
+        * utf::description("Encrypting a file with password and given label"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
         {libcdoc::RcptInfo::PASSWORD, Label, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
@@ -437,7 +438,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc2 password and label
 
 BOOST_AUTO_TEST_SUITE(PasswordUsageWithoutLabel)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture, * utf::description("Encrypting a file with password and without label"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixture,
+        * utf::description("Encrypting a file with password and without label"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
         {libcdoc::RcptInfo::PASSWORD, {}, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
@@ -455,7 +457,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc2 AES key
 
 BOOST_AUTO_TEST_SUITE(AESKeyUsage)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture, * utf::description("Encrypting a file with symmetric AES key"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithAESKey, EncryptFixture,
+        * utf::description("Encrypting a file with symmetric AES key"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
         {libcdoc::RcptInfo::SKEY, {}, {}, libcdoc::fromHex(AESKey)}
@@ -473,7 +476,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc2 EC public/private key
 
 BOOST_AUTO_TEST_SUITE(ECKeyUsage)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKey, EncryptFixture, * utf::description("Encrypting a file with EC key"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKey, EncryptFixture,
+        * utf::description("Encrypting a file with EC key"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
         {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(ECPubKeyFile)}
@@ -491,7 +495,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc2 RSA public/private key
 
 BOOST_AUTO_TEST_SUITE(RSAKeyUsage)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithRSAKey, EncryptFixture, * utf::description("Encrypting a file with RSA key"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithRSAKey, EncryptFixture,
+        * utf::description("Encrypting a file with RSA key"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
         {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(RSAPubKeyFile)}
@@ -509,7 +514,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // CDoc1 tests
 
 BOOST_AUTO_TEST_SUITE(CDoc1ECKeySingle)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1, EncryptFixture, * utf::description("Encrypting a file with EC key in CDoc1 format"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1, EncryptFixture,
+        * utf::description("Encrypting a file with EC key in CDoc1 format"))
 {
     encryptV1({checkDataFile(sources[0])}, formTargetFile("ECKeyUsageV1.cdoc"), fetchDataFile(ECCertFile));
 }
@@ -522,7 +528,8 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1, DecryptFixture,
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(CDoc1ECKeyMulti)
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1Multi, EncryptFixture, * utf::description("Encrypting multiple files with EC key in CDoc1 format"))
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1Multi, EncryptFixture,
+        * utf::description("Encrypting multiple files with EC key in CDoc1 format"))
 {
     encryptV1({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, formTargetFile("ECKeyUsageV1Multi.cdoc"), fetchDataFile(ECCertFile));
 }

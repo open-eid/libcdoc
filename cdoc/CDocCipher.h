@@ -30,7 +30,6 @@
 namespace libcdoc
 {
 
-//typedef typename std::map<int, RcptInfo> RecipientInfoIdMap;
 
 class CDocCipher
 {
