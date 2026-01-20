@@ -27,7 +27,7 @@ using namespace libcdoc;
  * @brief DDOCWriter is used for storing multiple files.
  */
 
-const XMLWriter::NS DDOCWriter::DDOC{ "", "http://www.sk.ee/DigiDoc/v1.3.0#" };
+constexpr XMLWriter::NS DDOC{ nullptr, "http://www.sk.ee/DigiDoc/v1.3.0#" };
 
 DDOCWriter::DDOCWriter(DataConsumer &dst)
     : XMLWriter(dst)

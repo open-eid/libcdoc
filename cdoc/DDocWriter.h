@@ -36,8 +36,6 @@ private:
     DDOCWriter(const DDOCWriter &) = delete;
     DDOCWriter &operator=(const DDOCWriter &) = delete;
     int fileCount = 0;
-
-    static const NS DDOC;
 };
 
 }

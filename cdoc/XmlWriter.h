@@ -18,12 +18,14 @@
 
 #pragma once
 
+#include "utils/memory.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <memory>
 #include <string>
-#include <vector>
+
+struct _xmlTextWriter;
 
 namespace libcdoc {
 
@@ -32,22 +34,22 @@ struct DataConsumer;
 class XMLWriter
 {
 public:
-    struct NS { std::string prefix, ns; };
+    struct NS { const char *prefix, *ns; };
 
     XMLWriter(DataConsumer &dst);
     virtual ~XMLWriter() noexcept;
 
-    int64_t writeStartElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr);
-    int64_t writeEndElement(const NS &ns);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::function<int64_t()> &f = nullptr);
-    int64_t writeElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f = nullptr);
-    int64_t writeBase64Element(const NS &ns, const std::string &name, const std::function<int64_t(DataConsumer &)> &f, const std::map<std::string, std::string> &attr = {});
-    int64_t writeBase64Element(const NS &ns, const std::string &name, const std::vector<unsigned char> &data, const std::map<std::string, std::string> &attr = {});
-    int64_t writeTextElement(const NS &ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data);
+    int64_t writeStartElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr);
+    int64_t writeEndElement(NS ns);
+    int64_t writeElement(NS ns, const std::string &name, const std::function<int64_t()> &f = nullptr);
+    int64_t writeElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f = nullptr);
+    int64_t writeBase64Element(NS ns, const std::string &name, const std::function<int64_t(DataConsumer &)> &f, const std::map<std::string, std::string> &attr = {});
+    int64_t writeBase64Element(NS ns, const std::string &name, const std::vector<unsigned char> &data, const std::map<std::string, std::string> &attr = {});
+    int64_t writeTextElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data);
 
 private:
-    struct Private;
-    std::unique_ptr<Private> d;
+    unique_free_t<_xmlTextWriter> w;
+    std::map<std::string_view, int> nsmap;
 };
 
 } // namespace libcdoc
