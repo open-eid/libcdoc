@@ -49,9 +49,9 @@ int64_t XMLWriter::writeStartElement(NS ns, const std::string &name, const std::
 {
     if(!w)
         return WRONG_ARGUMENTS;
-    auto [pos, inserted] = nsmap.emplace(ns.prefix ? ns.prefix : "", 0);
-    pos->second++;
-    if(xmlTextWriterStartElementNS(w.get(), pcxmlChar(ns.prefix), pcxmlChar(name.c_str()), inserted ? pcxmlChar(ns.ns) : nullptr) == -1)
+    auto &count = nsmap[ns.prefix ? ns.prefix : std::string_view{}];
+    count++;
+    if(xmlTextWriterStartElementNS(w.get(), pcxmlChar(ns.prefix), pcxmlChar(name.c_str()), count > 1 ? nullptr : pcxmlChar(ns.ns)) == -1)
         return IO_ERROR;
     for(const auto &[name, content]: attr)
     {
