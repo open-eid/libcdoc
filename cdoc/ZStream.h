@@ -31,8 +31,7 @@ namespace libcdoc {
 struct ZConsumer : public ChainedConsumer {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
 	z_stream _s {};
-	bool _fail = false;
-	std::vector<uint8_t> buf;
+    bool _fail = false;
 	int flush = Z_NO_FLUSH;
 	ZConsumer(DataConsumer *dst, bool take_ownership = false) : ChainedConsumer(dst, take_ownership) {
 		if (deflateInit(&_s, Z_DEFAULT_COMPRESSION) != Z_OK) _fail = true;
@@ -41,7 +40,7 @@ struct ZConsumer : public ChainedConsumer {
 		if (!_fail) deflateEnd(&_s);
 	}
 
-    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
+    libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final {
 		if (_fail) return OUTPUT_ERROR;
 		_s.next_in = (z_const Bytef *) src;
 		_s.avail_in = uInt(size);
@@ -64,11 +63,11 @@ struct ZConsumer : public ChainedConsumer {
 		return size;
 	}
 
-	virtual bool isError() override final {
+    virtual bool isError() noexcept final {
 		return _fail || ChainedConsumer::isError();
 	};
 
-    libcdoc::result_t close() override final {
+    libcdoc::result_t close() noexcept final {
 		flush = Z_FINISH;
 		write (nullptr, 0);
 		deflateEnd(&_s);
@@ -91,17 +90,16 @@ struct ZSource : public ChainedSource {
 		if (!_error) inflateEnd(&_s);
 	}
 
-    libcdoc::result_t read(uint8_t *dst, size_t size) override final {
+    libcdoc::result_t read(uint8_t *dst, size_t size) noexcept final try {
 		if (_error) return _error;
 		_s.next_out = (Bytef *) dst;
 		_s.avail_out = uInt (size);
-		uint8_t in[CHUNK];
+        std::array<uint8_t,CHUNK> in{};
 		int res = Z_OK;
 		while((_s.avail_out > 0) && (res == Z_OK)) {
-			size_t readlen = CHUNK;
-			int64_t n_read = _src->read(in, readlen);
+            int64_t n_read = _src->read(in.data(), in.size());
 			if (n_read > 0) {
-				buf.insert(buf.end(), in, in + n_read);
+                buf.insert(buf.end(), in.begin(), in.begin() + n_read);
 			} else if (n_read != 0) {
 				_error = n_read;
 				return _error;
@@ -122,13 +120,15 @@ struct ZSource : public ChainedSource {
 			}
 		}
 		return size - _s.avail_out;
-	}
+    } catch(...) {
+        return INPUT_STREAM_ERROR;
+    }
 
-	virtual bool isError() override final {
+    virtual bool isError() noexcept final {
         return (_error != OK) || ChainedSource::isError();
 	};
 
-	virtual bool isEof() override final {
+    virtual bool isEof() noexcept final {
 		return (_s.avail_in == 0) && ChainedSource::isEof();
 	};
 };

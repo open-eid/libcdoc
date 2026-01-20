@@ -100,7 +100,7 @@ int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std:
         std::array<uint8_t, 3> buf {}; // buffer up to 2 leftover bytes
         size_t bufSize = 0;
         Base64Consumer(xmlTextWriterPtr _w) : w(_w) {}
-        result_t write(const uint8_t *src, size_t size) final {
+        result_t write(const uint8_t *src, size_t size) noexcept final {
             if(!src || size == 0)
                 return OK;
 
@@ -132,7 +132,7 @@ int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std:
 
             return result_t(size);
         }
-        result_t close() final {
+        result_t close() noexcept final {
             if (bufSize > 0) {
                 // write remaining 1..2 bytes so base64 padding is applied only at the end
                 if(xmlTextWriterWriteBase64(w, reinterpret_cast<const char*>(buf.data()), 0, bufSize) == -1)
@@ -141,7 +141,7 @@ int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std:
             bufSize = 0;
             return OK;
         }
-        bool isError() final { return false; }
+        bool isError() noexcept final { return false; }
     } base64Consumer {w.get()};
     if(auto rv = f(base64Consumer); rv < 0)
         return rv;

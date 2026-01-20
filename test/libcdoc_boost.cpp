@@ -19,7 +19,6 @@
 #define BOOST_TEST_MODULE "C++ Unit Tests for libcdoc"
 
 #include <boost/test/unit_test.hpp>
-#include <codecvt>
 #include <filesystem>
 #include <fstream>
 #include <map>

@@ -128,20 +128,20 @@ libcdoc::TarConsumer::~TarConsumer()
 }
 
 libcdoc::result_t
-libcdoc::TarConsumer::write(const uint8_t *src, size_t size)
+libcdoc::TarConsumer::write(const uint8_t *src, size_t size) noexcept
 {
 	return _dst->write(src, size);
 }
 
 libcdoc::result_t
-libcdoc::TarConsumer::writeHeader(const Header &h) {
+libcdoc::TarConsumer::writeHeader(const Header &h) noexcept {
     if(auto rv = _dst->write((const uint8_t *)&h, BLOCKSIZE); rv != BLOCKSIZE)
         return rv < OK ? rv : OUTPUT_ERROR;
     return OK;
 }
 
 libcdoc::result_t
-libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) {
+libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) noexcept {
     h.chksum.fill(' ');
     toOctal(h.size, size);
     toOctal(h.chksum, h.checksum().first);
@@ -149,7 +149,7 @@ libcdoc::TarConsumer::writeHeader(Header &h, int64_t size) {
 }
 
 libcdoc::result_t
-libcdoc::TarConsumer::writePadding(int64_t size) {
+libcdoc::TarConsumer::writePadding(int64_t size) noexcept {
     static const std::array<uint8_t,BLOCKSIZE> pad {};
     auto padSize = padding(size);
     if(auto rv = _dst->write(pad.data(), padSize); rv != padSize)
@@ -158,7 +158,7 @@ libcdoc::TarConsumer::writePadding(int64_t size) {
 }
 
 libcdoc::result_t
-libcdoc::TarConsumer::close()
+libcdoc::TarConsumer::close() noexcept
 {
     if (_current_size > 0) {
         if(auto rv = writePadding(_current_size); rv != OK)
@@ -176,7 +176,7 @@ libcdoc::TarConsumer::close()
 }
 
 bool
-libcdoc::TarConsumer::isError()
+libcdoc::TarConsumer::isError() noexcept
 {
 	return _dst->isError();
 }
@@ -227,7 +227,7 @@ libcdoc::TarSource::~TarSource()
 }
 
 libcdoc::result_t
-libcdoc::TarSource::read(uint8_t *dst, size_t size)
+libcdoc::TarSource::read(uint8_t *dst, size_t size) noexcept
 {
     if (_error != OK) return _error;
 	if (_pos >= _data_size) {
@@ -246,13 +246,13 @@ libcdoc::TarSource::read(uint8_t *dst, size_t size)
 }
 
 bool
-libcdoc::TarSource::isError()
+libcdoc::TarSource::isError() noexcept
 {
     return _error != OK;
 }
 
 bool
-libcdoc::TarSource::isEof()
+libcdoc::TarSource::isEof() noexcept
 {
 	return _eof;
 }

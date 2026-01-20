@@ -47,13 +47,16 @@ struct DDocFileListConsumer : public libcdoc::MultiDataConsumer {
     std::vector<DDOCReader::File> &files;
 
     DDocFileListConsumer(std::vector<DDOCReader::File> &_files): files(_files) {}
-    int64_t write(const uint8_t *src, size_t size) final {
+    int64_t write(const uint8_t *src, size_t size) noexcept final try {
         DDOCReader::File& file = files.back();
         file.data.insert(file.data.end(), src, src + size);
         return size;
+    } catch(...) {
+        return OUTPUT_STREAM_ERROR;
     }
-    libcdoc::result_t close() final { return libcdoc::OK; }
-    bool isError() final { return false; }
+
+    libcdoc::result_t close() noexcept final { return libcdoc::OK; }
+    bool isError() noexcept final { return false; }
     libcdoc::result_t open(const std::string& name, int64_t /*size*/) final {
         files.push_back({name, "application/octet-stream", {}});
         return libcdoc::OK;

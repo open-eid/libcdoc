@@ -18,6 +18,8 @@
 
 #include "Io.h"
 
+#include <array>
+
 namespace libcdoc {
 
 static constexpr size_t BLOCK_SIZE = 65536;
@@ -55,16 +57,15 @@ DataSource::getLastErrorStr(result_t code) const
 }
 
 int64_t
-DataConsumer::writeAll(DataSource& src)
+DataConsumer::writeAll(DataSource& src) noexcept
 {
-	static const size_t BUF_SIZE = 64 * 1024;
-	uint8_t buf[BUF_SIZE];
+    std::array<uint8_t,64 * 1024> buf{};
 	size_t total_read = 0;
 	while (!src.isEof()) {
-		int64_t n_read = src.read(buf, BUF_SIZE);
+        int64_t n_read = src.read(buf.data(), buf.size());
 		if (n_read < 0) return n_read;
 		if (n_read > 0) {
-			int64_t n_written = write(buf, n_read);
+            int64_t n_written = write(buf.data(), n_read);
 			if (n_written < 0) return n_written;
 			total_read += n_written;
 		}
@@ -102,22 +103,24 @@ FileListSource::FileListSource(const std::string& base, const std::vector<std::s
 }
 
 int64_t
-FileListSource::read(uint8_t *dst, size_t size)
+FileListSource::read(uint8_t *dst, size_t size) noexcept try
 {
 	if ((_current < 0) || (_current >= _files.size())) return WORKFLOW_ERROR;
 	_ifs.read((char *) dst, size);
 	return (_ifs.bad()) ? INPUT_STREAM_ERROR : _ifs.gcount();
+} catch(...) {
+    return INPUT_STREAM_ERROR;
 }
 
 bool
-FileListSource::isError()
+FileListSource::isError() noexcept
 {
     if ((_current < 0) || (_current >= _files.size())) return OK;
 	return _ifs.bad();
 }
 
 bool
-FileListSource::isEof()
+FileListSource::isEof() noexcept
 {
 	if (_current < 0) return false;
 	if (_current >= _files.size()) return true;

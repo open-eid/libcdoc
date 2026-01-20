@@ -31,14 +31,14 @@ public:
 	TarConsumer(DataConsumer *dst, bool take_ownership);
 	~TarConsumer();
 
-    libcdoc::result_t write(const uint8_t *src, size_t size) final;
-    libcdoc::result_t close() final;
-    bool isError() final;
+    libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final;
+    libcdoc::result_t close() noexcept final;
+    bool isError() noexcept final;
     libcdoc::result_t open(const std::string& name, int64_t size) final;
 private:
-    result_t writeHeader(const Header &h);
-    result_t writeHeader(Header &h, int64_t size);
-    result_t writePadding(int64_t size);
+    result_t writeHeader(const Header &h) noexcept;
+    result_t writeHeader(Header &h, int64_t size) noexcept;
+    result_t writePadding(int64_t size) noexcept;
 
 	DataConsumer *_dst;
 	bool _owned;
@@ -51,9 +51,9 @@ struct TarSource : public MultiDataSource
 public:
 	TarSource(DataSource *src, bool take_ownership);
 	~TarSource();
-    libcdoc::result_t read(uint8_t *dst, size_t size) override final;
-	bool isError() override final;
-	bool isEof() override final;
+    libcdoc::result_t read(uint8_t *dst, size_t size) noexcept final;
+    bool isError() noexcept final;
+    bool isEof() noexcept final;
     libcdoc::result_t getNumComponents() override final { return NOT_IMPLEMENTED; };
     libcdoc::result_t next(std::string& name, int64_t& size) override final;
 private:
