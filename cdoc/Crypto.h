@@ -114,10 +114,10 @@ struct EncryptionConsumer final : public DataConsumer {
     EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key);
     EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
     CDOC_DISABLE_MOVE_COPY(EncryptionConsumer)
-    result_t write(const uint8_t *src, size_t size) final;
-    result_t writeAAD(const std::vector<uint8_t> &data);
-    result_t close() final;
-    bool isError() final { return error != OK || dst.isError(); }
+    result_t write(const uint8_t *src, size_t size) noexcept final;
+    result_t writeAAD(const std::vector<uint8_t> &data) noexcept;
+    result_t close() noexcept final;
+    bool isError() noexcept final { return error != OK || dst.isError(); }
 
 private:
     unique_free_t<EVP_CIPHER_CTX> ctx;
@@ -131,11 +131,11 @@ struct DecryptionSource final : public DataSource {
     DecryptionSource(DataSource &src, const EVP_CIPHER *cipher, const std::vector<unsigned char> &key, size_t ivLen = 0);
     CDOC_DISABLE_MOVE_COPY(DecryptionSource)
 
-    result_t read(unsigned char* dst, size_t size) final;
+    result_t read(unsigned char* dst, size_t size) noexcept final;
     result_t updateAAD(const std::vector<uint8_t>& data);
     result_t close();
-    bool isError() final { return error != OK || src.isError(); }
-    bool isEof() final { return src.isEof(); }
+    bool isError() noexcept final { return error != OK || src.isError(); }
+    bool isEof() noexcept final { return src.isEof(); }
 
 private:
     unique_free_t<EVP_CIPHER_CTX> ctx;

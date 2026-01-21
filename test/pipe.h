@@ -23,7 +23,7 @@
  struct PipeSource : public libcdoc::DataSource {
 	PipeSource(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) {}
 
-    libcdoc::result_t read(uint8_t *dst, size_t size) override {
+    libcdoc::result_t read(uint8_t *dst, size_t size) noexcept override {
 		size = std::min<size_t>(size, _data.size());
 		std::copy(_data.cbegin(), _data.cbegin() + size, dst);
         if (_buf.size() < 1024) {
@@ -44,8 +44,8 @@
         }
         return libcdoc::NOT_IMPLEMENTED;
     }
-    bool isError() override { return false; }
-    bool isEof() override { return _eof; }
+    bool isError() noexcept override { return false; }
+    bool isEof() noexcept override { return _eof; }
 protected:
 	std::vector<uint8_t>& _data;
     bool& _eof;
@@ -54,12 +54,12 @@ protected:
 
 struct PipeConsumer : public libcdoc::DataConsumer {
 	PipeConsumer(std::vector<uint8_t>& data, bool& eof) : _data(data), _eof(eof) { _eof = false; }
-    libcdoc::result_t write(const uint8_t *src, size_t size) override final {
+    libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final {
 		_data.insert(_data.end(), src, src + size);
 		return size;
 	}
-    libcdoc::result_t close() override final { _eof = true; return libcdoc::OK; }
-	virtual bool isError() override final { return false; }
+    libcdoc::result_t close() noexcept final { _eof = true; return libcdoc::OK; }
+    virtual bool isError() noexcept final { return false; }
 protected:
     std::vector<uint8_t>& _data;
     bool& _eof;

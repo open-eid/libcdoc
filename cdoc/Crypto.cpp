@@ -449,7 +449,7 @@ EncryptionConsumer::EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *ciph
 }
 
 result_t
-EncryptionConsumer::write(const uint8_t *src, size_t size)
+EncryptionConsumer::write(const uint8_t *src, size_t size) noexcept try
 {
     if(!src || size == 0)
         return OK;
@@ -460,10 +460,12 @@ EncryptionConsumer::write(const uint8_t *src, size_t size)
     if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), buf.data(), &len, src, int(size)), "EVP_CipherUpdate"))
         return CRYPTO_ERROR;
     return dst.write(buf.data(), size_t(len));
+} catch(...) {
+    return OUTPUT_STREAM_ERROR;
 }
 
 result_t
-EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data)
+EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data) noexcept
 {
     int len = 0;
     if(SSL_FAILED(EVP_CipherUpdate(ctx.get(), nullptr, &len, data.data(), int(data.size())), "EVP_CipherUpdate"))
@@ -472,7 +474,7 @@ EncryptionConsumer::writeAAD(const std::vector<uint8_t> &data)
 }
 
 result_t
-EncryptionConsumer::close()
+EncryptionConsumer::close() noexcept try
 {
     buf.resize(std::max<size_t>(buf.size(), size_t(EVP_CIPHER_CTX_block_size(ctx.get()))));
     int len = int(buf.size());
@@ -498,6 +500,8 @@ EncryptionConsumer::close()
             return IO_ERROR;
     }
     return OK;
+} catch(...) {
+    return OUTPUT_STREAM_ERROR;
 }
 
 DecryptionSource::DecryptionSource(DataSource &src, const std::string &method, const std::vector<unsigned char> &key, size_t ivLen)
@@ -531,7 +535,7 @@ result_t DecryptionSource::updateAAD(const std::vector<uint8_t> &data)
     return OK;
 }
 
-result_t DecryptionSource::read(unsigned char *dst, size_t size)
+result_t DecryptionSource::read(unsigned char *dst, size_t size) noexcept
 {
     if (error != OK)
         return error;
