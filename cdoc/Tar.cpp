@@ -130,6 +130,10 @@ libcdoc::TarConsumer::~TarConsumer()
 libcdoc::result_t
 libcdoc::TarConsumer::write(const uint8_t *src, size_t size) noexcept
 {
+	if ((_current_size >= 0) && ((_current_written + size) > _current_size)) {
+		return WORKFLOW_ERROR;
+	}
+	_current_written += size;
 	return _dst->write(src, size);
 }
 
@@ -160,19 +164,25 @@ libcdoc::TarConsumer::writePadding(int64_t size) noexcept {
 libcdoc::result_t
 libcdoc::TarConsumer::close() noexcept
 {
-    if (_current_size > 0) {
-        if(auto rv = writePadding(_current_size); rv != OK)
-            return rv;
-    }
-    Header empty = {};
-    if(auto rv = writeHeader(empty); rv != OK)
-        return rv;
-    if(auto rv = writeHeader(empty); rv != OK)
-        return rv;
-	if (_owned) {
-        return _dst->close();
+	result_t result = OK;
+	if ((_current_size >= 0) && (_current_written < _current_size)) {
+		result = DATA_FORMAT_ERROR;
+	} else {
+		if (_current_written > 0) {
+			if(auto rv = writePadding(_current_written); rv != OK)
+				return rv;
+		}
+		Header empty = {};
+		if(auto rv = writeHeader(empty); rv != OK)
+			return rv;
+		if(auto rv = writeHeader(empty); rv != OK)
+			return rv;
 	}
-    return OK;
+	if (_owned) {
+		if (auto rv = _dst->close(); rv != OK)
+			return rv;
+	}
+    return result;
 }
 
 bool
@@ -184,12 +194,16 @@ libcdoc::TarConsumer::isError() noexcept
 libcdoc::result_t
 libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 {
-    if (_current_size > 0) {
-        if(auto rv = writePadding(_current_size); rv != OK)
+	if ((_current_size >= 0) && (_current_written < _current_size)) {
+		return WORKFLOW_ERROR;
+	}
+    if (_current_written > 0) {
+        if(auto rv = writePadding(_current_written); rv != OK)
             return rv;
     }
 
     _current_size = size;
+	_current_written = 0;
 	Header h {};
     size_t len = std::min(name.size(), h.name.size());
     std::copy_n(name.cbegin(), len, h.name.begin());

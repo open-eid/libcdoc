@@ -87,6 +87,20 @@ struct CDoc2Reader::Private {
     std::unique_ptr<libcdoc::DecryptionSource> dec;
     std::unique_ptr<libcdoc::ZSource> zsrc;
     std::unique_ptr<libcdoc::TarSource> tar;
+
+    result_t decryptAllAndClose() {
+        std::array<uint8_t, 1024> buf;
+        result_t rv = dec->read(buf.data(), buf.size());
+        while (rv == buf.size()) {
+            rv = dec->read(buf.data(), buf.size());
+        }
+        if (rv < 0) return rv;
+        zsrc.reset();
+        tar.reset();
+        rv = dec->close();
+        dec.reset();
+        return rv;
+    }
 };
 
 CDoc2Reader::~CDoc2Reader()
@@ -118,35 +132,44 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
+    if (lock_idx >= priv->locks.size()) {
+        setLastError(t_("Invalid lock index"));
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WRONG_ARGUMENTS;
+    }
     LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
     LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
     const Lock& lock = priv->locks.at(lock_idx);
+    LOG_DBG("Label: {}", lock.label);
     std::vector<uint8_t> kek;
     if (lock.type == Lock::Type::PASSWORD) {
         // Password
         LOG_DBG("password");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
+        LOG_DBG("info: {}", toHex(info_str));
         std::vector<uint8_t> kek_pm;
-        crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx);
-        LOG_DBG("password2");
+        if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx); rv != libcdoc::OK) {
+            setLastError(crypto->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
+        LOG_TRACE_KEY("salt: {}", lock.getBytes(Lock::SALT));
+        LOG_TRACE_KEY("kek_pm: {}", kek_pm);
         kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
-        if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-        LOG_DBG("password3");
     } else if (lock.type == Lock::Type::SYMMETRIC_KEY) {
         // Symmetric key
         LOG_DBG("symmetric");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
-        std::vector<uint8_t> kek_pm;
-        crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx);
-        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
-
-        LOG_DBG("Label: {}", lock.label);
         LOG_DBG("info: {}", toHex(info_str));
+        std::vector<uint8_t> kek_pm;
+        if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx); rv != libcdoc::OK) {
+            setLastError(crypto->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
         LOG_TRACE_KEY("salt: {}", lock.getBytes(Lock::SALT));
         LOG_TRACE_KEY("kek_pm: {}", kek_pm);
-        LOG_TRACE_KEY("kek: {}", kek);
-
-        if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
     } else if ((lock.type == Lock::Type::PUBLIC_KEY) || (lock.type == Lock::Type::SERVER)) {
         // Public/private key
         std::vector<uint8_t> key_material;
@@ -196,13 +219,9 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                 LOG_ERROR("{}", last_error);
                 return result;
             }
-
             LOG_TRACE_KEY("Key kekPm: {}", kek_pm);
-
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(Lock::Params::RCPT_KEY));
-
             LOG_DBG("info: {}", toHex(info_str));
-
             kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
         }
     } else  if (lock.type == Lock::Type::SHARE_SERVER) {
@@ -312,7 +331,6 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
     LOG_TRACE_KEY("KEK: {}", kek);
 
-
     if(kek.empty()) {
         setLastError(t_("Failed to derive KEK"));
         LOG_ERROR("{}", last_error);
@@ -394,10 +412,10 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
     aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
     aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
-    if(priv->dec->updateAAD(aad) != OK) {
-        setLastError("Wrong decryption key (FMK)");
+    if(auto rv = priv->dec->updateAAD(aad); rv != OK) {
+        setLastError(priv->dec->getLastErrorStr(rv));
         LOG_ERROR("{}", last_error);
-        return libcdoc::WRONG_KEY;
+        return rv;
     }
 
     priv->zsrc = std::make_unique<libcdoc::ZSource>(priv->dec.get(), false);
@@ -414,8 +432,13 @@ CDoc2Reader::nextFile(std::string& name, int64_t& size)
         LOG_ERROR("{}", last_error);
             return libcdoc::WORKFLOW_ERROR;
         }
-        result_t result = priv->tar->next(name, size);
-    if (result != OK) {
+    result_t result = priv->tar->next(name, size);
+    if (result < 0) {
+        result_t sr = priv->decryptAllAndClose();
+        if (sr != OK) {
+            setLastError("Crypto payload integrity check failed");
+            return sr;
+        }
         setLastError(priv->tar->getLastErrorStr(result));
     }
     return result;
@@ -430,7 +453,12 @@ CDoc2Reader::readData(uint8_t *dst, size_t size)
         return libcdoc::WORKFLOW_ERROR;
     }
     result_t result = priv->tar->read(dst, size);
-    if (result != OK) {
+    if (result < 0) {
+        result_t sr = priv->decryptAllAndClose();
+        if (sr != OK) {
+            setLastError("Crypto payload integrity check failed");
+            return sr;
+        }
         setLastError(priv->tar->getLastErrorStr(result));
     }
     return result;
@@ -439,11 +467,15 @@ CDoc2Reader::readData(uint8_t *dst, size_t size)
 libcdoc::result_t
 CDoc2Reader::finishDecryption()
 {
+    if (!priv->tar) {
+        setLastError("finishDecryption() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if (!priv->zsrc->isEof()) {
         setLastError(t_("CDoc contains additional payload data that is not part of content"));
         LOG_WARN("{}", last_error);
     }
-
     setLastError({});
     priv->zsrc.reset();
     priv->tar.reset();

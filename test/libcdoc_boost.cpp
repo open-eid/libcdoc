@@ -344,74 +344,173 @@ gen_random_filename()
     return utf16_to_utf8(u16);
 }
 
-BOOST_AUTO_TEST_SUITE(LargeFiles)
+// CDoc2 password and label
 
-BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * utf::description("Testing weird and large files"))
+struct TestCrypto : public libcdoc::CryptoBackend {
+    std::string_view password;
+
+    libcdoc::result_t getSecret(std::vector<uint8_t>& dst, unsigned int idx) override final {
+        // Mark empty password with bogus error to detect it
+        if(password.empty()) return libcdoc::WRONG_ARGUMENTS;
+        dst.assign(password.cbegin(), password.cend());
+        return libcdoc::OK;
+    };
+};
+
+BOOST_AUTO_TEST_SUITE(CDoc2Errors)
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2EncryptErrors, EncryptFixture,
+        * utf::description("Cause various encryption errors"))
 {
-    std::srand(1);
+    std::string container = formTargetFile("CDoc2Errors.cdoc");
+    uint8_t test_data[256];
 
-    std::vector<uint8_t> data;
-    bool eof = false;
-    PipeConsumer pipec(data, eof);
-    PipeSource pipes(data, eof);
-    PipeCrypto pcrypto("password");
+    libcdoc::ToolConf conf;
+    TestCrypto crypto;
 
+    srand(0);
     // Create writer
-    libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &pipec, false, nullptr, &pcrypto, nullptr);
-    BOOST_TEST(writer != nullptr);
-    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 65536);
-    BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
-    BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
+    libcdoc::CDocWriter *wrt = libcdoc::CDocWriter::createWriter(2, container, &conf, &crypto, nullptr);
+    BOOST_TEST(wrt != nullptr, "Cannot create writer");
+    // Nothing can be done until at least one recipient is added
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->finishEncryption() == libcdoc::WORKFLOW_ERROR);
 
-    // List of files: 0, 0, max_size...0
-    std::vector<libcdoc::FileInfo> files;
-    files.emplace_back(gen_random_filename(), 0);
-    files.emplace_back(gen_random_filename(), 0);
-    for (size_t size = max_filesize; size != 0; size = size / 100) {
-        files.emplace_back(gen_random_filename(), size);
-    }
-    files.emplace_back(gen_random_filename(), 0);
+    // Add recipient
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test-recipient", 65536);
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::OK);
+    // Encryption cannot proceed before beginEncryption is called
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->finishEncryption() == libcdoc::WORKFLOW_ERROR);
 
-    PipeWriter wrt(writer, files);
+    // Begin encryption
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WRONG_ARGUMENTS);
+    crypto.password = "test-password";
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::OK);
+    // Cannot do anything else than add files
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::WORKFLOW_ERROR);
+    // Finish encryption will succeed with empty tar
 
-    // Create reader
-    libcdoc::CDocReader *reader = libcdoc::CDocReader::createReader(&pipes, false, nullptr, &pcrypto, nullptr);
-    BOOST_TEST(reader != nullptr);
+    // Add file
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::OK);
+    // Errors
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
 
-    // Fill buffer
-    while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
-        BOOST_TEST(wrt.writeMore() == libcdoc::OK);
-    }
-    std::vector<uint8_t> fmk;
-    BOOST_TEST(reader->getFMK(fmk, 0) == libcdoc::OK);
-    BOOST_TEST(reader->beginDecryption(fmk) == libcdoc::OK);
-    libcdoc::FileInfo fi;
-    for (int cfile = 0; cfile < files.size(); cfile++) {
-        // Fill buffer
-        while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
-            BOOST_TEST(wrt.writeMore() == libcdoc::OK);
-        }
-        // Get file
-        BOOST_TEST(reader->nextFile(fi) == libcdoc::OK);
-        BOOST_TEST(fi.name == files[cfile].name);
-        BOOST_TEST(fi.size == files[cfile].size);
-        for (size_t pos = 0; pos < files[cfile].size; pos += wrt.BUFSIZE) {
-            // Fill buffer
-            while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
-                BOOST_TEST(wrt.writeMore() == libcdoc::OK);
-            }
-            size_t toread = files[cfile].size - pos;
-            if (toread > wrt.BUFSIZE) toread = wrt.BUFSIZE;
-            uint8_t buf[wrt.BUFSIZE], cbuf[wrt.BUFSIZE];
-            BOOST_TEST(reader->readData(buf, toread) == toread);
-            for (size_t i = 0; i < toread; i++) cbuf[i] = wrt.getChar(cfile, pos + i);
-            BOOST_TEST(std::memcmp(buf, cbuf, toread) == 0);
-        }
-    }
-    BOOST_TEST(reader->nextFile(fi) == libcdoc::END_OF_STREAM);
-    BOOST_TEST(reader->finishDecryption() == libcdoc::OK);
+    // Write data
+    for (int i = 0; i < 256; i++) test_data[i] = uint8_t(rand() & 0xff);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::OK);
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
+    for (int i = 0; i < 256; i++) test_data[i] = uint8_t(rand() & 0xff);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::OK);
+    for (int i = 0; i < 256; i++) test_data[i] = uint8_t(rand() & 0xff);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::OK);
+    for (int i = 0; i < 256; i++) test_data[i] = uint8_t(rand() & 0xff);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::OK);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    // Add file with unknown size
+    BOOST_TEST(wrt->addFile("testfile2", 10000000000ULL) == libcdoc::WRONG_ARGUMENTS);
+    BOOST_TEST(wrt->addFile("testfile2", 255) == libcdoc::OK);
+    for (int i = 0; i < 256; i++) test_data[i] = uint8_t(rand() & 0xff);
+    BOOST_TEST(wrt->writeData(test_data, 255) == libcdoc::OK);
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->finishEncryption() == libcdoc::OK);
+
+    BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->beginEncryption() == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->writeData(test_data, 256) == libcdoc::WORKFLOW_ERROR);
+    BOOST_TEST(wrt->finishEncryption() == libcdoc::WORKFLOW_ERROR);
+
+    delete wrt;
 }
 
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2DecryptErrors, DecryptFixture,
+        * utf::depends_on("CDoc2Errors/CDoc2EncryptErrors")
+        * utf::description("Cause various decryption errors"))
+{
+    std::string container = checkTargetFile("CDoc2Errors.cdoc");
+    libcdoc::ToolConf conf;
+    TestCrypto crypto;
+    uint8_t buf[1024];
+
+    libcdoc::CDocReader *rdr = libcdoc::CDocReader::createReader(container, &conf, &crypto, nullptr);
+    BOOST_TEST(rdr != nullptr, "Cannot create reader");
+    std::vector<uint8_t> fmk(32);
+    BOOST_TEST(rdr->getFMK(fmk, 10) == libcdoc::WRONG_ARGUMENTS);
+    // Decryption should start with random key
+    BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
+    libcdoc::FileInfo fi;
+    // But the first file should file
+    BOOST_TEST(rdr->nextFile(fi) != libcdoc::OK);
+    delete rdr;
+
+    rdr = libcdoc::CDocReader::createReader(container, &conf, &crypto, nullptr);
+    BOOST_TEST(rdr != nullptr, "Cannot create reader");
+    BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::WRONG_ARGUMENTS);
+    crypto.password = "wrong-password";
+    BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::WRONG_KEY);
+    crypto.password = "test-password";
+    BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::OK);
+    BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
+    BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
+    BOOST_TEST(fi.size == 1024);
+    BOOST_TEST(rdr->readData(buf, 256) == 256);
+    BOOST_TEST(rdr->readData(buf, 256) == 256);
+    BOOST_TEST(rdr->readData(buf, 256) == 256);
+    BOOST_TEST(rdr->readData(buf, 1024) == 256);
+    BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
+    BOOST_TEST(fi.size == 255);
+    BOOST_TEST(rdr->readData(buf, 1024) == 255);
+    BOOST_TEST(rdr->finishDecryption() == libcdoc::OK);
+    delete rdr;
+
+    // Write over the end of file
+    size_t fsize = std::filesystem::file_size(container);
+    std::fstream file(container, std::ios::out | std::ios::in);
+    BOOST_TEST(!file.bad());
+    file.seekp(fsize - 16, std::ios::beg);
+    file.write((char *) buf, 16);
+    file.close();
+
+    rdr = libcdoc::CDocReader::createReader(container, &conf, &crypto, nullptr);
+    BOOST_TEST(rdr != nullptr, "Cannot create reader");
+    BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::OK);
+    BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
+    BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
+    BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
+    BOOST_TEST(rdr->finishDecryption() == libcdoc::CRYPTO_ERROR);
+    delete rdr;
+
+    // Truncate file, should result zlib error
+    std::filesystem::resize_file(container, fsize - 32);
+    rdr = libcdoc::CDocReader::createReader(container, &conf, &crypto, nullptr);
+    BOOST_TEST(rdr != nullptr, "Cannot create reader");
+    BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::OK);
+    BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
+    libcdoc::result_t rv = rdr->nextFile(fi);
+    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::CRYPTO_ERROR)));
+    for (int i = 0; i < 4; i++) {
+        rv = rdr->readData(buf, 256);
+        BOOST_TEST(((rv == 256) || (rv == libcdoc::CRYPTO_ERROR)));
+    }
+    rv = rdr->nextFile(fi);
+    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::CRYPTO_ERROR)));
+    rv = rdr->readData(buf, 256);
+    BOOST_TEST(((rv == 255) || (rv == libcdoc::CRYPTO_ERROR)));
+    BOOST_TEST(rdr->finishDecryption() == libcdoc::WORKFLOW_ERROR);
+    delete rdr;
+}
 BOOST_AUTO_TEST_SUITE_END()
 
 // CDoc2 password and label
@@ -551,6 +650,78 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithRSAKeyV1, DecryptFixture,
 {
     decrypt({checkDataFile(sources[0])}, checkTargetFile("RSAKeyUsageV1.cdoc"), tmpDataPath.string(), fetchDataFile(RSAPrivKeyFile));
 }
+BOOST_AUTO_TEST_SUITE_END()
+
+// Stream encryption/decryption of large files
+
+BOOST_AUTO_TEST_SUITE(LargeFiles)
+
+BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * utf::description("Testing weird and large files"))
+{
+    std::srand(1);
+
+    std::vector<uint8_t> data;
+    bool eof = false;
+    PipeConsumer pipec(data, eof);
+    PipeSource pipes(data, eof);
+    PipeCrypto pcrypto("password");
+
+    // Create writer
+    libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &pipec, false, nullptr, &pcrypto, nullptr);
+    BOOST_TEST(writer != nullptr);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 65536);
+    BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
+    BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
+
+    // List of files: 0, 0, max_size...0
+    std::vector<libcdoc::FileInfo> files;
+    files.emplace_back(gen_random_filename(), 0);
+    files.emplace_back(gen_random_filename(), 0);
+    for (size_t size = max_filesize; size != 0; size = size / 100) {
+        files.emplace_back(gen_random_filename(), size);
+    }
+    files.emplace_back(gen_random_filename(), 0);
+
+    PipeWriter wrt(writer, files);
+
+    // Create reader
+    libcdoc::CDocReader *reader = libcdoc::CDocReader::createReader(&pipes, false, nullptr, &pcrypto, nullptr);
+    BOOST_TEST(reader != nullptr);
+
+    // Fill buffer
+    while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+        BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+    }
+    std::vector<uint8_t> fmk;
+    BOOST_TEST(reader->getFMK(fmk, 0) == libcdoc::OK);
+    BOOST_TEST(reader->beginDecryption(fmk) == libcdoc::OK);
+    libcdoc::FileInfo fi;
+    for (int cfile = 0; cfile < files.size(); cfile++) {
+        // Fill buffer
+        while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+            BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+        }
+        // Get file
+        BOOST_TEST(reader->nextFile(fi) == libcdoc::OK);
+        BOOST_TEST(fi.name == files[cfile].name);
+        BOOST_TEST(fi.size == files[cfile].size);
+        for (size_t pos = 0; pos < files[cfile].size; pos += wrt.BUFSIZE) {
+            // Fill buffer
+            while((data.size() < 2 * wrt.BUFSIZE) && !wrt.isEof()) {
+                BOOST_TEST(wrt.writeMore() == libcdoc::OK);
+            }
+            size_t toread = files[cfile].size - pos;
+            if (toread > wrt.BUFSIZE) toread = wrt.BUFSIZE;
+            uint8_t buf[wrt.BUFSIZE], cbuf[wrt.BUFSIZE];
+            BOOST_TEST(reader->readData(buf, toread) == toread);
+            for (size_t i = 0; i < toread; i++) cbuf[i] = wrt.getChar(cfile, pos + i);
+            BOOST_TEST(std::memcmp(buf, cbuf, toread) == 0);
+        }
+    }
+    BOOST_TEST(reader->nextFile(fi) == libcdoc::END_OF_STREAM);
+    BOOST_TEST(reader->finishDecryption() == libcdoc::OK);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // Label parsing

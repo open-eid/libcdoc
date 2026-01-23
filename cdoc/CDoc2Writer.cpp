@@ -457,6 +457,11 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 libcdoc::result_t
 CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if(tar) {
         setLastError("Cannot add Recipient when files are added");
         LOG_ERROR("{}", last_error);
@@ -469,6 +474,11 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
 libcdoc::result_t
 CDoc2Writer::beginEncryption()
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     last_error.clear();
     if(recipients.empty()) {
         setLastError("No recipients added");
@@ -488,12 +498,26 @@ CDoc2Writer::beginEncryption()
 libcdoc::result_t
 CDoc2Writer::addFile(const std::string& name, size_t size)
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if(!tar) {
         setLastError("Encryption not started");
         LOG_ERROR("{}", last_error);
         return libcdoc::WORKFLOW_ERROR;
     }
-    if (name.empty() || !libcdoc::isValidUtf8(name)) return libcdoc::DATA_FORMAT_ERROR;
+    if (name.empty() || !libcdoc::isValidUtf8(name)) {
+        setLastError("Invalid file name");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::DATA_FORMAT_ERROR;
+    }
+    if (size > 8ULL * 1024 * 1024 * 1024) {
+        setLastError("Invalid file size");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WRONG_ARGUMENTS;
+    }
     if(auto rv = tar->open(name, size); rv < 0) {
         setLastError(tar->getLastErrorStr(rv));
         LOG_ERROR("{}", last_error);
@@ -505,6 +529,11 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
 libcdoc::result_t
 CDoc2Writer::writeData(const uint8_t *src, size_t size)
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if(!tar) {
         setLastError("No file added");
         LOG_ERROR("{}", last_error);
@@ -520,6 +549,11 @@ CDoc2Writer::writeData(const uint8_t *src, size_t size)
 libcdoc::result_t
 CDoc2Writer::finishEncryption()
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if(!tar) {
         setLastError("No file added");
         LOG_ERROR("{}", last_error);
@@ -531,12 +565,18 @@ CDoc2Writer::finishEncryption()
     tar.reset();
     recipients.clear();
     if (owned) dst->close();
+    finished = true;
     return rv;
 }
 
 libcdoc::result_t
 CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
+    if (finished) {
+        setLastError("Encryption finished");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     for (auto rcpt : keys) {
         if(auto rv = addRecipient(rcpt); rv != libcdoc::OK)
             return rv;
