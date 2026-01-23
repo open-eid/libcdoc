@@ -46,6 +46,7 @@ private:
 
     std::unique_ptr<libcdoc::TarConsumer> tar;
     std::vector<libcdoc::Recipient> recipients;
+    bool finished = false;
 };
 
 }

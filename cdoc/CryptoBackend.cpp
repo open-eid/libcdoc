@@ -82,7 +82,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 		if (pw_salt.empty()) return INVALID_PARAMS;
 		std::vector<uint8_t> secret;
         int result = getSecret(secret, idx);
-		if (result < 0) return result;
+		if (result) return result;
 
         LOG_DBG("Secret: {}", toHex(secret));
 
@@ -91,7 +91,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 		if (key_material.empty()) return OPENSSL_ERROR;
 	} else {
         int result = getSecret(key_material, idx);
-		if (result < 0) return result;
+		if (result) return result;
         LOG_DBG("Secret: {}", toHex(key_material));
         if (key_material.size() != 32) {
             return INVALID_PARAMS;

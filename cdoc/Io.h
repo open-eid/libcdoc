@@ -255,7 +255,7 @@ struct CDOC_EXPORT IStreamSource : public DataSource {
         if (_owned) delete _ifs;
 	}
 
-    result_t seek(size_t pos) {
+    result_t seek(size_t pos) override {
         if(_ifs->bad()) return INPUT_STREAM_ERROR;
         _ifs->clear();
 		_ifs->seekg(pos);
