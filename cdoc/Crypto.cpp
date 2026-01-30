@@ -621,6 +621,6 @@ result_t DecryptionSource::close()
     int len = 0;
     std::vector<uint8_t> buffer(EVP_CIPHER_CTX_block_size(ctx.get()), 0);
     if (SSL_FAILED(EVP_CipherFinal_ex(ctx.get(), buffer.data(), &len), "EVP_CipherFinal_ex"))
-        return error = CRYPTO_ERROR;
+        return error = HASH_MISMATCH;
     return OK;
 }

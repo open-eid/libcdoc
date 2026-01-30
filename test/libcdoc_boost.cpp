@@ -489,7 +489,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2DecryptErrors, DecryptFixture,
     BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
     BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
     BOOST_TEST(rdr->nextFile(fi) == libcdoc::OK);
-    BOOST_TEST(rdr->finishDecryption() == libcdoc::CRYPTO_ERROR);
+    BOOST_TEST(rdr->finishDecryption() == libcdoc::HASH_MISMATCH);
     delete rdr;
 
     // Truncate file, should result zlib error
@@ -499,15 +499,15 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2DecryptErrors, DecryptFixture,
     BOOST_TEST(rdr->getFMK(fmk, 0) == libcdoc::OK);
     BOOST_TEST(rdr->beginDecryption(fmk) == libcdoc::OK);
     libcdoc::result_t rv = rdr->nextFile(fi);
-    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::CRYPTO_ERROR)));
+    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::HASH_MISMATCH)));
     for (int i = 0; i < 4; i++) {
         rv = rdr->readData(buf, 256);
-        BOOST_TEST(((rv == 256) || (rv == libcdoc::CRYPTO_ERROR)));
+        BOOST_TEST(((rv == 256) || (rv == libcdoc::HASH_MISMATCH)));
     }
     rv = rdr->nextFile(fi);
-    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::CRYPTO_ERROR)));
+    BOOST_TEST(((rv == libcdoc::OK) || (rv == libcdoc::HASH_MISMATCH)));
     rv = rdr->readData(buf, 256);
-    BOOST_TEST(((rv == 255) || (rv == libcdoc::CRYPTO_ERROR)));
+    BOOST_TEST(((rv == 255) || (rv == libcdoc::HASH_MISMATCH)));
     BOOST_TEST(rdr->finishDecryption() == libcdoc::WORKFLOW_ERROR);
     delete rdr;
 }

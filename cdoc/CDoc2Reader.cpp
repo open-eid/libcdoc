@@ -101,6 +101,8 @@ struct CDoc2Reader::Private {
         dec.reset();
         return rv;
     }
+
+    static void buildLock(Lock& lock, const cdoc20::header::RecipientRecord& recipient);
 };
 
 CDoc2Reader::~CDoc2Reader()
@@ -487,11 +489,140 @@ CDoc2Reader::finishDecryption()
     return rv;
 }
 
+void
+CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecord& recipient)
+{
+    using namespace cdoc20::recipients;
+    using namespace cdoc20::header;
+
+    lock.label = recipient.key_label()->str();
+    lock.encrypted_fmk.assign(recipient.encrypted_fmk()->cbegin(), recipient.encrypted_fmk()->cend());
+
+    if(recipient.fmk_encryption_method() != cdoc20::header::FMKEncryptionMethod::XOR)
+    {
+        LOG_WARN("Unsupported FMK encryption method");
+        return;
+    }
+    switch(recipient.capsule_type())
+    {
+    case Capsule::recipients_ECCPublicKeyCapsule:
+        if(const auto *key = recipient.capsule_as_recipients_ECCPublicKeyCapsule()) {
+            if(key->curve() == EllipticCurve::secp384r1) {
+                lock.type = Lock::Type::PUBLIC_KEY;
+                lock.pk_type = Lock::PKType::ECC;
+                lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
+                lock.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
+                LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
+            } else {
+                LOG_ERROR("Unsupported ECC curve: skipping");
+            }
+        }
+        return;
+    case Capsule::recipients_RSAPublicKeyCapsule:
+        if(const auto *key = recipient.capsule_as_recipients_RSAPublicKeyCapsule())
+        {
+            lock.type = Lock::Type::PUBLIC_KEY;
+            lock.pk_type = Lock::PKType::RSA;
+            lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
+            lock.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
+        }
+        return;
+    case Capsule::recipients_KeyServerCapsule:
+        if (const KeyServerCapsule *server = recipient.capsule_as_recipients_KeyServerCapsule()) {
+            KeyDetailsUnion details = server->recipient_key_details_type();
+            switch (details) {
+            case KeyDetailsUnion::EccKeyDetails:
+                if(const EccKeyDetails *eccDetails = server->recipient_key_details_as_EccKeyDetails()) {
+                    if(eccDetails->curve() != EllipticCurve::secp384r1) {
+                        LOG_ERROR("Unsupported elliptic curve key type");
+                        return;
+                    }
+                    lock.pk_type = Lock::PKType::ECC;
+                    lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(eccDetails->recipient_public_key()->cbegin(), eccDetails->recipient_public_key()->cend()));
+                } else {
+                    LOG_ERROR("Invalid file format");
+                    return;
+                }
+                break;
+            case KeyDetailsUnion::RsaKeyDetails:
+                if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
+                    lock.pk_type = Lock::PKType::RSA;
+                    lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(rsaDetails->recipient_public_key()->cbegin(), rsaDetails->recipient_public_key()->cend()));
+                } else {
+                    LOG_ERROR("Invalid file format");
+                    return;
+                }
+                break;
+            default:
+                LOG_ERROR("Unsupported Key Server Details: skipping");
+                return;
+            }
+            lock.type = Lock::Type::SERVER;
+            lock.setString(Lock::Params::KEYSERVER_ID, server->keyserver_id()->str());
+            lock.setString(Lock::Params::TRANSACTION_ID, server->transaction_id()->str());
+        } else {
+            LOG_ERROR("Invalid file format");
+        }
+        return;
+    case Capsule::recipients_SymmetricKeyCapsule:
+        if(const auto *capsule = recipient.capsule_as_recipients_SymmetricKeyCapsule())
+        {
+            lock.type = Lock::SYMMETRIC_KEY;
+            lock.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
+        }
+        return;
+    case Capsule::recipients_PBKDF2Capsule:
+        if(const auto *capsule = recipient.capsule_as_recipients_PBKDF2Capsule()) {
+            KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
+            if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
+                LOG_ERROR("Unsupported KDF algorithm: skipping");
+                return;
+            }
+            lock.type = Lock::PASSWORD;
+            lock.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
+            lock.setBytes(Lock::PW_SALT, std::vector<uint8_t>(capsule->password_salt()->cbegin(), capsule->password_salt()->cend()));
+            lock.setInt(Lock::KDF_ITER, capsule->kdf_iterations());
+        }
+        return;
+    case Capsule::recipients_KeySharesCapsule:
+        if (const auto *capsule = recipient.capsule_as_recipients_KeySharesCapsule()) {
+            if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
+                LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
+                return;
+            }
+            if (capsule->shares_scheme() != cdoc20::recipients::SharesScheme::N_OF_N) {
+                LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
+                return;
+            }
+            /* url,share_id;url,share_id... */
+            std::vector<std::string> strs;
+            for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
+                std::string id = cshare->share_id()->str();
+                std::string url = cshare->server_base_url()->str();
+                std::string str = url + "," + id;
+                LOG_DBG("Keyshare: {}", str);
+                strs.push_back(std::move(str));
+            }
+            std::string urls = join(strs, ";");
+            LOG_DBG("Keyshare urls: {}", urls);
+            std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
+            LOG_DBG("Keyshare salt: {}", toHex(salt));
+            std::string recipient_id = capsule->recipient_id()->str();
+            LOG_DBG("Keyshare recipient id: {}", recipient_id);
+            lock.type = Lock::SHARE_SERVER;
+            lock.setString(Lock::SHARE_URLS, urls);
+            lock.setBytes(Lock::SALT, salt);
+            lock.setString(Lock::RECIPIENT_ID, recipient_id);
+        }
+        return;
+    default:
+        LOG_ERROR("Unsupported Key Details: skipping");
+    }
+}
+
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     : CDocReader(2), priv(std::make_unique<Private>(src, take_ownership))
 {
-
-    using namespace cdoc20::recipients;
     using namespace cdoc20::header;
 
     setLastError(t_("Invalid CDoc 2.0 header"));
@@ -555,140 +686,9 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     setLastError({});
 
     for(const auto *recipient: *recipients){
-        if(recipient->fmk_encryption_method() != FMKEncryptionMethod::XOR)
-        {
-            LOG_WARN("Unsupported FMK encryption method: skipping");
-            continue;
-        }
-        auto fillRecipientPK = [&recipient,&locks = priv->locks] (Lock::PKType pk_type, auto key) -> Lock& {
-            Lock &k = locks.emplace_back(Lock::Type::PUBLIC_KEY);
-            k.pk_type = pk_type;
-            k.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
-            k.label = recipient->key_label()->str();
-            k.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-            return k;
-        };
-        switch(recipient->capsule_type())
-        {
-        case Capsule::recipients_ECCPublicKeyCapsule:
-            if(const auto *key = recipient->capsule_as_recipients_ECCPublicKeyCapsule()) {
-                if(key->curve() != EllipticCurve::secp384r1) {
-                    LOG_ERROR("Unsupported ECC curve: skipping");
-                    continue;
-                }
-                Lock &k = fillRecipientPK(Lock::PKType::ECC, key);
-                k.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
-                LOG_DBG("Load PK: {}", toHex(k.getBytes(Lock::Params::RCPT_KEY)));
-            }
-            break;
-        case Capsule::recipients_RSAPublicKeyCapsule:
-            if(const auto *key = recipient->capsule_as_recipients_RSAPublicKeyCapsule())
-            {
-                Lock &k = fillRecipientPK(Lock::PKType::RSA, key);
-                k.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
-            }
-            break;
-        case Capsule::recipients_KeyServerCapsule:
-            if (const KeyServerCapsule *server = recipient->capsule_as_recipients_KeyServerCapsule()) {
-                KeyDetailsUnion details = server->recipient_key_details_type();
-                Lock ckey;
-                switch (details) {
-                case KeyDetailsUnion::EccKeyDetails:
-                    if(const EccKeyDetails *eccDetails = server->recipient_key_details_as_EccKeyDetails()) {
-                        if(eccDetails->curve() == EllipticCurve::secp384r1) {
-                            ckey.type = Lock::Type::SERVER;
-                            ckey.pk_type = Lock::PKType::ECC;
-                            ckey.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(eccDetails->recipient_public_key()->cbegin(), eccDetails->recipient_public_key()->cend()));
-                        } else {
-                            LOG_ERROR("Unsupported elliptic curve key type");
-                        }
-                    } else {
-                        LOG_ERROR("Invalid file format");
-                    }
-                    break;
-                case KeyDetailsUnion::RsaKeyDetails:
-                    if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
-                        ckey.type = Lock::Type::SERVER;
-                        ckey.pk_type = Lock::PKType::RSA;
-                        ckey.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(rsaDetails->recipient_public_key()->cbegin(), rsaDetails->recipient_public_key()->cend()));
-                    } else {
-                        LOG_ERROR("Invalid file format");
-                    }
-                    break;
-                default:
-                    LOG_ERROR("Unsupported Key Server Details: skipping");
-                }
-                if (ckey.type != Lock::Type::INVALID) {
-                    ckey.label = recipient->key_label()->c_str();
-                    ckey.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                    ckey.setString(Lock::Params::KEYSERVER_ID, server->keyserver_id()->str());
-                    ckey.setString(Lock::Params::TRANSACTION_ID, server->transaction_id()->str());
-                    priv->locks.push_back(std::move(ckey));
-                }
-            } else {
-                LOG_ERROR("Invalid file format");
-            }
-            break;
-        case Capsule::recipients_SymmetricKeyCapsule:
-            if(const auto *capsule = recipient->capsule_as_recipients_SymmetricKeyCapsule())
-            {
-                Lock &key = priv->locks.emplace_back(Lock::SYMMETRIC_KEY);
-                key.label = recipient->key_label()->str();
-                key.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                key.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
-            }
-            break;
-        case Capsule::recipients_PBKDF2Capsule:
-            if(const auto *capsule = recipient->capsule_as_recipients_PBKDF2Capsule()) {
-                KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
-                if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
-                    LOG_ERROR("Unsupported KDF algorithm: skipping");
-                    continue;
-                }
-                Lock &key = priv->locks.emplace_back(Lock::PASSWORD);
-                key.label = recipient->key_label()->str();
-                key.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                key.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
-                key.setBytes(Lock::PW_SALT, std::vector<uint8_t>(capsule->password_salt()->cbegin(), capsule->password_salt()->cend()));
-                key.setInt(Lock::KDF_ITER, capsule->kdf_iterations());
-            }
-            break;
-        case Capsule::recipients_KeySharesCapsule:
-            if (const auto *capsule = recipient->capsule_as_recipients_KeySharesCapsule()) {
-                if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
-                    LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
-                    continue;
-                }
-                if (capsule->shares_scheme() != cdoc20::recipients::SharesScheme::N_OF_N) {
-                    LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
-                    continue;
-                }
-                /* url,share_id;url,share_id... */
-                std::vector<std::string> strs;
-                for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
-                    std::string id = cshare->share_id()->str();
-                    std::string url = cshare->server_base_url()->str();
-                    std::string str = url + "," + id;
-                    LOG_DBG("Keyshare: {}", str);
-                    strs.push_back(std::move(str));
-                }
-                std::string urls = join(strs, ";");
-                LOG_DBG("Keyshare urls: {}", urls);
-                std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
-                LOG_DBG("Keyshare salt: {}", toHex(salt));
-                std::string recipient_id = capsule->recipient_id()->str();
-                LOG_DBG("Keyshare recipient id: {}", recipient_id);
-                Lock &lock = priv->locks.emplace_back(Lock::SHARE_SERVER);
-                lock.label = recipient->key_label()->str();
-                lock.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                lock.setString(Lock::SHARE_URLS, urls);
-                lock.setBytes(Lock::SALT, salt);
-                lock.setString(Lock::RECIPIENT_ID, recipient_id);
-            }
-            break;
-        default:
-            LOG_ERROR("Unsupported Key Details: skipping");
-        }
+        Lock lock(Lock::Type::UNSUPPORTED);
+        Private::buildLock(lock, *recipient);
+        priv->locks.push_back(std::move(lock));
     }
 }
 
