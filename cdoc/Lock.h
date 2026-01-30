@@ -48,6 +48,11 @@ struct CDOC_EXPORT Lock
          */
 		INVALID,
         /**
+         * @brief Valid capsule but not supported by this library version
+         * 
+         */
+        UNSUPPORTED,
+        /**
          * @brief Symmetric AES key
          */
 		SYMMETRIC_KEY,
@@ -194,7 +199,7 @@ struct CDOC_EXPORT Lock
      * @brief check whether lock is valid
      * @return true if valid
      */
-    bool isValid() const noexcept { return (type != Type::INVALID) && !label.empty() && !encrypted_fmk.empty(); }
+    bool isValid() const noexcept { return (type != Type::INVALID) && (type != Type::UNSUPPORTED) && !label.empty() && !encrypted_fmk.empty(); }
     /**
      * @brief check whether lock is based on symmetric key
      * @return true if type is SYMMETRIC_KEY or PASSWORD
