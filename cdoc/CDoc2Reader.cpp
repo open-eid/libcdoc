@@ -215,7 +215,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             }
         } else {
             std::vector<uint8_t> kek_pm;
-            int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), lock_idx);
+            int result = crypto->deriveHMACExtract(kek_pm, key_material, toUint8Vector(libcdoc::CDoc2::KEKPREMASTER), lock_idx);
             if (result < 0) {
                 setLastError(crypto->getLastErrorStr(result));
                 LOG_ERROR("{}", last_error);
@@ -411,7 +411,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     LOG_TRACE_KEY("cek: {}", cek);
 
     priv->dec = std::make_unique<libcdoc::DecryptionSource>(*priv->_src, EVP_chacha20_poly1305(), cek, libcdoc::CDoc2::NONCE_LEN);
-    std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
+    std::vector<uint8_t> aad = toUint8Vector(libcdoc::CDoc2::PAYLOAD);
     aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
     aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
     if(auto rv = priv->dec->updateAAD(aad); rv != OK) {
@@ -496,7 +496,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
     using namespace cdoc20::header;
 
     lock.label = recipient.key_label()->str();
-    lock.encrypted_fmk.assign(recipient.encrypted_fmk()->cbegin(), recipient.encrypted_fmk()->cend());
+    lock.encrypted_fmk = toUint8Vector(recipient.encrypted_fmk());
 
     if(recipient.fmk_encryption_method() != cdoc20::header::FMKEncryptionMethod::XOR)
     {
@@ -510,8 +510,8 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             if(key->curve() == EllipticCurve::secp384r1) {
                 lock.type = Lock::Type::PUBLIC_KEY;
                 lock.pk_type = Lock::PKType::ECC;
-                lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
-                lock.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
+                lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(key->recipient_public_key()));
+                lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(key->sender_public_key()));
                 LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
             } else {
                 LOG_ERROR("Unsupported ECC curve: skipping");
@@ -523,8 +523,8 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
         {
             lock.type = Lock::Type::PUBLIC_KEY;
             lock.pk_type = Lock::PKType::RSA;
-            lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
-            lock.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
+            lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(key->recipient_public_key()));
+            lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(key->encrypted_kek()));
         }
         return;
     case Capsule::recipients_KeyServerCapsule:
@@ -538,7 +538,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
                         return;
                     }
                     lock.pk_type = Lock::PKType::ECC;
-                    lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(eccDetails->recipient_public_key()->cbegin(), eccDetails->recipient_public_key()->cend()));
+                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
                 } else {
                     LOG_ERROR("Invalid file format");
                     return;
@@ -547,7 +547,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             case KeyDetailsUnion::RsaKeyDetails:
                 if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
                     lock.pk_type = Lock::PKType::RSA;
-                    lock.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(rsaDetails->recipient_public_key()->cbegin(), rsaDetails->recipient_public_key()->cend()));
+                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(rsaDetails->recipient_public_key()));
                 } else {
                     LOG_ERROR("Invalid file format");
                     return;
@@ -568,7 +568,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
         if(const auto *capsule = recipient.capsule_as_recipients_SymmetricKeyCapsule())
         {
             lock.type = Lock::SYMMETRIC_KEY;
-            lock.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
+            lock.setBytes(Lock::SALT, toUint8Vector(capsule->salt()));
         }
         return;
     case Capsule::recipients_PBKDF2Capsule:
@@ -579,8 +579,8 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
                 return;
             }
             lock.type = Lock::PASSWORD;
-            lock.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
-            lock.setBytes(Lock::PW_SALT, std::vector<uint8_t>(capsule->password_salt()->cbegin(), capsule->password_salt()->cend()));
+            lock.setBytes(Lock::SALT, toUint8Vector(capsule->salt()));
+            lock.setBytes(Lock::PW_SALT, toUint8Vector(capsule->password_salt()));
             lock.setInt(Lock::KDF_ITER, capsule->kdf_iterations());
         }
         return;
@@ -605,7 +605,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             }
             std::string urls = join(strs, ";");
             LOG_DBG("Keyshare urls: {}", urls);
-            std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
+            std::vector<uint8_t> salt = toUint8Vector(capsule->salt());
             LOG_DBG("Keyshare salt: {}", toHex(salt));
             std::string recipient_id = capsule->recipient_id()->str();
             LOG_DBG("Keyshare recipient id: {}", recipient_id);
