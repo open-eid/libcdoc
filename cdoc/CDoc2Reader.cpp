@@ -686,9 +686,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     setLastError({});
 
     for(const auto *recipient: *recipients){
-        Lock lock(Lock::Type::UNSUPPORTED);
-        Private::buildLock(lock, *recipient);
-        priv->locks.push_back(std::move(lock));
+        Private::buildLock(priv->locks.emplace_back(Lock::Type::UNSUPPORTED), *recipient);
     }
 }
 
