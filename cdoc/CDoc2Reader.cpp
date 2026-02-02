@@ -539,29 +539,21 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
                     }
                     lock.pk_type = Lock::PKType::ECC;
                     lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
-                } else {
-                    LOG_ERROR("Invalid file format");
-                    return;
                 }
                 break;
             case KeyDetailsUnion::RsaKeyDetails:
                 if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
                     lock.pk_type = Lock::PKType::RSA;
                     lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(rsaDetails->recipient_public_key()));
-                } else {
-                    LOG_ERROR("Invalid file format");
-                    return;
                 }
                 break;
             default:
-                LOG_ERROR("Unsupported Key Server Details: skipping");
+                LOG_ERROR("Unsupported Key Server Details");
                 return;
             }
             lock.type = Lock::Type::SERVER;
             lock.setString(Lock::Params::KEYSERVER_ID, server->keyserver_id()->str());
             lock.setString(Lock::Params::TRANSACTION_ID, server->transaction_id()->str());
-        } else {
-            LOG_ERROR("Invalid file format");
         }
         return;
     case Capsule::recipients_SymmetricKeyCapsule:
@@ -616,7 +608,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
         }
         return;
     default:
-        LOG_ERROR("Unsupported Key Details: skipping");
+        LOG_ERROR("Unsupported capsule type");
     }
 }
 
