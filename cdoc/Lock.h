@@ -44,14 +44,10 @@ struct CDOC_EXPORT Lock
      */
 	enum Type : unsigned char {
         /**
-         * @brief Invalid value
-         */
-		INVALID,
-        /**
          * @brief Valid capsule but not supported by this library version
          * 
          */
-        UNSUPPORTED,
+        UNKNOWN,
         /**
          * @brief Symmetric AES key
          */
@@ -180,7 +176,7 @@ struct CDOC_EXPORT Lock
     /**
      * @brief The lock type
      */
-	Type type = Type::INVALID;
+	Type type = Type::UNKNOWN;
     /**
      * @brief algorithm type for public key based locks
      */
@@ -199,7 +195,7 @@ struct CDOC_EXPORT Lock
      * @brief check whether lock is valid
      * @return true if valid
      */
-    bool isValid() const noexcept { return (type != Type::INVALID) && (type != Type::UNSUPPORTED) && !label.empty() && !encrypted_fmk.empty(); }
+    bool isValid() const noexcept { return (type != Type::UNKNOWN) && !label.empty() && !encrypted_fmk.empty(); }
     /**
      * @brief check whether lock is based on symmetric key
      * @return true if type is SYMMETRIC_KEY or PASSWORD
