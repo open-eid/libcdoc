@@ -588,7 +588,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             }
             /* url,share_id;url,share_id... */
             std::vector<std::string> strs;
-            for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
+            for (auto cshare : *capsule->shares()) {
                 std::string id = cshare->share_id()->str();
                 std::string url = cshare->server_base_url()->str();
                 std::string str = url + "," + id;

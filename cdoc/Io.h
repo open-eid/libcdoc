@@ -259,8 +259,6 @@ struct CDOC_EXPORT IStreamSource : public DataSource {
         if(_ifs->bad()) return INPUT_STREAM_ERROR;
         _ifs->clear();
 		_ifs->seekg(pos);
-        //std::cerr << "Stream bad:" << _ifs->bad() << " eof:" << _ifs->eof() << " fail:" << _ifs->fail() << std::endl;
-        //std::cerr << "tell:" << _ifs->tellg() << std::endl;
         return bool(_ifs->bad()) ? INPUT_STREAM_ERROR : OK;
 	}
 

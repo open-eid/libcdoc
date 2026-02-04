@@ -103,7 +103,7 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
     int version = getCDocFileVersion(src);
     LOG_DBG("CDocReader::createReader: version {}", version);
     if (src->seek(0) != libcdoc::OK) return nullptr;
-    CDocReader *reader;
+    CDocReader *reader = nullptr;
 	if (version == 1) {
         reader = new CDoc1Reader(src, take_ownership);
 	} else if (version == 2) {
@@ -111,12 +111,16 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
     } else {
         if(take_ownership)
             delete src;
-		return nullptr;
-	}
-	reader->conf = conf;
-	reader->crypto = crypto;
+        return nullptr;
+    }
+    if (!reader->getLastErrorStr().empty()) {
+        delete reader;
+        return nullptr;
+    }
+    reader->conf = conf;
+    reader->crypto = crypto;
     reader->network = network;
-	return reader;
+    return reader;
 }
 
 libcdoc::CDocReader *
@@ -125,43 +129,14 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
     if(path.empty())
         return nullptr;
     auto isrc = make_unique<IStreamSource>(path);
-    int version = getCDocFileVersion(isrc.get());
-    LOG_DBG("CDocReader::createReader: version {}", version);
-    if (isrc->seek(0) != libcdoc::OK)
-        return nullptr;
-    CDocReader *reader;
-    if (version == 1) {
-        reader = new CDoc1Reader(isrc.release(), true);
-    } else if (version == 2) {
-        reader = new CDoc2Reader(isrc.release(), true);
-    } else {
-        return nullptr;
-    }
-    reader->conf = conf;
-    reader->crypto = crypto;
-    reader->network = network;
-    return reader;
+    return createReader(isrc.release(), true, conf, crypto, network);
 }
 
 libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
-    libcdoc::IStreamSource *isrc = new libcdoc::IStreamSource(&ifs, false);
-    int version = getCDocFileVersion(isrc);
-    LOG_DBG("CDocReader::createReader: version {}", version);
-    CDocReader *reader;
-    if (version == 1) {
-        reader = new CDoc1Reader(isrc, true);
-    } else if (version == 2) {
-        reader = new CDoc2Reader(isrc, true);
-    } else {
-        delete isrc;
-        return nullptr;
-    }
-    reader->conf = conf;
-    reader->crypto = crypto;
-    reader->network = network;
-    return reader;
+    auto isrc = make_unique<IStreamSource>(&ifs, false);
+    return createReader(isrc.release(), true, conf, crypto, network);
 }
 
 #if LIBCDOC_TESTING
