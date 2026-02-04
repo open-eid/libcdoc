@@ -125,6 +125,16 @@ struct urlEncode {
     friend std::ostream& operator<<(std::ostream& escaped, urlEncode src);
 };
 
+std::vector<uint8_t> toUint8Vector(const auto* data)
+{
+    return {data->cbegin(), data->cend()};
+}
+
+std::vector<uint8_t> toUint8Vector(const auto& data)
+{
+    return {data.cbegin(), data.cend()};
+}
+
 std::string urlDecode(const std::string &src);
 
 } // namespace libcdoc

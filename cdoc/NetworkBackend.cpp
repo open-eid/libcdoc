@@ -397,8 +397,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     }
     error = {};
     std::string ks = v.get<std::string>();
-    std::vector<uint8_t> key_material = fromBase64(ks);
-    dst.assign(key_material.cbegin(), key_material.cend());
+    dst = fromBase64(ks);
 
     return libcdoc::OK;
 }
@@ -434,7 +433,7 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
         return NETWORK_ERROR;
     }
     std::string nonce_str = v.get<std::string>();
-    dst.assign(nonce_str.cbegin(), nonce_str.cend());
+    dst = toUint8Vector(nonce_str);
     return OK;
 }
 
