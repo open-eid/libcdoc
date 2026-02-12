@@ -176,7 +176,6 @@
 %ignore libcdoc::Lock::setBytes;
 %ignore libcdoc::Lock::setString;
 %ignore libcdoc::Lock::setInt;
-%ignore libcdoc::Lock::setCertificate;
 %extend libcdoc::Lock {
     Type getType() {
         return $self->type;
