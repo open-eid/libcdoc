@@ -111,10 +111,6 @@ struct CDOC_EXPORT Configuration {
      * @return the key value
      */
     int getInt(std::string_view param, int def_val = 0) const;
-
-#if LIBCDOC_TESTING
-    virtual int64_t test(std::vector<uint8_t>& dst) { return OK; }
-#endif
 };
 
 /**

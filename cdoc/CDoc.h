@@ -170,6 +170,7 @@ enum LogLevel
 class Logger;
 
 CDOC_EXPORT void setLogger(Logger *logger);
+CDOC_EXPORT void setLogLevel(LogLevel level);
 CDOC_EXPORT void log(LogLevel level, std::string_view file, int line, std::string_view msg);
 
 /**

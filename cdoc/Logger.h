@@ -22,7 +22,6 @@
 #include <cdoc/Exports.h>
 #include <cdoc/CDoc.h>
 
-#include <iostream>
 #include <string>
 
 namespace libcdoc
@@ -77,25 +76,6 @@ protected:
      * @brief Minimum level of log messages to log.
      */
     LogLevel min_level = LEVEL_WARNING;
-};
-
-/**
- * @brief Console logger
- *
- * An ILogger subclass that logs text to console.
- *
- * Info messages are logged to cout, all others to cerr.
- */
-
-class ConsoleLogger : public Logger
-{
-public:
-    virtual void logMessage(LogLevel level, std::string_view file, int line, std::string_view message) override
-    {
-        // We ignore by default the file name and line number, and call LogMessage with the level and message.
-        std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
-        ofs << file << ':' << line << " " << message << '\n';
-    }
 };
 
 }

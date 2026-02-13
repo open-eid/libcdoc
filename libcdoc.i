@@ -218,7 +218,7 @@
 %feature("director") libcdoc::PKCS11Backend;
 %feature("director") libcdoc::NetworkBackend;
 %feature("director") libcdoc::Configuration;
-%feature("director") libcdoc::ILogger;
+%feature("director") libcdoc::Logger;
 
 #ifdef SWIGJAVA
 %include "arrays_java.i"

@@ -155,15 +155,6 @@ libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
     return libcdoc::getErrorStr(code);
 }
 
-#if LIBCDOC_TESTING
-int64_t
-libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
-{
-    LOG_TRACE("NetworkBackend::test::Native superclass");
-    return OK;
-}
-#endif
-
 //
 // Set peer certificate(s) for given server url
 //

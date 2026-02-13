@@ -200,10 +200,6 @@ public:
      */
     static CDocReader *createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 
-#if LIBCDOC_TESTING
-    virtual int64_t testConfig(std::vector<uint8_t>& dst);
-    virtual int64_t testNetwork(std::vector<std::vector<uint8_t>>& dst);
-#endif
 protected:
 	explicit CDocReader(int _version) : version(_version) {};
 
