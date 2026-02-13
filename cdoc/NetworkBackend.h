@@ -277,10 +277,6 @@ struct CDOC_EXPORT NetworkBackend {
     result_t signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>& cert,
         const std::string& url, const std::string& rp_uuid, const std::string& rp_name, const std::string& phone,
         const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo);
-
-#if LIBCDOC_TESTING
-    virtual int64_t test(std::vector<std::vector<uint8_t>> &dst);
-#endif
 };
 
 } // namespace libcdoc

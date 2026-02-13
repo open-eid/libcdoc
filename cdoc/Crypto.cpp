@@ -18,7 +18,6 @@
 
 #include "CDoc.h"
 #include "Crypto.h"
-#include "ILogger.h"
 #include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
@@ -426,7 +425,7 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
     while (errorCode != 0)
     {
         ERR_error_string_n(errorCode, sslErrorStr, errorStrBufLen);
-        ILogger::getLogger()->LogMessage(ILogger::LEVEL_ERROR, file, line, FORMAT("{} failed: {}", funcName, sslErrorStr));
+        LOG_ERROR("{} failed: {}", funcName, sslErrorStr);
 
         // Get next error code
         errorCode = ERR_get_error();
