@@ -35,14 +35,11 @@ namespace libcdoc
 class ConsoleLogger : public ILogger
 {
 public:
-    virtual void LogMessage(LogLevel level, std::string_view file, int line, std::string_view message) override
+    virtual void logMessage(LogLevel level, std::string_view file, int line, std::string_view message) override
     {
         // We ignore by default the file name and line number, and call LogMessage with the level and message.
-        if (level <= minLogLevel)
-        {
-            std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
-            ofs << message << '\n';
-        }
+        std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
+        ofs << message << '\n';
     }
 };
 

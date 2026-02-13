@@ -38,7 +38,6 @@ add_library(cdoc
     CryptoBackend.cpp
     NetworkBackend.cpp
     PKCS11Backend.cpp
-    LogEngine.cpp
     $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h

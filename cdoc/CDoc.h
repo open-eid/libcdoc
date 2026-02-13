@@ -134,6 +134,50 @@ CDOC_EXPORT std::string getErrorStr(int64_t code);
 
 CDOC_EXPORT std::string getVersion();
 
+// Logging interface
+
+class ILogger;
+typedef ILogger Logger;
+
+/**
+ * @brief Log-level enumeration to indicate severity of the log message.
+ */
+enum LogLevel
+{
+    /**
+     * @brief Most critical level. Application is about to abort.
+     */
+    LEVEL_FATAL,
+
+    /**
+     * @brief Errors where functionality has failed or an exception have been caught.
+     */
+    LEVEL_ERROR,
+
+    /**
+     * @brief Warnings about validation issues or temporary failures that can be recovered.
+     */
+    LEVEL_WARNING,
+
+    /**
+     * @brief Information that highlights progress or application lifetime events.
+     */
+    LEVEL_INFO,
+
+    /**
+     * @brief Debugging the application behavior from internal events of interest.
+     */
+    LEVEL_DEBUG,
+
+    /**
+     * @brief Most verbose level. Used for development, NOP in production code.
+     */
+    LEVEL_TRACE
+};
+
+CDOC_EXPORT void setLogger(Logger *logger);
+CDOC_EXPORT void log(LogLevel level, std::string_view file, int line, std::string_view msg);
+
 /**
  * @brief A simple container of file name and size
  *

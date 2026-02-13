@@ -21,7 +21,7 @@
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 #include "Configuration.h"
-#include "ILogger.h"
+#include "ConsoleLogger.h"
 #include "Io.h"
 #include "NetworkBackend.h"
 
@@ -69,6 +69,28 @@ std::string
 getVersion()
 {
     return VERSION_STR;
+}
+
+static Logger *
+getDefaultLogger()
+{
+    static ConsoleLogger clogger;
+    return &clogger;
+}
+
+static Logger *sys_logger = nullptr;
+
+void
+setLogger(Logger *logger)
+{
+    sys_logger = logger;
+}
+
+void
+log(LogLevel level, std::string_view file, int line, std::string_view msg)
+{
+    Logger *logger = (sys_logger) ? sys_logger : getDefaultLogger();
+    logger->log(level, file, line, msg);
 }
 
 int
