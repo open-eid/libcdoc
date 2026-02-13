@@ -15,8 +15,7 @@ set(PUBLIC_HEADERS
     CryptoBackend.h
     NetworkBackend.h
     PKCS11Backend.h
-    ILogger.h
-    ConsoleLogger.h
+    Logger.h
 )
 
 add_library(cdoc_ver INTERFACE)
@@ -38,7 +37,6 @@ add_library(cdoc
     CryptoBackend.cpp
     NetworkBackend.cpp
     PKCS11Backend.cpp
-    LogEngine.cpp
     $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h

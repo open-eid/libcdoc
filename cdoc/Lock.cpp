@@ -20,7 +20,6 @@
 
 #include "Certificate.h"
 #include "Utils.h"
-#include "ILogger.h"
 
 namespace libcdoc {
 

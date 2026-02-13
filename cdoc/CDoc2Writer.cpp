@@ -21,7 +21,6 @@
 #include "Configuration.h"
 #include "Crypto.h"
 #include "CDoc2.h"
-#include "ILogger.h"
 #include "NetworkBackend.h"
 #include "Recipient.h"
 #include "Tar.h"

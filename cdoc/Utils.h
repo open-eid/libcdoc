@@ -25,6 +25,20 @@
 #include <iostream>
 #include <sstream>
 
+#include <string>
+
+#ifdef __cpp_lib_format
+#include <format>
+namespace fmt = std;
+#else
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
+#endif
+
+#include <CDoc.h>
+
+#define FORMAT fmt::format
+
 namespace libcdoc {
 
 std::string toBase64(const uint8_t *data, size_t len);
@@ -136,6 +150,34 @@ std::vector<uint8_t> toUint8Vector(const auto& data)
 }
 
 std::string urlDecode(const std::string &src);
+
+#ifndef SWIG
+template<typename... Args>
+static inline void LogFormat(LogLevel level, std::string_view file, int line, fmt::format_string<Args...> fmt, Args&&... args)
+{
+    auto msg = fmt::format(fmt, std::forward<Args>(args)...);
+    libcdoc::log(level, file, line, msg);
+}
+
+static inline void LogFormat(LogLevel level, std::string_view file, int line, std::string_view msg)
+{
+    libcdoc::log(level, file, line, msg);
+}
+#endif
+
+#define LOG(l,...) LogFormat((l), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) LogFormat(libcdoc::LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) LogFormat(libcdoc::LEVEL_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) LogFormat(libcdoc::LEVEL_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DBG(...) LogFormat(libcdoc::LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+
+#ifdef NDEBUG
+#define LOG_TRACE(...)
+#define LOG_TRACE_KEY(MSG, KEY)
+#else
+#define LOG_TRACE(...) LogFormat(libcdoc::LEVEL_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE_KEY(MSG, KEY) LogFormat(libcdoc::LEVEL_TRACE, __FILE__, __LINE__, MSG, toHex(KEY))
+#endif
 
 } // namespace libcdoc
 

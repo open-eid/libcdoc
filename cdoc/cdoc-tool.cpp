@@ -23,14 +23,22 @@
 #endif
 
 #include "CDocCipher.h"
-#include "ConsoleLogger.h"
-#include "ILogger.h"
 #include "Utils.h"
+#include "Logger.h"
 
 #include "json/jwt.h"
 
 using namespace std;
 using namespace libcdoc;
+
+static std::map<std::string_view,libcdoc::LogLevel> str2level = {
+    {"FATAL", libcdoc::LEVEL_FATAL},
+    {"ERROR", libcdoc::LEVEL_ERROR},
+    {"WARNING", libcdoc::LEVEL_WARNING},
+    {"INFO", libcdoc::LEVEL_INFO},
+    {"DEBUG", libcdoc::LEVEL_DEBUG},
+    {"TRACE", libcdoc::LEVEL_TRACE}
+};
 
 enum {
     RESULT_OK = 0,
@@ -76,17 +84,8 @@ static void print_usage(ostream& ofs)
     ofs << "  --library - path to the PKCS11 library to be used" << endl;
     ofs << "  --server ID URL(S) - specifies a key or share server. The recipient key will be stored in server instead of in the document." << endl;
     ofs << "                       for key server the url is either fetch or send url. For share server it is comma-separated list of share server urls." << endl;
-    ofs << "  --accept FILENAME - specifies an accepted server certificate (in der encoding)" << endl;
-
-    //<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
-    //	<< "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt RECIPIENT] [--file INFILE] [...] --out OUTFILE" << std::endl
-    //	<< "  where RECIPIENT is in form label:TYPE:value" << std::endl
-    //	<< "    where TYPE is 'cert', 'key' or 'pw'" << std::endl
-#ifdef _WIN32
-    //	<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << endl
-#endif
-    //	<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
-    //	<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
+    ofs << "  --accept FILENAME  - specifies an accepted server certificate (in der encoding)" << endl;
+    ofs << "  --log-level LEVEL  - set logging level (FATAL, ERROR, WARNING, INFO, DEBUG, TRACE)" << endl;
 }
 
 static std::vector<uint8_t>
@@ -134,6 +133,10 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
         return 2;
     } else if ((arg == "--conf") && ((arg_idx + 1) < argc)) {
         conf.parse(argv[arg_idx + 1]);
+        return 2;
+    } else if ((arg == "--log-level") && ((arg_idx + 1) < argc)) {
+        if (!str2level.contains(argv[arg_idx + 1])) return 0;
+        libcdoc::setLogLevel(str2level[argv[arg_idx + 1]]);
         return 2;
     }
     return 0;
@@ -636,11 +639,30 @@ static int ParseAndReEncrypt(int argc, char *argv[])
 
 static int ParseAndGetLocks(int argc, char *argv[])
 {
-    if (argc < 1)
-        return 2;
+    ToolConf conf;
+    std::string container;
+
+    //
+    // Parse all arguments into ToolConf structure
+    //
+    int arg_idx = 0;
+    while (arg_idx < argc) {
+        int result = parse_common(conf, arg_idx, argc, argv);
+        if (result < 0) return result;
+        arg_idx += result;
+        if (result > 0) continue;
+        if (argv[arg_idx][0] == '-') {
+            return RESULT_USAGE;
+        } else {
+            if (!container.empty()) return RESULT_USAGE;
+            container = argv[arg_idx];
+        }
+        arg_idx += 1;
+    }
+    if (container.empty()) return RESULT_USAGE;
 
     CDocCipher cipher;
-    cipher.Locks(argv[0]);
+    cipher.Locks(container.c_str());
     return 0;
 }
 
@@ -651,13 +673,9 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Add console logger by default
-    ConsoleLogger console_logger;
-    console_logger.SetMinLogLevel(ILogger::LEVEL_TRACE);
-    int cookie = ILogger::addLogger(&console_logger);
+    libcdoc::setLogLevel(LEVEL_TRACE);
 
     string_view command(argv[1]);
-    LOG_INFO("Command: {}", command);
 
     CDocCipher cipher;
     int retVal = 2;     // Output the help by default.
@@ -678,6 +696,6 @@ int main(int argc, char *argv[])
         print_usage(cout);
     }
 
-    ILogger::removeLogger(cookie);
+    setLogger(nullptr);
     return retVal;
 }
