@@ -18,6 +18,7 @@
 
 #include "WinBackend.h"
 
+#include "CDoc.h"
 #include "CDoc2.h"
 #include "Logger.h"
 
