@@ -44,8 +44,6 @@
 
 %ignore libcdoc::MultiDataSource;
 %ignore libcdoc::MultiDataConsumer;
-%ignore libcdoc::ChainedConsumer;
-%ignore libcdoc::ChainedSource;
 %ignore libcdoc::IStreamSource;
 %ignore libcdoc::OStreamConsumer;
 %ignore libcdoc::VectorConsumer;

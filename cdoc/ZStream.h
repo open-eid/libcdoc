@@ -28,16 +28,20 @@
 
 namespace libcdoc {
 
-struct ZConsumer : public ChainedConsumer {
+struct ZConsumer : public DataConsumer {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
+    DataConsumer *_dst;
+    bool _owned;
 	z_stream _s {};
     bool _fail = false;
 	int flush = Z_NO_FLUSH;
-	ZConsumer(DataConsumer *dst, bool take_ownership = false) : ChainedConsumer(dst, take_ownership) {
+    ZConsumer(DataConsumer *dst, bool take_ownership = false)
+        : _dst(dst), _owned(take_ownership) {
 		if (deflateInit(&_s, Z_DEFAULT_COMPRESSION) != Z_OK) _fail = true;
 	}
 	~ZConsumer() {
 		if (!_fail) deflateEnd(&_s);
+        if (_owned) delete _dst;
 	}
 
     libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final {
@@ -64,30 +68,34 @@ struct ZConsumer : public ChainedConsumer {
 	}
 
     virtual bool isError() noexcept final {
-		return _fail || ChainedConsumer::isError();
+        return _fail || _dst->isError();
 	};
 
     libcdoc::result_t close() noexcept final {
 		flush = Z_FINISH;
 		write (nullptr, 0);
 		deflateEnd(&_s);
-		return ChainedConsumer::close();
+        if (_owned) return _dst->close();
 	}
 };
 
-struct ZSource : public ChainedSource {
+struct ZSource : public DataSource {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
+    DataSource *_src;
+    bool _owned;
 	z_stream _s {};
     int64_t _error = OK;
 	std::vector<uint8_t> buf;
 	int flush = Z_NO_FLUSH;
-	ZSource(DataSource *src, bool take_ownership = false) : ChainedSource(src, take_ownership) {
+    ZSource(DataSource *src, bool take_ownership = false)
+        : _src(src), _owned(take_ownership) {
 		if (inflateInit2(&_s, MAX_WBITS) != Z_OK) {
 			_error = ZLIB_ERROR;
 		}
 	}
 	~ZSource() {
 		if (!_error) inflateEnd(&_s);
+        if (_owned) delete _src;
 	}
 
     libcdoc::result_t read(uint8_t *dst, size_t size) noexcept final try {
@@ -125,11 +133,11 @@ struct ZSource : public ChainedSource {
     }
 
     virtual bool isError() noexcept final {
-        return (_error != OK) || ChainedSource::isError();
+        return (_error != OK) || _src->isError();
 	};
 
     virtual bool isEof() noexcept final {
-		return (_s.avail_in == 0) && ChainedSource::isEof();
+        return (_s.avail_in == 0) && _src->isEof();
 	};
 };
 
