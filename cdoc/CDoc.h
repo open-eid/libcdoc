@@ -24,11 +24,6 @@
 #include <string>
 #include <vector>
 
-#ifndef LIBCDOC_TESTING
-// Remove this in production code
-#define LIBCDOC_TESTING 1
-#endif
-
 namespace libcdoc {
 
 /**
@@ -136,9 +131,6 @@ CDOC_EXPORT std::string getVersion();
 
 // Logging interface
 
-class ILogger;
-typedef ILogger Logger;
-
 /**
  * @brief Log-level enumeration to indicate severity of the log message.
  */
@@ -174,6 +166,8 @@ enum LogLevel
      */
     LEVEL_TRACE
 };
+
+class Logger;
 
 CDOC_EXPORT void setLogger(Logger *logger);
 CDOC_EXPORT void log(LogLevel level, std::string_view file, int line, std::string_view msg);

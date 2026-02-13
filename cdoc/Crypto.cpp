@@ -18,7 +18,6 @@
 
 #include "CDoc.h"
 #include "Crypto.h"
-#include "ILogger.h"
 #include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED

@@ -25,7 +25,7 @@
 #include "Configuration.h"
 #include "CDocWriter.h"
 #include "CDocReader.h"
-#include "ConsoleLogger.h"
+#include "Logger.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "PKCS11Backend.h"
@@ -581,8 +581,6 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 // Swig does not like visibility/declspec attributes
 #define CDOC_EXPORT
-// fixme: Remove this in production
-#define LIBCDOC_TESTING 1
 #define CDOC_DISABLE_MOVE(X)
 
 %include "CDoc.h"
@@ -594,8 +592,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "PKCS11Backend.h"
-%include "ILogger.h"
-%include "ConsoleLogger.h"
+%include "Logger.h"
 
 // LockVector template must come after Lock.h is included so that
 // SWIG knows about the libcdoc::Lock class definition.

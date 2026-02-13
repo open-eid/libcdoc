@@ -21,9 +21,10 @@
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 #include "Configuration.h"
-#include "ConsoleLogger.h"
 #include "Io.h"
 #include "NetworkBackend.h"
+#include "Utils.h"
+#include "Logger.h"
 
 namespace libcdoc {
 

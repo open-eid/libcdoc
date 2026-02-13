@@ -20,7 +20,6 @@
 
 #include "Configuration.h"
 
-#include "ILogger.h"
 #include "Utils.h"
 
 #include "json/picojson/picojson.h"

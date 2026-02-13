@@ -399,18 +399,6 @@ public class CDocTool {
         CDocReader rdr = CDocReader.createReader(path, conf, null, network);
         System.err.format("Reader created (version %d)\n", rdr.getVersion());
 
-        rdr.testConfig(buf);
-        System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
-        System.err.println("Success");
-
-        CertificateList certs = new CertificateList();
-        rdr.testNetwork(certs);
-        System.err.format("Num certs: %s\n", certs.size());
-        for (int i = 0; i < certs.size(); i++) {
-            byte[] cert = certs.getCertificate(i);
-            System.err.format("  %s\n", hex.formatHex(cert));
-        }
-
         testRW(conf, crypto);
     
         System.err.println("Success");
@@ -577,15 +565,6 @@ public class CDocTool {
         @Override
         public long getPeerTLSCertificates(CertificateList dst, String url) throws CDocException {
             System.err.println("ToolNetwork.getPeerTLSCertificates: " + dst);
-            return CDoc.OK;
-        }
-
-        @Override
-        public long test(CertificateList dst) {
-            System.err.println("ToolNetwork.test: Java subclass implementation");
-            System.err.format("dst: %s\n", dst);
-            dst.addCertificate(new byte[] {1, 2, 3});
-            dst.addCertificate(new byte[] {4, 5, 6, 7, 8});
             return CDoc.OK;
         }
     }

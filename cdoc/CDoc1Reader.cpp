@@ -23,7 +23,6 @@
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "DDocReader.h"
-#include "ILogger.h"
 #include "Lock.h"
 #include "Utils.h"
 #include "XmlReader.h"

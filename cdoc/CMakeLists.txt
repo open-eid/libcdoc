@@ -15,8 +15,7 @@ set(PUBLIC_HEADERS
     CryptoBackend.h
     NetworkBackend.h
     PKCS11Backend.h
-    ILogger.h
-    ConsoleLogger.h
+    Logger.h
 )
 
 add_library(cdoc_ver INTERFACE)

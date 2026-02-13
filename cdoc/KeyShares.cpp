@@ -23,7 +23,6 @@
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "NetworkBackend.h"
-#include "ILogger.h"
 #include "Utils.h"
 #include "json/jwt.h"
 

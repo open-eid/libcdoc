@@ -19,7 +19,6 @@
 #include "PKCS11Backend.h"
 #include "Certificate.h"
 #include "Crypto.h"
-#include "ILogger.h"
 #include "Utils.h"
 
 #include "pkcs11.h"

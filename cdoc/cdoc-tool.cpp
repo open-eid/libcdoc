@@ -23,9 +23,8 @@
 #endif
 
 #include "CDocCipher.h"
-#include "ConsoleLogger.h"
-#include "ILogger.h"
 #include "Utils.h"
+#include "Logger.h"
 
 #include "json/jwt.h"
 
