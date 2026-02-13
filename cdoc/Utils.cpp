@@ -18,8 +18,6 @@
 
 #include "Utils.h"
 
-#include "ILogger.h"
-
 #include "json/jwt.h"
 #include "json/picojson/picojson.h"
 

@@ -22,7 +22,6 @@
 #include "Configuration.h"
 #include "CryptoBackend.h"
 #include "CDoc2.h"
-#include "ILogger.h"
 #include "KeyShares.h"
 #include "Lock.h"
 #include "NetworkBackend.h"

@@ -20,7 +20,6 @@
 
 #include "Crypto.h"
 #include "DDocWriter.h"
-#include "ILogger.h"
 #include "Recipient.h"
 #include "Utils.h"
 #include "XmlWriter.h"

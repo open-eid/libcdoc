@@ -18,7 +18,6 @@
 
 #include "Crypto.h"
 #include "CryptoBackend.h"
-#include "ILogger.h"
 #include "Utils.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
