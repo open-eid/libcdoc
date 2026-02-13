@@ -209,45 +209,6 @@ struct CDOC_EXPORT MultiDataSource : public DataSource {
     result_t next(FileInfo& info) { return next(info.name, info.size); }
 };
 
-struct CDOC_EXPORT ChainedConsumer : public DataConsumer {
-	ChainedConsumer(DataConsumer *dst, bool take_ownership) : _dst(dst), _owned(take_ownership) {}
-	~ChainedConsumer() {
-		if (_owned) delete _dst;
-	}
-    result_t write(const uint8_t *src, size_t size) noexcept override {
-		return _dst->write(src, size);
-	}
-    result_t close() noexcept override {
-		if (_owned) return _dst->close();
-        return OK;
-	}
-    bool isError() noexcept override {
-		return _dst->isError();
-	}
-protected:
-	DataConsumer *_dst;
-	bool _owned;
-};
-
-struct CDOC_EXPORT ChainedSource : public DataSource {
-	ChainedSource(DataSource *src, bool take_ownership) : _src(src), _owned(take_ownership) {}
-	~ChainedSource() {
-		if (_owned) delete _src;
-	}
-    result_t read(uint8_t *dst, size_t size) noexcept override {
-		return _src->read(dst, size);
-	}
-    bool isError() noexcept override {
-		return _src->isError();
-	}
-    bool isEof() noexcept override {
-		return _src->isEof();
-	}
-protected:
-	DataSource *_src;
-	bool _owned;
-};
-
 struct CDOC_EXPORT IStreamSource : public DataSource {
 	IStreamSource(std::istream *ifs, bool take_ownership = false) : _ifs(ifs), _owned(take_ownership) {}
 	IStreamSource(const std::string& path);
