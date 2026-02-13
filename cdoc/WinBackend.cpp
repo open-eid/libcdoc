@@ -18,9 +18,9 @@
 
 #include "WinBackend.h"
 
-#include "CDoc.h"
 #include "CDoc2.h"
 #include "Logger.h"
+#include "Utils.h"
 
 #include <Windows.h>
 #include <wincrypt.h>
