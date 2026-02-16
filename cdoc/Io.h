@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace libcdoc {
 

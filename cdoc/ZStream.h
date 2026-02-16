@@ -19,7 +19,6 @@
 #ifndef __ZSTREAM_H__
 #define __ZSTREAM_H__
 
-#include "Crypto.h"
 #include "Io.h"
 
 #include <zlib.h>
@@ -75,7 +74,7 @@ struct ZConsumer : public DataConsumer {
 		flush = Z_FINISH;
 		write (nullptr, 0);
 		deflateEnd(&_s);
-        if (_owned) return _dst->close();
+        return _owned ? _dst->close() : OK;
 	}
 };
 
