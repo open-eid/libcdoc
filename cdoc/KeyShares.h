@@ -19,13 +19,7 @@
 #ifndef __KEYSHARES_H__
 #define __KEYSHARES_H__
 
-#include <cdoc/CryptoBackend.h>
 #include <cdoc/NetworkBackend.h>
-#include <cdoc/CDoc.h>
-
-#include <cstdint>
-#include <string>
-#include <system_error>
 
 namespace libcdoc {
 

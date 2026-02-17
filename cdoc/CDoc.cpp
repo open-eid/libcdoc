@@ -200,7 +200,7 @@ libcdoc::CDocWriter::CDocWriter(int _version, DataConsumer *_dst, bool take_owne
 {
 };
 
-libcdoc::CDocWriter::~CDocWriter()
+libcdoc::CDocWriter::~CDocWriter() noexcept
 {
 	if (owned) delete(dst);
 }
