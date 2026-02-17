@@ -60,20 +60,28 @@ Recipient::makeSymmetric(std::string label, int32_t kdf_iter)
 }
 
 Recipient
-Recipient::makePublicKey(std::string label, std::vector<uint8_t> public_key, PKType pk_type)
+Recipient::makeRSA(std::string label, std::vector<uint8_t> public_key)
 {
     if (public_key.empty())
         return {Type::NONE};
     Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = std::move(label);
-    rcpt.pk_type = pk_type;
-    if (pk_type == PKType::ECC && public_key[0] == 0x30) {
-        // 0x30 identifies SEQUENCE tag in ASN.1 encoding
-        auto evp = Crypto::fromECPublicKeyDer(public_key);
-        rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
-    } else {
-        rcpt.rcpt_key = std::move(public_key);
-    }
+    rcpt.pk_type = RSA;
+    rcpt.rcpt_key = std::move(public_key);
+	return rcpt;
+}
+
+Recipient
+Recipient::makeECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type)
+{
+    if (public_key.empty())
+        return {Type::NONE};
+    Recipient rcpt(Type::PUBLIC_KEY);
+    rcpt.label = std::move(label);
+    rcpt.pk_type = ECC;
+    // 0x30 identifies SEQUENCE tag in ASN.1 encoding
+    auto evp = Crypto::fromECPublicKeyDer(public_key);
+    rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
 	return rcpt;
 }
 
@@ -87,15 +95,26 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
     rcpt.label = std::move(label);
     rcpt.cert = std::move(cert);
     rcpt.rcpt_key = x509.getPublicKey();
-    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
+    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? Algorithm::RSA : Algorithm::ECC;
     rcpt.expiry_ts = x509.getNotAfter();
     return rcpt;
 }
 
 Recipient
-Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, PKType pk_type, std::string server_id)
+Recipient::makeServerRSA(std::string label, std::vector<uint8_t> public_key, std::string server_id)
 {
-    Recipient rcpt = makePublicKey(std::move(label), std::move(public_key), pk_type);
+    Recipient rcpt = makeRSA(std::move(label), std::move(public_key));
+    rcpt.server_id = std::move(server_id);
+    const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
+    const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
+    rcpt.expiry_ts = uint64_t(expiry_ts);
+    return rcpt;
+}
+
+Recipient
+Recipient::makeServerECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type, std::string server_id)
+{
+    Recipient rcpt = makeECC(std::move(label), std::move(public_key), ec_type);
     rcpt.server_id = std::move(server_id);
     const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
     const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);

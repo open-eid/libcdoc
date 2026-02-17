@@ -331,7 +331,7 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
                     Certificate ssl(cert);
                     key.setBytes(Lock::CERT, std::move(cert));
                     key.setBytes(Lock::RCPT_KEY, ssl.getPublicKey());
-                    key.pk_type = (ssl.getAlgorithm() == libcdoc::Certificate::RSA) ? Lock::RSA : Lock::ECC;
+                    key.pk_type = (ssl.getAlgorithm() == libcdoc::Certificate::RSA) ? Algorithm::RSA : Algorithm::ECC;
                 }
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/CipherData/CipherValue
 				else if(reader.isElement("CipherValue"))
