@@ -218,6 +218,91 @@
 %feature("director") libcdoc::Configuration;
 %feature("director") libcdoc::Logger;
 
+#ifdef SWIGPYTHON
+%include <exception.i>
+%include <stdint.i>
+
+// Director typemaps for result_t return values from Python
+%typemap(directorout) libcdoc::result_t {
+    $result = (libcdoc::result_t)PyLong_AsLongLong($input);
+}
+%typemap(directorin) libcdoc::result_t {
+    $input = PyLong_FromLongLong($1);
+}
+
+// Typemap: (const uint8_t *src, size_t size) <- bytes/bytearray (used by writeData)
+%typemap(in) (const uint8_t *src, size_t size) {
+    if (PyBytes_Check($input)) {
+        $1 = (uint8_t *)PyBytes_AsString($input);
+        $2 = PyBytes_Size($input);
+    } else if (PyByteArray_Check($input)) {
+        $1 = (uint8_t *)PyByteArray_AsString($input);
+        $2 = PyByteArray_Size($input);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytes or bytearray");
+    }
+}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) (const uint8_t *src, size_t size) {
+    $1 = PyBytes_Check($input) || PyByteArray_Check($input);
+}
+
+// Typemap: (uint8_t *dst, size_t size) <- bytearray (used by readData)
+%typemap(in) (uint8_t *dst, size_t size) {
+    if (PyByteArray_Check($input)) {
+        $1 = (uint8_t *)PyByteArray_AsString($input);
+        $2 = PyByteArray_Size($input);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytearray");
+    }
+}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) (uint8_t *dst, size_t size) {
+    $1 = PyByteArray_Check($input);
+}
+
+// Typemap: std::vector<uint8_t> <-> Python bytes
+%typemap(in) std::vector<uint8_t> {
+    if (PyBytes_Check($input)) {
+        const char* data = PyBytes_AsString($input);
+        Py_ssize_t size = PyBytes_Size($input);
+        $1 = std::vector<uint8_t>(data, data + size);
+    } else if (PyByteArray_Check($input)) {
+        const char* data = PyByteArray_AsString($input);
+        Py_ssize_t size = PyByteArray_Size($input);
+        $1 = std::vector<uint8_t>(data, data + size);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytes or bytearray");
+    }
+}
+%typemap(out) std::vector<uint8_t> {
+    $result = PyBytes_FromStringAndSize(
+        reinterpret_cast<const char*>($1.data()), $1.size());
+}
+
+// Output parameter: std::vector<uint8_t>& -> second return value
+%typemap(in, numinputs=0) std::vector<uint8_t>& (std::vector<uint8_t> temp) {
+    $1 = &temp;
+}
+%typemap(argout) std::vector<uint8_t>& {
+    PyObject* bytes = PyBytes_FromStringAndSize(
+        reinterpret_cast<const char*>($1->data()), $1->size());
+    $result = SWIG_Python_AppendOutput($result, bytes, 0);
+}
+
+// Exception handling: C++ exceptions -> Python RuntimeError
+%exception {
+    try {
+        $action
+    } catch (const std::exception& e) {
+        SWIG_exception(SWIG_RuntimeError, e.what());
+    }
+}
+
+// Template instantiations for Python
+%template(ByteVector) std::vector<uint8_t>;
+%template(ByteVectorVector) std::vector<std::vector<uint8_t>>;
+%template(StringVector) std::vector<std::string>;
+#endif
+
 #ifdef SWIGJAVA
 %include "arrays_java.i"
 %include "enums.swg"
