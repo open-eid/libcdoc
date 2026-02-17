@@ -21,15 +21,15 @@
  
 #include <cdoc/Exports.h>
 
+#include <cstdint>
 #include <string>
-#include <vector>
 
 namespace libcdoc {
 
 /**
  * @brief A typedef that indicates that integer value may contain libcdoc result code
  */
-typedef int64_t result_t;
+using result_t = int64_t;
 
 enum {
     /**
@@ -157,7 +157,7 @@ enum Curve : uint8_t {
 /**
  * @brief Log-level enumeration to indicate severity of the log message.
  */
-enum LogLevel
+enum LogLevel : uint8_t
 {
     /**
      * @brief Most critical level. Application is about to abort.

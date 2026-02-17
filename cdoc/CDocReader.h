@@ -21,7 +21,7 @@
 
 #include "CDoc.h"
 
-#include <cstdint>
+#include <vector>
 
 namespace libcdoc {
 
@@ -39,7 +39,7 @@ struct NetworkBackend;
  */
 class CDOC_EXPORT CDocReader {
 public:
-	virtual ~CDocReader() = default;
+    virtual ~CDocReader() noexcept = default;
 
     /**
      * @brief The container version (1 or 2)
@@ -210,6 +210,9 @@ protected:
 	Configuration *conf = nullptr;
 	CryptoBackend *crypto = nullptr;
 	NetworkBackend *network = nullptr;
+
+private:
+    CDOC_DISABLE_MOVE_COPY(CDocReader);
 };
 
 } // namespace libcdoc

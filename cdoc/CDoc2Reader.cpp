@@ -20,6 +20,7 @@
 
 #include "Certificate.h"
 #include "Configuration.h"
+#include "Crypto.h"
 #include "CryptoBackend.h"
 #include "CDoc2.h"
 #include "KeyShares.h"
@@ -400,7 +401,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
         return libcdoc::WRONG_ARGUMENTS;
     }
     if (!priv->_at_nonce) {
-        int result = priv->_src->seek(priv->_nonce_pos);
+        result_t result = priv->_src->seek(priv->_nonce_pos);
         if (result != libcdoc::OK) {
             setLastError(priv->_src->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
@@ -703,16 +704,5 @@ CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
         LOG_DBG("CDoc2Reader::isCDoc2File: Invalid tag: {}", toHex(in));
         return false;
     }
-    return true;
-}
-
-bool
-CDoc2Reader::isCDoc2File(const std::string& path)
-{
-    std::ifstream fb(path, std::ios_base::in | std::ios_base::binary);
-    char in[libcdoc::CDoc2::LABEL.size()];
-    constexpr size_t len = libcdoc::CDoc2::LABEL.size();
-    if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;
-    if (libcdoc::CDoc2::LABEL.compare(0, len, &in[0], len)) return false;
     return true;
 }
