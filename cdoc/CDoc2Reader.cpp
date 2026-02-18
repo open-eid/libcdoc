@@ -509,16 +509,16 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
     {
     case Capsule::recipients_ECCPublicKeyCapsule:
         if(const auto *capsule = recipient.capsule_as_recipients_ECCPublicKeyCapsule()) {
+            lock.type = Lock::Type::PUBLIC_KEY;
+            lock.pk_type = Algorithm::ECC;
             if(capsule->curve() == EllipticCurve::secp384r1) {
                 lock.ec_type = Curve::SECP_384_R1;
             } else if (capsule->curve() == EllipticCurve::secp256r1) {
                 lock.ec_type = Curve::SECP_256_R1;
             } else {
                 LOG_WARN("Unknown ECC curve: {}", (int) capsule->curve());
-                lock.ec_type = Curve::UNKNOWN;
+                lock.ec_type = Curve::UNKNOWN_CURVE;
             }
-            lock.type = Lock::Type::PUBLIC_KEY;
-            lock.pk_type = Algorithm::ECC;
             lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(capsule->recipient_public_key()));
             lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(capsule->sender_public_key()));
             LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
@@ -539,16 +539,16 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             switch (details) {
             case KeyDetailsUnion::EccKeyDetails:
                 if(const EccKeyDetails *eccDetails = capsule->recipient_key_details_as_EccKeyDetails()) {
+                    lock.pk_type = Algorithm::ECC;
+                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
                     if(eccDetails->curve() == EllipticCurve::secp384r1) {
                         lock.ec_type = Curve::SECP_384_R1;
                     } else if (eccDetails->curve() == EllipticCurve::secp256r1) {
                         lock.ec_type = Curve::SECP_256_R1;
                     } else {
                         LOG_WARN("Unknown ECC curve: {}", (int) eccDetails->curve());
-                        lock.ec_type = Curve::UNKNOWN;
+                        lock.ec_type = Curve::UNKNOWN_CURVE;
                     }
-                    lock.pk_type = Algorithm::ECC;
-                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
                 }
                 break;
             case KeyDetailsUnion::RsaKeyDetails:

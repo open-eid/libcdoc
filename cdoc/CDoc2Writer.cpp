@@ -98,7 +98,7 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
 struct ECData {
     int ossl_nid;
     cdoc20::recipients::EllipticCurve fb_type;
-    const char *server_name;
+    const char *api_id;
 };
 
 static std::map<Curve,ECData> ecdata = {
@@ -300,7 +300,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_TRACE_KEY("xor: {}", xor_key);
                 if(rcpt.isKeyServer()) {
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, ecdata[rcpt.ec_type].server_name, rcpt.expiry_ts);
+                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, ecdata[rcpt.ec_type].api_id, rcpt.expiry_ts);
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);

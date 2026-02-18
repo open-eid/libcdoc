@@ -19,7 +19,7 @@
 #ifndef __LOCK_H__
 #define __LOCK_H__
 
-#include <CDoc.h>
+#include <cdoc/CDoc.h>
 
 #include <cstdint>
 #include <string>
