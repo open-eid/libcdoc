@@ -147,6 +147,7 @@ enum Algorithm : uint8_t {
  * @brief The EC curve used
  */
 enum Curve : uint8_t {
+    UNKNOWN,
     SECP_384_R1,
     SECP_256_R1
 };
