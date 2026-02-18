@@ -528,9 +528,9 @@ rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *si
 }
 
 libcdoc::result_t
-libcdoc::NetworkBackend::showVerificationCode(unsigned int code)
+libcdoc::NetworkBackend::showFeedback(SIDMIDFeedback& feedback)
 {
-    LOG_INFO("Verification code: {:04d}", code);
+    LOG_INFO("Verification code: {:04d} url: {}", feedback.code, feedback.url);
     return OK;
 }
 
@@ -736,8 +736,9 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     // Generate code
     uint8_t b[32];
     SHA256(digest.data(), digest.size(), b);
-    unsigned int code = ((b[30] << 8) | b[31]) % 10000;
-    result = showVerificationCode(code);
+    SIDMIDFeedback fb;
+    fb.code = ((b[30] << 8) | b[31]) % 10000;
+    result = showFeedback(fb);
     if (result != OK) return result;
 
     picojson::object aio1 = {
@@ -823,8 +824,9 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     std::string algo_name = algo_names[(int) algo];
 
     // Generate code
-    unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
-    result = showVerificationCode(code);
+    SIDMIDFeedback fb;
+    fb.code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
+    result = showFeedback(fb);
     if (result != OK) return result;
 
     // etsi/PNOEE-01234567890
