@@ -51,7 +51,7 @@ One or more recipients must be specified, each with its own encryption method.
 | `[label]:cert:CERTIFICATE_HEX` | Encryption public-key from certificate. The certificate must be provided as hex-encoded string |
 | `[label]:skey:SECRET_KEY_HEX` | Symmetric encryption with AES key. The key must be provided as hex-encoded string |
 | `[label]:pkey:SECRET_KEY_HEX` | Encryption with public-key. The key must be provided as hex-encoded string |
-| `[label]:pfkey:PUB_KEY_FILE` | Encryption with public-key where the key is provided via path to DER file with EC (**secp384r1** curve) public key |
+| `[label]:pfkey:PUB_KEY_FILE` | Encryption with public-key. The key (**secp384r1** or **secp256r1**) is read from the DER-encoded file. |
 | `[label]:pw:PASSWORD` | Encryption with derive key using PWBKDF |
 | `[label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL]` | Encryption with AES key from PKCS11 module |
 | `[label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL]` | Encryption with public key from PKCS11 module |

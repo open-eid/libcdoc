@@ -19,6 +19,7 @@
 #include "CDocCipher.h"
 #include "CDocReader.h"
 #include "CDoc2.h"
+#include "Crypto.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "PKCS11Backend.h"
@@ -35,6 +36,7 @@
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/core_names.h>
 
 using namespace std;
 using namespace libcdoc;
@@ -140,7 +142,6 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
         EVP_PKEY *params = nullptr;
         if ((EVP_PKEY_paramgen_init(ctx.get()) < 0) ||
-            (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), NID_secp384r1) < 0) ||
             (EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE) < 0) ||
             (EVP_PKEY_paramgen(ctx.get(), &params) < 0))
             return libcdoc::CRYPTO_ERROR;
@@ -222,6 +223,15 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
 };
 
+static int
+EVP_PKEY_get_nid(EVP_PKEY *pkey)
+{
+    std::array<char, 256> name;
+    if (SSL_FAILED(EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, name.data(), name.size(), nullptr), "EVP_PKEY_get_utf8_string_param"))
+        return NID_undef;
+    return OBJ_sn2nid(name.data());
+}
+
 int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, const vector<string>& files)
 {
     for (const libcdoc::Recipient& rcpt : rcpts) {
@@ -276,24 +286,51 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             key = libcdoc::Recipient::makeSymmetric(label, 0);
             LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
-            if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::Algorithm::ECC, conf.servers[0].ID);
+            libcdoc::Algorithm algo = libcdoc::Algorithm::ECC;
+            libcdoc::Curve curve = libcdoc::Curve::SECP_384_R1;
+            const uint8_t *der = rcpt.secret.data();
+            EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, rcpt.secret.size());
+            if (!pkey) {
+                LOG_ERROR("Cannot parse public key");
+                return false;
+            }
+            int id = EVP_PKEY_get_id(pkey);
+            if (id == EVP_PKEY_RSA) {
+                algo = libcdoc::Algorithm::RSA;
+            } else if (id == EVP_PKEY_EC) {
+                int nid = EVP_PKEY_get_nid(pkey);
+                switch(nid) {
+                    case NID_secp384r1:
+                        break;
+                    case NID_X9_62_prime256v1:
+                        curve = libcdoc::Curve::SECP_256_R1;
+                        break;
+                    default:
+                        LOG_ERROR("Unknown public key nid: {}", nid);
+                        return false;
+                }
             } else {
-                const uint8_t *der = rcpt.secret.data();
-                EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, rcpt.secret.size());
-                int id = EVP_PKEY_get_id(pkey);
-                std::vector<uint8_t> d(i2d_PublicKey(pkey, nullptr), 0);
-                uint8_t *p = d.data();
-                i2d_PublicKey(pkey, &p);
-                if (id == EVP_PKEY_EC) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Algorithm::ECC);
-                } else if (id == EVP_PKEY_RSA) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Algorithm::RSA);
+                LOG_ERROR("Unknown public key id: {}", id);
+                return false;
+            }
+
+            if (!conf.servers.empty()) {
+                if (algo == libcdoc::Algorithm::RSA) {
+                    key = libcdoc::Recipient::makeServerRSA(label, rcpt.secret, conf.servers[0].ID);
+                } else {
+                    key = libcdoc::Recipient::makeServerECC(label, rcpt.secret, curve, conf.servers[0].ID);
+                }
+            } else {
+                if (algo == libcdoc::Algorithm::RSA) {
+                    key = libcdoc::Recipient::makeRSA(label, rcpt.secret);
+                } else {
+                    key = libcdoc::Recipient::makeECC(label, rcpt.secret, curve);
                 }
             }
             LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
             key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key.key_name = rcpt.label;
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
             std::vector<uint8_t> val;
             bool rsa;
@@ -312,6 +349,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
             key = libcdoc::Recipient::makeSymmetric(label, 65535);
+            key.key_name = rcpt.label;
         } else if (rcpt.type == RcptInfo::Type::SHARE) {
             LOG_DBG("Creating keyshare recipient:");
             key = libcdoc::Recipient::makeShare(label, conf.servers[0].ID, "PNOEE-" + rcpt.id);

@@ -79,6 +79,7 @@ Recipient::makeECC(std::string label, std::vector<uint8_t> public_key, Curve ec_
     Recipient rcpt(Type::PUBLIC_KEY);
     rcpt.label = std::move(label);
     rcpt.pk_type = ECC;
+    rcpt.ec_type = ec_type;
     // 0x30 identifies SEQUENCE tag in ASN.1 encoding
     auto evp = Crypto::fromECPublicKeyDer(public_key);
     rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
