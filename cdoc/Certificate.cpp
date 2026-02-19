@@ -144,7 +144,7 @@ Certificate::getPublicKey() const
     return {};
 }
 
-Certificate::Algorithm
+libcdoc::Algorithm
 Certificate::getAlgorithm() const
 {
     if(!cert)
@@ -153,7 +153,7 @@ Certificate::getAlgorithm() const
     EVP_PKEY *pkey = X509_get0_pubkey(cert.get());
 	int alg = EVP_PKEY_get_base_id(pkey);
 
-	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : Algorithm::ECC;
+	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : (alg == EVP_PKEY_EC) ? Algorithm::ECC : Algorithm::UNKNOWN_ALGORITHM;
 }
 
 std::vector<uint8_t> Certificate::getDigest() const

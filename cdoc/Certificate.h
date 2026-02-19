@@ -19,7 +19,7 @@
 #ifndef SSLCERTIFICATE_H
 #define SSLCERTIFICATE_H
 
-#include "Exports.h"
+#include "CDoc.h"
 
 #include "utils/memory.h"
 
@@ -32,11 +32,6 @@ namespace libcdoc {
 
 class Certificate {
 public:
-	enum Algorithm : unsigned char {
-		RSA,
-		ECC
-	};
-
     enum EIDType : unsigned char {
         Unknown,
         IDCard,

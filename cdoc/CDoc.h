@@ -19,7 +19,7 @@
 #ifndef __CDOC_H__
 #define __CDOC_H__
  
-#include "Exports.h"
+#include <cdoc/Exports.h>
 
 #include <cstdint>
 #include <string>
@@ -128,6 +128,31 @@ enum {
 CDOC_EXPORT std::string getErrorStr(int64_t code);
 
 CDOC_EXPORT std::string getVersion();
+
+/**
+ * @brief The public key algorithm
+ */
+enum Algorithm : uint8_t {
+    UNKNOWN_ALGORITHM,
+    /**
+     * Elliptic curve
+     */
+    ECC,
+    /**
+     * RSA
+     */
+    RSA
+};
+
+/**
+ * @brief The EC curve used
+ */
+enum Curve : uint8_t {
+    UNKNOWN_CURVE,
+    SECP_384_R1,
+    SECP_256_R1
+};
+
 
 // Logging interface
 

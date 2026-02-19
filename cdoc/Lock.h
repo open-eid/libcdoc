@@ -19,7 +19,7 @@
 #ifndef __LOCK_H__
 #define __LOCK_H__
 
-#include <cdoc/Exports.h>
+#include <cdoc/CDoc.h>
 
 #include <cstdint>
 #include <string>
@@ -72,20 +72,6 @@ struct CDOC_EXPORT Lock
          * @brief Symmetric key distributed on several servers
          */
         SHARE_SERVER
-    };
-
-    /**
-     * @brief The public key type
-     */
-    enum PKType : unsigned char {
-        /**
-         * Elliptic curve
-         */
-        ECC,
-        /**
-         * RSA
-         */
-        RSA
     };
 
     /**
@@ -178,9 +164,13 @@ struct CDOC_EXPORT Lock
      */
     Type type = Type::UNKNOWN;
     /**
-     * @brief algorithm type for public key based locks
+     * @brief The algorithm type for public key based locks
      */
-    PKType pk_type = PKType::ECC;
+    Algorithm pk_type = Algorithm::ECC;
+    /**
+     * @brief The elliptic curve used
+     */
+    Curve ec_type = Curve::SECP_384_R1;
 
     /**
      * @brief the lock label
@@ -215,7 +205,7 @@ struct CDOC_EXPORT Lock
      * @brief check whether public key lock uses RSA algorithm
      * @return true if pk_type is RSA
      */
-    constexpr bool isRSA() const noexcept { return pk_type == PKType::RSA; }
+    constexpr bool isRSA() const noexcept { return pk_type == Algorithm::RSA; }
 
     Lock() noexcept = default;
     Lock(Type _type) noexcept : type(_type) {};
