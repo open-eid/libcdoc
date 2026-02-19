@@ -106,28 +106,27 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
      * Get a certificate value given slot, label and id.
      * Both key id and label have to match unless either one is empty.
      * @param val a destination container for value
-     * @param rsa will be set true is certificate uses RSA key
      * @param slot the slot to use
-     * @param pin the pin code
+     * @param pin the pin code or empty if public
      * @param id certificate id or empty vector
      * @param label certificate label or empty vector
      * @return error code or OK
      */
-    result_t getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t getCertificate(std::vector<uint8_t>& val, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
     /**
      * @brief get public key value
      *
      * Get a public key value given slot, label and id.
      * Both key id and label have to match unless either one is empty.
      * @param val a destination container for value
-     * @param rsa will be set true is public key uses RSA key
+     * @param algorithm the output parameter for public key algorithm
      * @param slot the slot to use
-     * @param pin the pin code
+     * @param pin the pin code or empty if public
      * @param id public key id or empty vector
      * @param label public key label or empty vector
      * @return error code or OK
      */
-    result_t getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
+    result_t getPublicKey(std::vector<uint8_t>& val, libcdoc::Algorithm& algorithm, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 
     /**
      * @brief loads key for encryption/decryption

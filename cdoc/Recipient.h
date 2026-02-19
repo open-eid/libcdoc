@@ -139,11 +139,6 @@ struct CDOC_EXPORT Recipient {
     bool isKeyShare() const { return type == Type::KEYSHARE; }
 
     /**
-     * @brief Clear all values and set type to NONE
-     */
-    void clear() { type = Type::NONE; pk_type = Algorithm::ECC; label.clear(); kdf_iter = 0; rcpt_key.clear(); cert.clear(); }
-
-    /**
      * @brief A convenience method to check whether two recipients are both public key based and have the same keys.
      * @param other another Recipient
      * @return true if the public keys are identical
@@ -158,16 +153,29 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create a new symmetric key based Recipient
+     * 
+     * If the label is empty, a machine-readable label will be created according to CDoc2 specification
+     * 
      * @param label the label text
      * @param kdf_iter the number of PBKDF iterations (0 if full key is provided)
      * @return a new Recipient structure
      */
 	static Recipient makeSymmetric(std::string label, int32_t kdf_iter);
 
+    /**
+     * @brief Create a new public key based Recipient with RSA algorithm
+     * 
+     * @param label 
+     * @param public_key 
+     * @return Recipient 
+     */
     static Recipient makeRSA(std::string label, std::vector<uint8_t> public_key);
     static Recipient makeECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type);
     /**
      * @brief Create a new public key based Recipient
+     * 
+     * If the label is empty, a machine-readable label will be created according to CDoc2 specification
+     * 
      * @param label the label text
      * @param public_key the public key value
      * @param pk_type the algorithm type (either ECC or RSA)
@@ -186,6 +194,9 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create a new certificate based Recipient
+     * 
+     * If the label is empty, a machine-readable label will be created according to CDoc2 specification
+     * 
      * @param label the label text
      * @param cert the certificate value (der-encoded)
      * @return a new Recipient structure
@@ -196,6 +207,7 @@ struct CDOC_EXPORT Recipient {
     static Recipient makeServerECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type, std::string server_id);
     /**
      * @brief Create a new capsule server based Recipient
+     * 
      * If the label is empty, a machine-readable label text (public key version) is automatically generated according to CDoc2 specification.
      * 
      * @param label the label text
@@ -217,6 +229,7 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create a new capsule server based Recipient
+     * 
      * If the label is empty, a machine-readable label text (either eID or certificate version) is automatically generated according to CDoc2 specification.
      * 
      * @param label the label text
@@ -228,6 +241,8 @@ struct CDOC_EXPORT Recipient {
 
     /**
      * @brief Create new keyshare recipient
+     * 
+     * If the label text is empty, a machine-readable label will be created according to CDoc2 specification
      * 
      * @param label the label text
      * @param server_id the id of share server group

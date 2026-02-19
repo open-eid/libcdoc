@@ -206,8 +206,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
         if (rcpt_idx >= crypto->rcpts.size()) rcpt_idx = 0;
         const libcdoc::RcptInfo& rcpt = crypto->rcpts[rcpt_idx];
-        bool rsa = false;
-        return crypto->p11->getCertificate(dst, rsa, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+        return crypto->p11->getCertificate(dst, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
     }
 
     libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
@@ -333,18 +332,18 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             key.key_name = rcpt.label;
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
             std::vector<uint8_t> val;
-            bool rsa;
+            libcdoc::Algorithm algo;
             ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-            int result = p11->getPublicKey(val, rsa, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+            int result = p11->getPublicKey(val, algo, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
             if (result != libcdoc::OK) {
                 LOG_ERROR("No such public key: {}", rcpt.p11.key_label);
                 continue;
             }
-            LOG_DBG("Public key ({}): {}", rsa ? "rsa" : "ecc", toHex(val));
+            LOG_DBG("Public key ({}): {}", (algo == libcdoc::Algorithm::RSA) ? "rsa" : "ecc", toHex(val));
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, val, rsa ? libcdoc::Algorithm::RSA : libcdoc::Algorithm::ECC, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(label, val, algo, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Algorithm::RSA : libcdoc::Algorithm::ECC);
+                key = libcdoc::Recipient::makePublicKey(label, val, algo);
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
@@ -440,10 +439,9 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
         }
         lock_idx = recipient.lock_idx;
     } else if (crypto.p11) {
-        bool isRsa;
         vector<uint8_t> cert_bytes;
         ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-        int64_t result = p11->getCertificate(cert_bytes, isRsa, (int) recipient.p11.slot, recipient.secret, recipient.p11.key_id, recipient.p11.key_label);
+        int64_t result = p11->getCertificate(cert_bytes, (int) recipient.p11.slot, recipient.secret, recipient.p11.key_id, recipient.p11.key_label);
         if (result != libcdoc::OK) {
             LOG_ERROR("Certificate reading from SC card failed. Key label: {}", recipient.p11.key_label);
             return 1;

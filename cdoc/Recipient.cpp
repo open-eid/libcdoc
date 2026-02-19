@@ -96,7 +96,7 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
     rcpt.label = std::move(label);
     rcpt.cert = std::move(cert);
     rcpt.rcpt_key = x509.getPublicKey();
-    rcpt.pk_type = (x509.getAlgorithm() == libcdoc::Certificate::RSA) ? Algorithm::RSA : Algorithm::ECC;
+    rcpt.pk_type = x509.getAlgorithm();
     rcpt.expiry_ts = x509.getNotAfter();
     return rcpt;
 }
