@@ -44,7 +44,9 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: ubuntu_${{ matrix.container }}_${{ matrix.arch }}
-        path: libcdoc*.*
+        path: |
+          libcdoc_*.*
+          libcdoc-*.*
   android:
     name: Build on Ubuntu for ${{ matrix.target }}
     runs-on: ubuntu-24.04
@@ -99,30 +101,49 @@ jobs:
       with:
         path: ${{ github.workspace }}/vcpkg_cache
         key: vcpkg-${{ matrix.target }}-${{ hashFiles('vcpkg.json') }}
-    - name: Build
+    - name: Build MacOS
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+      if: matrix.target == 'macos'
       run: |
         export VCPKG_ROOT=${VCPKG_INSTALLATION_ROOT}
         cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${{ env.DEST }}
         cmake --build --preset ${{ matrix.target }}
-    - name: Test
-      if: matrix.target == 'macos'
-      run: cmake --build --preset ${{ matrix.target }} --target test
-    - name: Install
-      run: cmake --build --preset ${{ matrix.target }} --target install/strip
+        cmake --build --preset ${{ matrix.target }} --target test embedlibs 
+        cmake --build --preset ${{ matrix.target }} --target zipdebug pkgbuild
+    - name: Build ${{ matrix.target }}
+      env:
+        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+      if: matrix.target != 'macos'
+      run: |
+        export VCPKG_ROOT=${VCPKG_INSTALLATION_ROOT}
+        cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        cmake --build --preset ${{ matrix.target }}
+        sudo cmake --build --preset ${{ matrix.target }} --target install/strip
+        pwd
+        zip -r libcdoc.${{ matrix.target }}.zip ${{ matrix.target }}
     - name: Archive artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v5
       with:
         name: ${{ matrix.target }}
-        path: ${{ env.DEST }}
+        path: |
+          build/*/libcdoc*.*
+          libcdoc*.zip
   windows:
     name: Build on Windows
     runs-on: ${{ matrix.image }}
     strategy:
       matrix:
         image: [windows-2025]
+        toolset: [143]
         platform: [x64, arm64]
+        include:
+        - platform: x64
+          setenv: amd64
+          python: 64
+        - platform: arm64
+          setenv: amd64_arm64
+          python: arm64
     env:
       CXXFLAGS: '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR' # https://github.com/actions/runner-images/issues/10004
       DEST: ${{ github.workspace }}/${{ matrix.image }}_${{ matrix.platform }}
@@ -133,9 +154,9 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/vcpkg_cache
-        key: vcpkg-${{ matrix.image }}-${{ matrix.platform }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-${{ matrix.toolset }}-${{ matrix.platform }}-${{ hashFiles('vcpkg.json', 'vcpkg-ports/**') }}
     - name: Install dependencies
-      run: winget install --silent --accept-source-agreements --accept-package-agreements swig doxygen
+      run: winget install --silent --accept-source-agreements --accept-package-agreements swig doxygen 9NQ7512CXL7T
     - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -144,21 +165,23 @@ jobs:
       env:
         VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
       run: |
+        & "$env:LOCALAPPDATA\Microsoft\WindowsApps\py.exe" install --target=.\python\${{ matrix.platform }} 3.12-${{ matrix.python }}
         $swig = (Get-Item "$env:LOCALAPPDATA\Microsoft\WinGet\Links\swig.exe").Target
-        cmake -A ${{ matrix.platform }} -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo `
-          "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-          "-DSWIG_EXECUTABLE=$swig" `
-          -DVCPKG_TARGET_TRIPLET=${{ matrix.platform }}-windows-static-md `
-          ${{ matrix.platform == 'x64' && '-DVCPKG_MANIFEST_FEATURES=tests' || '' }} `
-          -DCMAKE_INSTALL_LIBDIR=bin
-        cmake --build build --config RelWithDebInfo
-        ctest -V -C RelWithDebInfo --test-dir build
-        cmake --install build --config RelWithDebInfo --prefix ${{ env.DEST }}
-    - name: Archive artifacts
+        & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" ${{ matrix.setenv }} "&&" pwsh build.ps1 `
+          -vcpkg "C:/vcpkg/vcpkg.exe" `
+          -swig $swig `
+          -doxygen "C:/Program files/doxygen/bin/doxygen.exe" `
+          -boost
+    - name: Archive artifacts (MSI)
+      uses: actions/upload-artifact@v6
+      with:
+        name: msi_${{ matrix.image }}_${{ matrix.platform }}
+        path: ./*.msi
+    - name: Archive artifacts (ZIP)
       uses: actions/upload-artifact@v6
       with:
         name: ${{ matrix.image }}_${{ matrix.platform }}
-        path: ${{ env.DEST }}
+        path: ${{ matrix.platform }}
   pages:
     name: Deploy pages
     if: github.repository == 'open-eid/libcdoc' && contains(github.ref, 'master')
