@@ -1,0 +1,112 @@
+﻿<?if $(sys.BUILDARCH) = x64 ?>
+  <?define UpgradeCode = "{6195c702-c57e-497f-a01a-838bde7986f3}" ?>
+  <?define OpenSSLSuffix = "-x64" ?>
+  <?define Suffix = "" ?>
+<?elseif $(sys.BUILDARCH) = arm64 ?>
+  <?define UpgradeCode = "{2d43d9ab-36ac-47e4-81ef-74f28d4dee99}" ?>
+  <?define OpenSSLSuffix = "-arm64" ?>
+  <?define Suffix = "-arm64" ?>
+<?else?>
+  <?define UpgradeCode = "{efea90bd-d08a-4ab4-86c5-4bc3351fba6a}" ?>
+  <?define OpenSSLSuffix = "" ?>
+  <?define Suffix = "" ?>
+<?endif?>
+
+<?if $(env.VisualStudioVersion) = "17.0" ?>
+<?define VCVER = "143" ?>
+<?elseif $(env.VisualStudioVersion) = "16.0" ?>
+<?define VCVER = "142" ?>
+<?endif?>
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="libcdoc $(sys.BUILDARCH)" UpgradeCode="$(var.UpgradeCode)"
+      Language="1033" Version="!(bind.FileVersion.libcdoc)" Manufacturer="RIA">
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="ID.ico" SourceFile="$(var.ICON)" />
+    <Property Id="ARPPRODUCTICON" Value="ID.ico" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage=
+        "A newer version of [ProductName] is already installed. If you are trying to downgrade, please uninstall the newer version first." />
+    <UI>
+       <ui:WixUI Id="WixUI_Mondo" />
+       <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="SetupTypeDlg" Order="3" />
+       <Publish Dialog="SetupTypeDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="3" />
+    </UI>
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="libcdoc$(var.Suffix)" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Runtime"
+        Source="$(env.VCTOOLSREDISTDIR)\$(sys.BUILDARCH)\Microsoft.VC$(var.VCVER).CRT">
+      <File Name="msvcp140.dll" />
+      <File Name="vcruntime140.dll" />
+<?if $(sys.BUILDARCH) != x86 ?>
+      <File Name="vcruntime140_1.dll" />
+<?endif?>
+    </ComponentGroup>
+
+    <ComponentGroup Id="Dependencies" Source="$(var.vcpkg)\bin">
+      <File Name="libcrypto-3$(var.OpenSSLSuffix).dll" />
+      <File Name="libssl-3$(var.OpenSSLSuffix).dll" />
+      <File Name="legacy.dll" />
+      <File Name="zlib1.dll" />
+      <File Name="libxml2.dll" />
+    </ComponentGroup>
+
+    <ComponentGroup Id="Libraries" Source="$(var.libcdoc)">
+      <File Id="libcdoc" Name="cdoc.dll" />
+      <File Name="cdoc-tool.exe" />
+<?ifdef var.swig ?>
+      <File Name="cdoc_csharp.dll" />
+      <File Name="cdoc_java.dll" />
+      <File Source="$(var.libcdoc)\share\libcdoc\cdoc.jar" />
+<?ifdef var.python ?>
+      <File Name="_libcdoc_python.pyd" />
+      <File Name="libcdoc.py" />
+<?endif?>
+<?endif?>
+    </ComponentGroup>
+
+    <ComponentGroup Id="RuntimeDev"
+        Source="$(env.VCTOOLSREDISTDIR)\Debug_NonRedist\$(sys.BUILDARCH)\Microsoft.VC$(var.VCVER).DebugCRT">
+      <File Name="msvcp140d.dll" />
+      <File Name="vcruntime140d.dll" />
+<?if $(sys.BUILDARCH) != x86 ?>
+      <File Name="vcruntime140_1d.dll" />
+<?endif?>
+    </ComponentGroup>
+
+    <ComponentGroup Id="LibrariesDev" Source="$(var.libcdoc)">
+      <Files Include="*.pdb" />
+      <File Name="cdoc.lib" />
+      <File Name="cdocd.dll" />
+      <File Name="cdocd.lib" />
+<?ifdef var.swig ?>
+      <File Name="cdoc_csharpd.dll" />
+      <File Name="cdoc_javad.dll" />
+<?ifdef var.python ?>
+      <File Name="_cdoc_pythond.pyd" />
+<?endif?>
+<?endif?>
+    </ComponentGroup>
+
+    <Feature Id="InstallLibcdoc" Level="1" Title="Libcdoc" Display="expand" ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="Runtime" />
+      <ComponentGroupRef Id="Dependencies" />
+      <ComponentGroupRef Id="Libraries" />
+      <Feature Id="InstallDevel" Level="1" Title="Development">
+        <ComponentGroupRef Id="RuntimeDev" />
+        <File Directory="INSTALLFOLDER" Source="$(var.vcpkg)\debug\bin\zlibd1.dll" />
+        <ComponentGroupRef Id="LibrariesDev" />
+        <Files Directory="INSTALLFOLDER" Subdirectory="include" Include="$(var.libcdoc)\include\**" />
+        <Files Directory="INSTALLFOLDER" Subdirectory="cmake\cdoc" Include="$(var.libcdoc)\cmake\cdoc\**"  />
+      </Feature>
+<?ifdef var.docLocation ?>
+      <Feature Id="InstallDocumentation" Level="1" Title="Documentation">
+        <Files Include="$(var.docLocation)\**" Directory="INSTALLFOLDER" Subdirectory="documentation" />
+      </Feature>
+<?endif?>
+    </Feature>
+  </Package>
+</Wix>
