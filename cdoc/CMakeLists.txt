@@ -188,7 +188,7 @@ if(APPLE)
     list(TRANSFORM MODULE_LIST PREPEND "  header \"")
     list(TRANSFORM MODULE_LIST APPEND "\"")
     list(JOIN MODULE_LIST "\n" MODULE_LIST)
-    set(MODULE_MAP ${CMAKE_BINARY_DIR}/module.modulemap)
+    set(MODULE_MAP ${PROJECT_BINARY_DIR}/module.modulemap)
     file(WRITE ${MODULE_MAP} "framework module cdoc {
 ${MODULE_LIST}
   export *
