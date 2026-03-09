@@ -19,8 +19,6 @@
 #ifndef SSLCERTIFICATE_H
 #define SSLCERTIFICATE_H
 
-#include "Exports.h"
-
 #include "utils/memory.h"
 
 #include <string>
@@ -48,9 +46,10 @@ public:
 
     explicit Certificate(const std::vector<uint8_t>& cert);
 
-	std::string getCommonName() const;
-	std::string getGivenName() const;
-	std::string getSurname() const;
+    static std::string getName(X509 *cert, int NID);
+    std::string getCommonName() const;
+    std::string getGivenName() const;
+    std::string getSurname() const;
     std::string getSerialNumber() const;
 
     EIDType getEIDType() const;

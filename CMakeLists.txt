@@ -64,7 +64,7 @@ if(LIBCDOC_WITH_DOCS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             COMMENT "Generating API documentation with Doxygen" VERBATIM
         )
-        install(DIRECTORY ${CMAKE_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
+        install(DIRECTORY ${PROJECT_BINARY_DIR}/doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
         install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR})
     endif()
 endif()
