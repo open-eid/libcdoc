@@ -45,17 +45,17 @@ XMLWriter::~XMLWriter() noexcept
         xmlTextWriterEndDocument(w.get());
 }
 
-int64_t XMLWriter::writeStartElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr)
+int64_t XMLWriter::writeStartElement(NS ns, const char *name, const std::map<const char *, std::string> &attr)
 {
     if(!w)
         return WRONG_ARGUMENTS;
     auto &count = nsmap[ns.prefix ? ns.prefix : std::string_view{}];
     count++;
-    if(xmlTextWriterStartElementNS(w.get(), pcxmlChar(ns.prefix), pcxmlChar(name.c_str()), count > 1 ? nullptr : pcxmlChar(ns.ns)) == -1)
+    if(xmlTextWriterStartElementNS(w.get(), pcxmlChar(ns.prefix), pcxmlChar(name), count > 1 ? nullptr : pcxmlChar(ns.ns)) == -1)
         return IO_ERROR;
     for(const auto &[name, content]: attr)
     {
-        if(xmlTextWriterWriteAttribute(w.get(), pcxmlChar(name.c_str()), pcxmlChar(content.c_str())) == -1)
+        if(xmlTextWriterWriteAttribute(w.get(), pcxmlChar(name), pcxmlChar(content.c_str())) == -1)
             return IO_ERROR;
     }
     return OK;
@@ -72,7 +72,7 @@ int64_t XMLWriter::writeEndElement(NS ns)
     return OK;
 }
 
-int64_t XMLWriter::writeElement(NS ns, const std::string &name, const std::function<int64_t()> &f)
+int64_t XMLWriter::writeElement(NS ns, const char *name, const std::function<int64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, {}); rv != OK)
         return rv;
@@ -81,7 +81,7 @@ int64_t XMLWriter::writeElement(NS ns, const std::string &name, const std::funct
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::function<int64_t()> &f)
+int64_t XMLWriter::writeElement(NS ns, const char *name, const std::map<const char *, std::string> &attr, const std::function<int64_t()> &f)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
@@ -90,7 +90,7 @@ int64_t XMLWriter::writeElement(NS ns, const std::string &name, const std::map<s
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std::function<int64_t(DataConsumer&)> &f, const std::map<std::string, std::string> &attr)
+int64_t XMLWriter::writeBase64Element(NS ns, const char *name, const std::function<int64_t(DataConsumer&)> &f, const std::map<const char *, std::string> &attr)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
@@ -150,7 +150,7 @@ int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std:
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std::vector<xmlChar> &data, const std::map<std::string, std::string> &attr)
+int64_t XMLWriter::writeBase64Element(NS ns, const char *name, const std::vector<xmlChar> &data, const std::map<const char *, std::string> &attr)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;
@@ -159,7 +159,7 @@ int64_t XMLWriter::writeBase64Element(NS ns, const std::string &name, const std:
     return writeEndElement(ns);
 }
 
-int64_t XMLWriter::writeTextElement(NS ns, const std::string &name, const std::map<std::string, std::string> &attr, const std::string &data)
+int64_t XMLWriter::writeTextElement(NS ns, const char *name, const std::map<const char *, std::string> &attr, const std::string &data)
 {
     if(auto rv = writeStartElement(ns, name, attr); rv != OK)
         return rv;

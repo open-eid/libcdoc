@@ -23,6 +23,7 @@
 #include "CDocWriter.h"
 #include "RcptInfo.h"
 #include "ToolConf.h"
+#include "Exports.h"
 
 #include <map>
 #include <memory>
@@ -31,7 +32,7 @@ namespace libcdoc
 {
 
 
-class CDocCipher
+class CDOC_EXPORT CDocCipher
 {
 public:
     CDocCipher() = default;
