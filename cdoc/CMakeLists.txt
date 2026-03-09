@@ -61,6 +61,7 @@ add_library(cdoc
     CDoc2.h
     Wrapper.h
     utils/memory.h
+    CDocCipher.cpp CDocCipher.h
 )
 set_target_properties(cdoc PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -92,9 +93,9 @@ target_link_libraries(cdoc PRIVATE
 )
 
 if(BUILD_TOOLS)
-    add_executable(cdoc-tool cdoc-tool.cpp CDocCipher.cpp)
+    add_executable(cdoc-tool cdoc-tool.cpp)
     target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
-    target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
+    target_link_libraries(cdoc-tool cdoc_ver cdoc)
     set_target_properties(cdoc-tool PROPERTIES
         INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
     )
@@ -191,7 +192,7 @@ if(APPLE)
     list(TRANSFORM MODULE_LIST PREPEND "  header \"")
     list(TRANSFORM MODULE_LIST APPEND "\"")
     list(JOIN MODULE_LIST "\n" MODULE_LIST)
-    set(MODULE_MAP ${CMAKE_BINARY_DIR}/module.modulemap)
+    set(MODULE_MAP ${PROJECT_BINARY_DIR}/module.modulemap)
     file(WRITE ${MODULE_MAP} "framework module cdoc {
 ${MODULE_LIST}
   export *

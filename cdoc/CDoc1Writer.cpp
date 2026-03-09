@@ -18,6 +18,7 @@
 
 #include "CDoc1Writer.h"
 
+#include "Certificate.h"
 #include "Crypto.h"
 #include "DDocWriter.h"
 #include "Recipient.h"
@@ -119,27 +120,10 @@ int64_t CDoc1Writer::Private::writeDocument(bool use_ddoc, const std::vector<Rec
 int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipient, const Crypto::Key& transportKey)
 {
     auto peerCert = Crypto::toX509(recipient);
-	if(!peerCert)
+    if(!peerCert)
         return UNSPECIFIED_ERROR;
-	std::string cn = [&]{
-		std::string cn;
-		X509_NAME *name = X509_get_subject_name(peerCert.get());
-		if(!name)
-			return cn;
-		int pos = X509_NAME_get_index_by_NID(name, NID_commonName, 0);
-		if(pos == -1)
-			return cn;
-		X509_NAME_ENTRY *e = X509_NAME_get_entry(name, pos);
-		if(!e)
-			return cn;
-		char *data = nullptr;
-		int size = ASN1_STRING_to_UTF8((uint8_t**)&data, X509_NAME_ENTRY_get_data(e));
-
-		cn.assign(data, size_t(size));
-		OPENSSL_free(data);
-		return cn;
-	}();
-    return writeElement(DENC, "EncryptedKey", {{"Recipient", cn}}, [&] -> int64_t {
+    return writeElement(DENC, "EncryptedKey",
+            {{"Recipient", Certificate::getName(peerCert.get(), NID_commonName)}}, [&] -> int64_t {
 		std::vector<uint8_t> encryptedData;
 		auto *peerPKey = X509_get0_pubkey(peerCert.get());
 		switch(EVP_PKEY_base_id(peerPKey))
@@ -169,18 +153,19 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
             oid.resize(size_t(OBJ_obj2txt(oid.data(), int(oid.size()), obj.get(), 1)));
             std::vector<uint8_t> SsDer = Crypto::toPublicKeyDer(ephKey.get());
 
-			std::string encryptionMethod(libcdoc::Crypto::KWAES256_MTH);
-			std::string concatDigest = libcdoc::Crypto::SHA384_MTH;
-			switch ((SsDer.size() - 1) / 2) {
-			case 32: concatDigest = libcdoc::Crypto::SHA256_MTH; break;
-			case 48: concatDigest = libcdoc::Crypto::SHA384_MTH; break;
-			default: concatDigest = libcdoc::Crypto::SHA512_MTH; break;
-			}
+            std::string encryptionMethod(libcdoc::Crypto::KWAES256_MTH);
+            const std::string &concatDigest = [&] -> const std::string & {
+                switch ((SsDer.size() - 1) / 2) {
+                case 32: return libcdoc::Crypto::SHA256_MTH; break;
+                case 48: return libcdoc::Crypto::SHA384_MTH; break;
+                default: return libcdoc::Crypto::SHA512_MTH; break;
+                }
+            }();
 
-			std::vector<uint8_t> AlgorithmID(documentFormat.cbegin(), documentFormat.cend());
-			std::vector<uint8_t> encryptionKey = libcdoc::Crypto::concatKDF(concatDigest, libcdoc::Crypto::keySize(encryptionMethod), sharedSecret,
-				AlgorithmID, SsDer, recipient);
-			encryptedData = libcdoc::Crypto::AESWrap(encryptionKey, transportKey.key, true);
+            std::vector<uint8_t> AlgorithmID(documentFormat.cbegin(), documentFormat.cend());
+            std::vector<uint8_t> encryptionKey = libcdoc::Crypto::concatKDF(concatDigest,
+                libcdoc::Crypto::keySize(encryptionMethod), sharedSecret, AlgorithmID, SsDer, recipient);
+            encryptedData = libcdoc::Crypto::AESWrap(encryptionKey, transportKey.key, true);
 
             LOG_TRACE_KEY("Ss {}", SsDer);
             LOG_TRACE_KEY("Ksr {}", sharedSecret);
@@ -197,25 +182,25 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
                             {"PartyUInfo", "00" + toHex(SsDer)},
                             {"PartyVInfo", "00" + toHex(recipient)}}, [&] {
                             return writeElement(DS, "DigestMethod", {{"Algorithm", concatDigest}});
-						});
+                        });
                     }));
                     RET_ERROR(writeElement(DENC, "OriginatorKeyInfo", [&] {
                         return writeElement(DS, "KeyValue", [&] {
                             return writeElement(DSIG11, "ECKeyValue", [&] {
                                 RET_ERROR(writeElement(DSIG11, "NamedCurve", {{"URI", "urn:oid:" + oid}}));
                                 return writeBase64Element(DSIG11, "PublicKey", SsDer);
-							});
-						});
+                            });
+                        });
                     }));
                     return writeElement(DENC, "RecipientKeyInfo", [&] {
                         return writeElement(DS, "X509Data", [&] {
                             return writeBase64Element(DS, "X509Certificate", recipient);
-						});
-					});
-				});
+                        });
+                    });
+                });
             }));
-			break;
-		}
+            break;
+        }
         default:
             return UNSPECIFIED_ERROR;
         }
@@ -224,8 +209,8 @@ int64_t CDoc1Writer::Private::writeRecipient(const std::vector<uint8_t> &recipie
             return UNSPECIFIED_ERROR;
         return writeElement(DENC, "CipherData", [&] {
             return writeBase64Element(DENC, "CipherValue", encryptedData);
-		});
-	});
+        });
+    });
 }
 
 /**

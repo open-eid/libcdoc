@@ -28,13 +28,12 @@ Certificate::Certificate(const std::vector<uint8_t>& cert)
 {
 }
 
-static std::string
-getName(const unique_free_t<X509>& cert, int NID)
+std::string Certificate::getName(X509 *cert, int NID)
 {
     std::string cn;
     if(!cert)
         return cn;
-    X509_NAME *name = X509_get_subject_name(cert.get());
+    X509_NAME *name = X509_get_subject_name(cert);
     if(!name)
         return cn;
     int pos = X509_NAME_get_index_by_NID(name, NID, -1);
@@ -44,8 +43,8 @@ getName(const unique_free_t<X509>& cert, int NID)
     if(!e)
         return cn;
     char *data = nullptr;
-    int size = ASN1_STRING_to_UTF8((uint8_t**)&data, X509_NAME_ENTRY_get_data(e));
-    cn.assign(data, size_t(size));
+    if(int size = ASN1_STRING_to_UTF8((uint8_t**)&data, X509_NAME_ENTRY_get_data(e)); size > 0)
+        cn.assign(data, size_t(size));
     OPENSSL_free(data);
     return cn;
 }
@@ -53,25 +52,25 @@ getName(const unique_free_t<X509>& cert, int NID)
 std::string
 Certificate::getCommonName() const
 {
-	return getName(cert, NID_commonName);
+    return getName(cert.get(), NID_commonName);
 }
 
 std::string
 Certificate::getGivenName() const
 {
-	return getName(cert, NID_givenName);
+    return getName(cert.get(), NID_givenName);
 }
 
 std::string
 Certificate::getSurname() const
 {
-	return getName(cert, NID_surname);
+    return getName(cert.get(), NID_surname);
 }
 
 std::string
 Certificate::getSerialNumber() const
 {
-	return getName(cert, NID_serialNumber);
+    return getName(cert.get(), NID_serialNumber);
 }
 
 time_t
