@@ -127,7 +127,7 @@ jobs:
       with:
         name: ${{ matrix.target }}
         path: |
-          build/*/libcdoc*.*
+          build/**/libcdoc*.*
           libcdoc*.zip
   windows:
     name: Build on Windows

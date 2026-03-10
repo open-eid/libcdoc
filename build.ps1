@@ -3,7 +3,7 @@ param(
   [string]$libcdoc = $PSScriptRoot,
   [string]$platform = $env:PLATFORM,
   [string]$build_number = $(if ($null -eq $env:BUILD_NUMBER) {"0"} else {$env:BUILD_NUMBER}),
-  [string]$msiversion = "1.0.0.$build_number",
+  [string]$msiversion = "0.1.8.$build_number",
   [string]$msi_name = "libcdoc-$msiversion$env:VER_SUFFIX.$platform.msi",
   [string]$git = "git.exe",
   [string]$vcpkg = "vcpkg\vcpkg.exe",
