@@ -120,7 +120,6 @@ jobs:
         cmake --preset ${{ matrix.target }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
         cmake --build --preset ${{ matrix.target }}
         sudo cmake --build --preset ${{ matrix.target }} --target install/strip
-        pwd
         zip -r libcdoc.${{ matrix.target }}.zip ${{ matrix.target }}
     - name: Archive artifacts
       uses: actions/upload-artifact@v5
