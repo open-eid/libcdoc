@@ -54,6 +54,9 @@ constexpr string_view TargetFile("test_data.txt.cdoc");
 constexpr string_view ECPrivKeyFile("ec-secp384r1-priv.der");
 constexpr string_view ECPubKeyFile("ec-secp384r1-pub.der");
 constexpr string_view ECCertFile("ec-secp384r1-cert.der");
+constexpr string_view EC256PrivKeyFile("ec-secp256r1-priv.der");
+constexpr string_view EC256PubKeyFile("ec-secp256r1-pub.der");
+constexpr string_view EC256CertFile("ec-secp256r1-cert.der");
 constexpr string_view RSAPrivKeyFile("rsa_2048_priv.der");
 constexpr string_view RSAPubKeyFile("rsa_2048_pub.der");
 constexpr string_view RSACertFile("rsa_2048_cert.der");
@@ -271,7 +274,7 @@ encryptV2(const std::vector<std::string>& files, const std::string& container, c
 }
 
 static void
-decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, libcdoc::RcptInfo& rcpt)
+decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, libcdoc::RcptInfo& rcpt, bool remove = true)
 {
     libcdoc::ToolConf conf;
     conf.input_files.push_back(container);
@@ -286,7 +289,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
     }
 
     path = fs::path(container);
-    if (fs::exists(path)) {
+    if (remove && fs::exists(path)) {
         error_code e;
         fs::remove(path, e);
         if(e)
@@ -294,10 +297,10 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
 }
 
 static void
-decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, const std::vector<uint8_t>& key)
+decrypt(const std::vector<std::string>& files, const std::string& container, const std::string& dir, const std::vector<uint8_t>& key, int idx = 0, bool remove = true)
 {
-    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .secret=key, .lock_idx=0};
-    decrypt(files, container, dir, rcpt);
+    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .secret=key, .lock_idx=idx};
+    decrypt(files, container, dir, rcpt, remove);
 }
 static int
 unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
@@ -578,7 +581,8 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKey, EncryptFixture,
         * utf::description("Encrypting a file with EC key"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
-        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(ECPubKeyFile)}
+        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(ECPubKeyFile)},
+        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(EC256PubKeyFile)}
     };
     encrypt(2, {checkDataFile(sources[0])}, formTargetFile("ECKeyUsage.cdoc"), rcpts);
 }
@@ -586,7 +590,8 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKey, DecryptFixture,
                      * utf::depends_on("ECKeyUsage/EncryptWithECKey")
                      * utf::description("Decrypting a file with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile), 0, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsage.cdoc"), tmpDataPath.string(), fetchDataFile(EC256PrivKeyFile), 1, true);
 }
 BOOST_AUTO_TEST_SUITE_END()
 
