@@ -1,3 +1,6 @@
+
+configure_file( libcdoc.pc.cmake libcdoc.pc @ONLY )
+
 set(SCHEMAS
     schema/recipients.fbs
     schema/header.fbs
@@ -197,11 +200,6 @@ ${MODULE_LIST}
 }")
     target_sources(cdoc PRIVATE ${MODULE_MAP})
     set_source_files_properties(${MODULE_MAP} PROPERTIES MACOSX_PACKAGE_LOCATION Modules)
-    if(IOS)
-        add_custom_command(TARGET cdoc POST_BUILD
-            COMMAND /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string ${CMAKE_OSX_DEPLOYMENT_TARGET}" $<TARGET_FILE_DIR:cdoc>/Info.plist
-        )
-    endif()
 endif()
 
 install(TARGETS cdoc
@@ -234,4 +232,63 @@ if(NOT ANDROID)
     )
 endif()
 
-#install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libcdoc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+if( FRAMEWORK )
+    list(GET OPENSSL_LIBRARIES 0 LIBPATH)
+    get_filename_component( LIBPATH ${LIBPATH} PATH )
+    set(COPY_LIBRARIES_SCRIPT ${CMAKE_BINARY_DIR}/copy_libraries.cmake)
+    file(WRITE ${COPY_LIBRARIES_SCRIPT} "
+    message(\"Copy dependencies: \$ENV{LIBRARY} \$ENV{BUNDLE_DIR}\")
+    file(GET_RUNTIME_DEPENDENCIES LIBRARIES \$ENV{LIBRARY} RESOLVED_DEPENDENCIES_VAR OUT)
+    file(COPY \${OUT} DESTINATION \$ENV{BUNDLE_DIR})
+    ")
+    add_custom_target( embedlibs DEPENDS cdoc $<TARGET_NAME_IF_EXISTS:cdoc-tool>
+        COMMAND mkdir -p $<TARGET_FILE_DIR:cdoc>/Libraries
+        COMMAND ln -s -f Versions/Current/Libraries $<TARGET_BUNDLE_DIR:cdoc>
+        COMMAND ${CMAKE_COMMAND} -E env
+            LIBRARY=$<TARGET_FILE:cdoc>
+            BUNDLE_DIR=$<TARGET_BUNDLE_CONTENT_DIR:cdoc>/Libraries
+            ${CMAKE_COMMAND} -P ${COPY_LIBRARIES_SCRIPT}
+        COMMAND chmod 644 $<TARGET_FILE_DIR:cdoc>/Libraries/*
+        COMMAND install_name_tool -id 'libcrypto.3.dylib'
+            $<TARGET_FILE_DIR:cdoc>/Libraries/libcrypto.3.dylib
+        COMMAND install_name_tool -id 'libssl.3.dylib'
+            -change '${LIBPATH}/libcrypto.3.dylib' '@loader_path/libcrypto.3.dylib'
+            $<TARGET_FILE_DIR:cdoc>/Libraries/libssl.3.dylib
+        COMMAND install_name_tool
+            -change '${LIBPATH}/libcrypto.3.dylib' '@loader_path/Libraries/libcrypto.3.dylib'
+            -change '${LIBPATH}/libssl.3.dylib' '@loader_path/Libraries/libssl.3.dylib'
+            $<TARGET_FILE:cdoc>
+    )
+    if(BUILD_TOOLS)
+        add_custom_command(TARGET cdoc-tool POST_BUILD
+            COMMAND cp $<TARGET_FILE:cdoc-tool> $<TARGET_FILE_DIR:cdoc>/Resources)
+        add_custom_command(TARGET embedlibs POST_BUILD
+            COMMAND install_name_tool
+                -change '${LIBPATH}/libcrypto.3.dylib' '@executable_path/../Libraries/libcrypto.3.dylib'
+                -change '${LIBPATH}/libssl.3.dylib' '@executable_path/../Libraries/libssl.3.dylib'
+                -rpath '${CMAKE_CURRENT_BINARY_DIR}' '@executable_path/../../../..'
+                $<TARGET_FILE_DIR:cdoc>/Resources/cdoc-tool
+            COMMAND touch $<TARGET_FILE:cdoc-tool>
+        )
+    endif()
+    if(IOS)
+        add_custom_command(TARGET cdoc POST_BUILD
+            COMMAND /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string ${CMAKE_OSX_DEPLOYMENT_TARGET}" $<TARGET_FILE_DIR:cdoc>/Info.plist)
+    endif()
+    add_custom_target(pkgbuild DEPENDS cdoc $<TARGET_NAME_IF_EXISTS:cdoc-tool>
+        COMMAND DESTDIR=install ${CMAKE_COMMAND} --install .
+        COMMAND pkgbuild --root install
+            ${CMAKE_BINARY_DIR}/libcdoc_${VERSION}$ENV{VER_SUFFIX}.pkg
+        COMMAND_EXPAND_LISTS
+    )
+    add_custom_target(zipdebug DEPENDS cdoc $<TARGET_NAME_IF_EXISTS:cdoc-tool>
+        COMMAND dsymutil -o cdoc.dSYM $<TARGET_FILE:cdoc>
+            $<$<TARGET_EXISTS:cdoc-tool>:$<TARGET_FILE:cdoc-tool>>
+        COMMAND zip -r ${CMAKE_BINARY_DIR}/libcdoc-dbg_${VERSION}$ENV{VER_SUFFIX}.zip cdoc.dSYM
+    )
+else()
+    if( BUILD_TOOLS )
+        install( TARGETS cdoc-tool DESTINATION ${CMAKE_INSTALL_BINDIR} )
+    endif()
+    install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libcdoc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
