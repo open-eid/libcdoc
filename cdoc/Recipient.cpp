@@ -257,7 +257,11 @@ map<string, string> Recipient::parseLabel(const string& label)
     string::size_type base64IndPos = label_wo_prefix.find(LABELBASE64IND);
     if (base64IndPos == string::npos)
     {
-        label_to_prcss = std::move(label_wo_prefix);
+        if (label_wo_prefix.starts_with(",")) {
+            label_to_prcss = label_wo_prefix.substr(1);
+        } else {
+            label_to_prcss = std::move(label_wo_prefix);
+        }
     }
     else
     {
@@ -278,7 +282,10 @@ map<string, string> Recipient::parseLabel(const string& label)
         }
         else
         {
-            parsed_label[urlDecode(label_data_parts[0])] = urlDecode(label_data_parts[1]);
+            std::string key = urlDecode(label_data_parts[0]);
+            std::string value = urlDecode(label_data_parts[1]);
+            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c){ return std::tolower(c); });
+            parsed_label[key] = value;
         }
     }
 
