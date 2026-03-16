@@ -297,16 +297,14 @@ libcdoc::result_t
 libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t& size)
 {
 	int64_t h_size = hdr.getSize();
-	std::vector<char> pax_in(h_size);
-	result_t result = _src->read((uint8_t *) pax_in.data(), pax_in.size());
+	std::string paxData(h_size, 0);
+	result_t result = _src->read((uint8_t *) paxData.data(), paxData.size());
 	if (result != h_size) {
 		_error = INPUT_STREAM_ERROR;
 		return _error;
 	}
-	std::string paxData(pax_in.data(), pax_in.size());
 	_src->skip(padding(h_size));
 	// Parse Pax data
-	std::stringstream ss(paxData);
 	for(const std::string &data: split(paxData, '\n')) {
 		if(data.empty()) break;
 		size_t eq_pos = data.find_first_of('=');
