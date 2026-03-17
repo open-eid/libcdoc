@@ -508,44 +508,52 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
     switch(recipient.capsule_type())
     {
     case Capsule::recipients_ECCPublicKeyCapsule:
-        if(const auto *key = recipient.capsule_as_recipients_ECCPublicKeyCapsule()) {
-            if(key->curve() == EllipticCurve::secp384r1) {
-                lock.type = Lock::Type::PUBLIC_KEY;
-                lock.pk_type = Lock::PKType::ECC;
-                lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(key->recipient_public_key()));
-                lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(key->sender_public_key()));
-                LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
+        if(const auto *capsule = recipient.capsule_as_recipients_ECCPublicKeyCapsule()) {
+            lock.type = Lock::Type::PUBLIC_KEY;
+            lock.pk_type = Algorithm::ECC;
+            if(capsule->curve() == EllipticCurve::secp384r1) {
+                lock.ec_type = Curve::SECP_384_R1;
+            } else if (capsule->curve() == EllipticCurve::secp256r1) {
+                lock.ec_type = Curve::SECP_256_R1;
             } else {
-                LOG_ERROR("Unsupported ECC curve: skipping");
+                LOG_WARN("Unknown ECC curve: {}", (int) capsule->curve());
+                lock.ec_type = Curve::UNKNOWN_CURVE;
             }
+            lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(capsule->recipient_public_key()));
+            lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(capsule->sender_public_key()));
+            LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
         }
         return;
     case Capsule::recipients_RSAPublicKeyCapsule:
         if(const auto *key = recipient.capsule_as_recipients_RSAPublicKeyCapsule())
         {
             lock.type = Lock::Type::PUBLIC_KEY;
-            lock.pk_type = Lock::PKType::RSA;
+            lock.pk_type = Algorithm::RSA;
             lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(key->recipient_public_key()));
             lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(key->encrypted_kek()));
         }
         return;
     case Capsule::recipients_KeyServerCapsule:
-        if (const KeyServerCapsule *server = recipient.capsule_as_recipients_KeyServerCapsule()) {
-            KeyDetailsUnion details = server->recipient_key_details_type();
+        if (const KeyServerCapsule *capsule = recipient.capsule_as_recipients_KeyServerCapsule()) {
+            KeyDetailsUnion details = capsule->recipient_key_details_type();
             switch (details) {
             case KeyDetailsUnion::EccKeyDetails:
-                if(const EccKeyDetails *eccDetails = server->recipient_key_details_as_EccKeyDetails()) {
-                    if(eccDetails->curve() != EllipticCurve::secp384r1) {
-                        LOG_ERROR("Unsupported elliptic curve key type");
-                        return;
-                    }
-                    lock.pk_type = Lock::PKType::ECC;
+                if(const EccKeyDetails *eccDetails = capsule->recipient_key_details_as_EccKeyDetails()) {
+                    lock.pk_type = Algorithm::ECC;
                     lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
+                    if(eccDetails->curve() == EllipticCurve::secp384r1) {
+                        lock.ec_type = Curve::SECP_384_R1;
+                    } else if (eccDetails->curve() == EllipticCurve::secp256r1) {
+                        lock.ec_type = Curve::SECP_256_R1;
+                    } else {
+                        LOG_WARN("Unknown ECC curve: {}", (int) eccDetails->curve());
+                        lock.ec_type = Curve::UNKNOWN_CURVE;
+                    }
                 }
                 break;
             case KeyDetailsUnion::RsaKeyDetails:
-                if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
-                    lock.pk_type = Lock::PKType::RSA;
+                if(const RsaKeyDetails *rsaDetails = capsule->recipient_key_details_as_RsaKeyDetails()) {
+                    lock.pk_type = Algorithm::RSA;
                     lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(rsaDetails->recipient_public_key()));
                 }
                 break;
@@ -554,8 +562,8 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
                 return;
             }
             lock.type = Lock::Type::SERVER;
-            lock.setString(Lock::Params::KEYSERVER_ID, server->keyserver_id()->str());
-            lock.setString(Lock::Params::TRANSACTION_ID, server->transaction_id()->str());
+            lock.setString(Lock::Params::KEYSERVER_ID, capsule->keyserver_id()->str());
+            lock.setString(Lock::Params::TRANSACTION_ID, capsule->transaction_id()->str());
         }
         return;
     case Capsule::recipients_SymmetricKeyCapsule:

@@ -95,6 +95,17 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     return OK;
 }
 
+struct ECData {
+    int ossl_nid;
+    cdoc20::recipients::EllipticCurve fb_type;
+    const char *api_id;
+};
+
+static std::map<Curve,ECData> ecdata = {
+    {Curve::SECP_384_R1, {NID_secp384r1, cdoc20::recipients::EllipticCurve::secp384r1, "ecc_secp384r1"}},
+    {Curve::SECP_256_R1, {NID_X9_62_prime256v1, cdoc20::recipients::EllipticCurve::secp256r1, "ecc_secp256r1"}}
+};
+
 static flatbuffers::Offset<cdoc20::header::RecipientRecord>
 createRSACapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& encrypted_kek, const std::vector<uint8_t>& xor_key)
 {
@@ -131,7 +142,7 @@ static flatbuffers::Offset<cdoc20::header::RecipientRecord>
 createECCCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::vector<uint8_t>& eph_public_key, const std::vector<uint8_t>& xor_key)
 {
     auto capsule = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
-                                                                 cdoc20::recipients::EllipticCurve::secp384r1,
+                                                                 ecdata[rcpt.ec_type].fb_type,
                                                                  builder.CreateVector(rcpt.rcpt_key),
                                                                  builder.CreateVector(eph_public_key));
     return cdoc20::header::CreateRecipientRecord(builder,
@@ -146,7 +157,7 @@ static flatbuffers::Offset<cdoc20::header::RecipientRecord>
 createECCServerCapsule(flatbuffers::FlatBufferBuilder& builder, const libcdoc::Recipient& rcpt, const std::string& transaction_id, uint64_t expiry_time, const std::vector<uint8_t>& xor_key)
 {
     auto eccKeyServer = cdoc20::recipients::CreateEccKeyDetails(builder,
-                                                                cdoc20::recipients::EllipticCurve::secp384r1,
+                                                                ecdata[rcpt.ec_type].fb_type,
                                                                 builder.CreateVector(rcpt.rcpt_key));
     auto capsule = cdoc20::recipients::CreateKeyServerCapsule(builder,
                                                               cdoc20::recipients::KeyDetailsUnion::EccKeyDetails,
@@ -220,7 +231,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     return libcdoc::CONFIGURATION_ERROR;
                 }
             }
-            if(rcpt.pk_type == libcdoc::Recipient::PKType::RSA) {
+            if(rcpt.pk_type == libcdoc::Algorithm::RSA) {
                 crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
                 if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK) {
                     setLastError("Internal error");
@@ -256,7 +267,12 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     fb_rcpts.push_back(createRSACapsule(builder, rcpt, key_material, xor_key));
                 }
             } else {
-                auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, NID_secp384r1);
+                if (!ecdata.contains(rcpt.ec_type)) {
+                    setLastError("Invalid EC curve");
+                    LOG_ERROR("{}", last_error);
+                    return libcdoc::CRYPTO_ERROR;
+                }
+                auto publicKey = libcdoc::Crypto::fromECPublicKeyDer(rcpt.rcpt_key, ecdata[rcpt.ec_type].ossl_nid);
                 if(!publicKey) {
                     setLastError("Invalid ECC key");
                     LOG_ERROR("{}", last_error);
@@ -284,7 +300,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 LOG_TRACE_KEY("xor: {}", xor_key);
                 if(rcpt.isKeyServer()) {
                     libcdoc::NetworkBackend::CapsuleInfo cinfo;
-                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, "ecc_secp384r1", rcpt.expiry_ts);
+                    auto result = network->sendKey(cinfo, send_url, rcpt.rcpt_key, key_material, ecdata[rcpt.ec_type].api_id, rcpt.expiry_ts);
                     if (result < 0) {
                         setLastError(network->getLastErrorStr(result));
                         LOG_ERROR("{}", last_error);

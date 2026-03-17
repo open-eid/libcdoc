@@ -141,7 +141,7 @@ struct CDOC_EXPORT NetworkBackend {
      * @param url server url
      * @param rcpt_key recipient's public key
      * @param key_material encrypted KEK or ECDH public Key used to derive shared secret
-	 * @param type algorithm type, currently either "rsa" or "ecc_secp384r1"
+	 * @param type algorithm type, currently either "rsa", "ecc_secp384r1" or "ecc_secp256r1"
      * @param expiry_ts the requested capsule expiry timestamp, 0 - use server default
 	 * @return error code or OK
 	 */

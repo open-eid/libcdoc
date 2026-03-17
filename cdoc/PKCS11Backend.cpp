@@ -319,7 +319,7 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
 }
 
 libcdoc::result_t
-libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
     if (!d->session) {
@@ -339,7 +339,7 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
 }
 
 libcdoc::result_t
-libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, libcdoc::Algorithm& algorithm, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
     if (!d->session) {
@@ -355,8 +355,9 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
         LOG_DBG("PKCS11: getValue CKA_KEY_TYPE error");
 		return CRYPTO_ERROR;
 	}
-	rsa = (*((CK_KEY_TYPE *) v.data()) == CKK_RSA);
-    if (rsa) return libcdoc::NOT_IMPLEMENTED;
+	if (*((CK_KEY_TYPE *) v.data()) != CKK_EC)
+        return libcdoc::NOT_IMPLEMENTED;
+    algorithm = Algorithm::ECC;
     v = d->attribute(d->session, handle, CKA_EC_PARAMS);
 	if (v.empty()) {
         LOG_DBG("PKCS11: getValue CKA_EC_PARAMS error");
