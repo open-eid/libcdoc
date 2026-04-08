@@ -119,6 +119,11 @@ struct CDOC_EXPORT NetworkBackend {
         std::string password;
     };
 
+    struct SIDMIDFeedback {
+        int code;
+        std::string url;
+    };
+
     NetworkBackend() = default;
 	virtual ~NetworkBackend() noexcept = default;
     NetworkBackend(const NetworkBackend&) = delete;
@@ -235,13 +240,14 @@ struct CDOC_EXPORT NetworkBackend {
     }
 
     /**
-     * @brief show MID/SID verification code
+     * @brief show MID/SID verification code or QR code
      * 
-     * Show SID/MID verification code. The default implementation logs it with level INFO.
-     * @param code verification code
+     * Show SID/MID verification code or QR code. The default implementation logs the content with level INFO.
+     * 
+     * @param feedback SID/MID feedback data
      * @return error code or OK
      */
-    virtual result_t showVerificationCode(unsigned int code);
+    virtual result_t showFeedback(SIDMIDFeedback& feedback);
 
     /**
      * @brief Sign digest with SmartID authentication key
