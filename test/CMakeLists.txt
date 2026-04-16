@@ -1,7 +1,7 @@
 add_executable(unittests
     libcdoc_boost.cpp
-    ../cdoc/CDocCipher.cpp
-    ../cdoc/Crypto.cpp)
+    ../cdoc/Crypto.cpp
+)
 
 target_link_libraries(unittests
     OpenSSL::SSL
