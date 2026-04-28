@@ -60,7 +60,7 @@ constexpr string_view RSACertFile("rsa_2048_cert.der");
 
 const string Label("Proov");
 
-constexpr string_view Password("Proov123");
+const std::vector<uint8_t> Password = {'P', 'r', 'o', 'o', 'v', '1', '2', '3'};
 
 constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
 
@@ -296,7 +296,8 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
         error_code e;
         fs::remove(path, e);
         if(e)
-            BOOST_TEST_MESSAGE("Failed to remove file");    }
+            BOOST_TEST_MESSAGE("Failed to remove file");
+    }
 }
 
 static void
@@ -526,7 +527,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, EncryptFixture,
         * utf::description("Encrypting a file with password and given label"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
-        {libcdoc::RcptInfo::PASSWORD, Label, {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
+        {libcdoc::RcptInfo::PASSWORD, Label, {}, Password}
     };
     encrypt(2, {checkDataFile(sources[0])}, formTargetFile("PasswordUsageWithoutLabel.cdoc"), rcpts);
 }
@@ -534,7 +535,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordAndLabel, DecryptFixture,
         * utf::depends_on("PasswordUsageWithLabel/EncryptWithPasswordAndLabel")
         * utf::description("Decrypting a file with password and given label"))
 {
-    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .label=Label, .secret=std::vector<uint8_t>(Password.cbegin(), Password.cend())};
+    libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .label=Label, .secret=Password};
     decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), decodeName(tmpDataPath), rcpt);
 }
 BOOST_AUTO_TEST_SUITE_END()
@@ -546,7 +547,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordWithoutLabel, EncryptFixtu
         * utf::description("Encrypting a file with password and without label"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
-        {libcdoc::RcptInfo::PASSWORD, "auto", {}, std::vector<uint8_t>(Password.cbegin(), Password.cend())}
+        {libcdoc::RcptInfo::PASSWORD, "auto", {}, Password}
     };
     encrypt(2, {checkDataFile(sources[0])}, formTargetFile("PasswordUsageWithoutLabel.cdoc"), rcpts);
 }
@@ -554,7 +555,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithPasswordLabelIndex, DecryptFixture
                                    * utf::depends_on("PasswordUsageWithoutLabel/EncryptWithPasswordWithoutLabel")
                                    * utf::description("Decrypting a file with password and label index"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath.string(), std::vector<uint8_t>(Password.cbegin(), Password.cend()));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("PasswordUsageWithoutLabel.cdoc"), tmpDataPath.string(), Password);
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -815,6 +816,63 @@ BOOST_AUTO_TEST_CASE(LabelParsingEmptyLabel)
             BOOST_CHECK_EQUAL(result_pair->second, value);
         }
     }
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(TarPaxHeader)
+
+struct PaxFixture : public FixtureBase
+{
+    static void encryptDecrypt(const fs::path& srcFile, const fs::path& cdocFile, const fs::path& outDir)
+    {
+        std::vector<libcdoc::RcptInfo> rcpts {
+            {libcdoc::RcptInfo::PASSWORD, "label", {}, Password}
+        };
+        encrypt(2, {srcFile.string()}, cdocFile.string(), rcpts);
+
+        libcdoc::RcptInfo rcpt {
+            .type=libcdoc::RcptInfo::LOCK,
+            .label="label",
+            .secret=Password
+        };
+        libcdoc::ToolConf conf;
+        conf.input_files.push_back(cdocFile.string());
+        conf.out = outDir.string();
+        libcdoc::CDocCipher cipher;
+        BOOST_CHECK_EQUAL(cipher.Decrypt(conf, rcpt), 0);
+    }
+};
+
+BOOST_FIXTURE_TEST_CASE(LongFilename, PaxFixture)
+{
+    const std::string name(110, 'a');
+    const fs::path src = tmpDataPath / name;
+    std::ofstream(src) << "hello";
+    BOOST_TEST_REQUIRE(fs::exists(src));
+
+    const fs::path cdoc = tmpDataPath / "pax_long.cdoc";
+    const fs::path outDir = tmpDataPath / "pax_long_out";
+    fs::create_directories(outDir);
+
+    encryptDecrypt(src, cdoc, outDir);
+    BOOST_TEST(fs::exists(outDir / name));
+}
+
+BOOST_FIXTURE_TEST_CASE(NonAsciiFilename, PaxFixture)
+{
+    // õäöü in UTF-8
+    const fs::path namePath(u8"\u00f5\u00e4\u00f6\u00fc.txt");
+    const fs::path src = tmpDataPath / namePath;
+    std::ofstream(src) << "hello";
+    BOOST_TEST_REQUIRE(fs::exists(src));
+
+    const fs::path cdoc = tmpDataPath / "pax_unicode.cdoc";
+    const fs::path outDir = tmpDataPath / "pax_unicode_out";
+    fs::create_directories(outDir);
+
+    encryptDecrypt(src, cdoc, outDir);
+    BOOST_TEST(fs::exists(outDir / namePath));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

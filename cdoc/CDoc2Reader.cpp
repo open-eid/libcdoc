@@ -317,10 +317,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                 LOG_ERROR("Cannot fetch share {}", i);
                 return result;
             }
-            if (Crypto::xor_data(kek, kek, share.share) != libcdoc::OK) {
+            if (auto err = libcdoc::Crypto::xor_data(kek, kek, share.share); err != libcdoc::OK) {
                 setLastError("Failed to derive kek");
                 LOG_ERROR("Failed to derive kek");
-                return libcdoc::CRYPTO_ERROR;
+                return err;
             }
         }
         LOG_INFO("Fetched all shares");
@@ -338,10 +338,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         LOG_ERROR("{}", last_error);
         return CRYPTO_ERROR;
     }
-    if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
+    if (auto err = libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek); err != libcdoc::OK) {
         setLastError(t_("Failed to decrypt/derive fmk"));
         LOG_ERROR("{}", last_error);
-        return libcdoc::CRYPTO_ERROR;
+        return err;
     }
     std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
 
@@ -410,13 +410,12 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     LOG_TRACE_KEY("cek: {}", cek);
 
     priv->dec = std::make_unique<libcdoc::DecryptionSource>(*priv->_src, EVP_chacha20_poly1305(), cek, libcdoc::CDoc2::NONCE_LEN);
-    std::vector<uint8_t> aad = toUint8Vector(libcdoc::CDoc2::PAYLOAD);
-    aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
-    aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
-    if(auto rv = priv->dec->updateAAD(aad); rv != OK) {
-        setLastError(priv->dec->getLastErrorStr(rv));
-        LOG_ERROR("{}", last_error);
-        return rv;
+    for(const auto &aad: {libcdoc::CDoc2::PAYLOAD, priv->header_data, priv->headerHMAC}) {
+        if(auto rv = priv->dec->updateAAD(aad); rv != OK) {
+            setLastError(priv->dec->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
     }
 
     priv->zsrc = std::make_unique<libcdoc::ZSource>(priv->dec.get(), false);
