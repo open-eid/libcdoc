@@ -138,6 +138,7 @@ buildURL(const std::string& host, int port)
 std::ostream&
 operator<<(std::ostream& escaped, urlEncode src)
 {
+    restoreFlags rf(escaped);
     escaped.fill('0');
     escaped << std::hex;
 
