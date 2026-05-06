@@ -31,7 +31,7 @@ static constexpr std::string_view CEK = "CDOC20cek";
 static constexpr std::string_view HMAC = "CDOC20hmac";
 static constexpr std::string_view KEK = "CDOC20kek";
 static constexpr std::string_view KEKPREMASTER = "CDOC20kekpremaster";
-static constexpr std::string_view PAYLOAD = "CDOC20payload";
+static const std::vector<uint8_t> PAYLOAD = {'C', 'D', 'O', 'C', '2', '0', 'p', 'a', 'y', 'l', 'o', 'a', 'd'};
 static constexpr std::string_view SALT = "CDOC20salt";
 
 static constexpr int KEY_LEN = 32;

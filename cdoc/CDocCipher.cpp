@@ -31,15 +31,12 @@
 
 #include <sstream>
 #include <map>
-#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 
 using namespace std;
 using namespace libcdoc;
-
-static string GenerateRandomSequence();
 
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
     const std::map<unsigned int, libcdoc::RcptInfo>& rcpts;
@@ -271,18 +268,18 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
         Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.cert, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.cert, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+                key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert);
             }
         } else if (rcpt.type == RcptInfo::Type::SKEY) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
             LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::PKType::ECC, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.secret, libcdoc::PKType::ECC, conf.servers[0].ID);
             } else {
                 const uint8_t *der = rcpt.secret.data();
                 EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, rcpt.secret.size());
@@ -291,14 +288,14 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
                 uint8_t *p = d.data();
                 i2d_PublicKey(pkey, &p);
                 if (id == EVP_PKEY_EC) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::PKType::ECC);
+                    key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret, libcdoc::PKType::ECC);
                 } else if (id == EVP_PKEY_RSA) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::PKType::RSA);
+                    key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret, libcdoc::PKType::RSA);
                 }
             }
             LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
@@ -312,19 +309,19 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             }
             LOG_DBG("Public key ({}): {}", rsa ? "rsa" : "ecc", toHex(val));
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, val, rsa ? libcdoc::PKType::RSA : libcdoc::PKType::ECC, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), std::move(val), rsa ? libcdoc::PKType::RSA : libcdoc::PKType::ECC, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::PKType::RSA : libcdoc::PKType::ECC);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), std::move(val), rsa ? libcdoc::PKType::RSA : libcdoc::PKType::ECC);
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
-            key = libcdoc::Recipient::makeSymmetric(label, 65535);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 65535);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
 #ifdef HAS_KEYSHARES
         } else if (rcpt.type == RcptInfo::Type::SHARE) {
             LOG_DBG("Creating keyshare recipient:");
-            key = libcdoc::Recipient::makeShare(label, conf.servers[0].ID, "PNOEE-" + rcpt.id);
+            key = libcdoc::Recipient::makeShare(std::move(label), conf.servers[0].ID, "PNOEE-" + rcpt.id);
 #endif
         }
 
@@ -679,6 +676,7 @@ void CDocCipher::Locks(const char* file) const
         return;
     }
 
+    restoreFlags rf(cout);
     int lock_id = 1;
     for (const Lock& lock : rdr->getLocks()) {
         map<string, string> parsed_label(Lock::parseLabel(lock.label));
@@ -706,36 +704,4 @@ void CDocCipher::Locks(const char* file) const
 
         lock_id++;
     }
-}
-
-static string GenerateRandomSequence()
-{
-    constexpr uint32_t upperbound = 'z' - '0' + 1;
-    constexpr int MaxSequenceLength = 11;
-
-    uint32_t rnd;
-    uint8_t rndByte;
-    ostringstream sequence;
-    for (int cnt = 0; cnt < MaxSequenceLength;)
-    {
-        if (RAND_bytes(&rndByte, 1) < 1)
-        {
-            rnd = rand() % upperbound + '0';
-        }
-        else
-        {
-            rnd = rndByte % upperbound + '0';
-        }
-
-        // arc4random_uniform tends to be not available on all platforms.
-        // rnd = arc4random_uniform(upperbound) + '0';
-
-        if (isalnum(rnd))
-        {
-            sequence << static_cast<char>(rnd);
-            cnt++;
-        }
-    }
-
-    return sequence.str();
 }
