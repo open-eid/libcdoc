@@ -31,20 +31,6 @@ namespace libcdoc {
  */
 using result_t = int64_t;
 
-/**
- * @brief The public key type
- */
-enum class PKType : uint8_t {
-    /**
-     * Elliptic curve
-     */
-    ECC,
-    /**
-     * RSA
-     */
-    RSA
-};
-
 enum {
     /**
      * @brief Operation completed successfully

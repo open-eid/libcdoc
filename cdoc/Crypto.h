@@ -89,9 +89,11 @@ public:
     static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der, int curveName);
     /* Create public key from long encoding (0x30...) */
     static EVP_PKEY_ptr fromECPublicKeyDer(const std::vector<uint8_t> &der);
+    static EVP_PKEY_ptr fromPublicKeyDer(const std::vector<uint8_t> &der);
 
     static EVP_PKEY_ptr genECKey(EVP_PKEY *params);
 	static std::vector<uint8_t> toPublicKeyDer(EVP_PKEY *key);
+	static std::vector<uint8_t> toPublicKeyDerLong(EVP_PKEY *key);
 
 	static std::vector<uint8_t> random(uint32_t len = 32);
 	static int xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs);

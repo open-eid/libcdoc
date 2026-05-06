@@ -148,6 +148,14 @@ Certificate::getPublicKey() const
     return {};
 }
 
+std::vector<uint8_t>
+Certificate::getPublicKeyLong() const
+{
+    if(cert)
+        return Crypto::toPublicKeyDerLong(X509_get0_pubkey(cert.get()));
+    return {};
+}
+
 Algorithm
 Certificate::getAlgorithm() const
 {

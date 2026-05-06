@@ -311,6 +311,17 @@ Crypto::pbkdf2_sha256(const std::vector<uint8_t>& pw, const std::vector<uint8_t>
 }
 
 Crypto::EVP_PKEY_ptr
+Crypto::fromPublicKeyDer(const std::vector<uint8_t> &der)
+{
+    if (auto key = d2i<d2i_PUBKEY,EVP_PKEY_free>(der, nullptr))
+        return key;
+    auto key = d2i<d2i_PublicKey,EVP_PKEY_free>(der, EVP_PKEY_RSA, nullptr);
+    if(!key)
+        LOG_SSL_ERROR("d2i_PublicKey");
+    return key;
+}
+
+Crypto::EVP_PKEY_ptr
 Crypto::fromRSAPublicKeyDer(const std::vector<uint8_t> &der)
 {
     if(auto key = d2i<d2i_PublicKey,EVP_PKEY_free>(der, EVP_PKEY_RSA, nullptr))
@@ -371,6 +382,19 @@ Crypto::toPublicKeyDer(EVP_PKEY *key)
     if(auto *p = der.data(); i2d_PublicKey(key, &p) != der.size())
     {
         LOG_SSL_ERROR("i2d_PublicKey");
+        der.clear();
+    }
+	return der;
+}
+
+std::vector<uint8_t>
+Crypto::toPublicKeyDerLong(EVP_PKEY *key)
+{
+	if(!key) return {};
+	std::vector<uint8_t> der(i2d_PUBKEY(key, nullptr), 0);
+    if(auto *p = der.data(); i2d_PUBKEY(key, &p) != der.size())
+    {
+        LOG_SSL_ERROR("i2d_PUBKEY");
         der.clear();
     }
 	return der;

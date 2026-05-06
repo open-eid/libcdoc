@@ -51,9 +51,9 @@ constexpr string_view SourceFile3("test_data3.txt");
  * @brief Encrypted file name.
  */
 constexpr string_view TargetFile("test_data.txt.cdoc");
-constexpr string_view ECPrivKeyFile("ec-secp384r1-priv.der");
-constexpr string_view ECPubKeyFile("ec-secp384r1-pub.der");
-constexpr string_view ECCertFile("ec-secp384r1-cert.der");
+constexpr string_view EC384PrivKeyFile("ec-secp384r1-priv.der");
+constexpr string_view EC384PubKeyFile("ec-secp384r1-pub.der");
+constexpr string_view EC384CertFile("ec-secp384r1-cert.der");
 constexpr string_view EC256PrivKeyFile("ec-secp256r1-priv.der");
 constexpr string_view EC256PubKeyFile("ec-secp256r1-pub.der");
 constexpr string_view EC256CertFile("ec-secp256r1-cert.der");
@@ -572,9 +572,12 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithCDoc2Key, EncryptFixture,
         * utf::description("Encrypting a CDoc2 file with a key"))
 {
     std::vector<libcdoc::RcptInfo> rcpts {
-        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(ECPubKeyFile)},
+        {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(EC384PubKeyFile)},
+        {libcdoc::RcptInfo::CERT, {}, fetchDataFile(EC384CertFile)},
         {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(EC256PubKeyFile)},
+        {libcdoc::RcptInfo::CERT, {}, fetchDataFile(EC256CertFile)},
         {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(EC521PubKeyFile)},
+        {libcdoc::RcptInfo::CERT, {}, fetchDataFile(EC521CertFile)},
         {libcdoc::RcptInfo::PKEY, {}, {}, fetchDataFile(RSAPubKeyFile)},
         {libcdoc::RcptInfo::SKEY, "AES", {}, libcdoc::fromHex(AESKey)}
     };
@@ -585,11 +588,14 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithCDoc2Key, DecryptFixture,
                      * utf::depends_on("CDoc2KeyUsage/EncryptWithCDoc2Key")
                      * utf::description("Decrypting a CDoc2 file with a key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile), 0, false);
-    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC256PrivKeyFile), 1, false);
-    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC521PrivKeyFile), 2, false);
-    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(RSAPrivKeyFile), 3, false);
-    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), libcdoc::fromHex(AESKey), 4, true);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC384PrivKeyFile), 0, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC384PrivKeyFile), 1, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC256PrivKeyFile), 2, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC256PrivKeyFile), 3, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC521PrivKeyFile), 4, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(EC521PrivKeyFile), 5, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), fetchDataFile(RSAPrivKeyFile), 6, false);
+    decrypt({checkDataFile(sources[0])}, checkTargetFile(CONTAINER), tmpDataPath.string(), libcdoc::fromHex(AESKey), 7, true);
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -599,13 +605,13 @@ BOOST_AUTO_TEST_SUITE(CDoc1ECKeySingle)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1, EncryptFixture,
         * utf::description("Encrypting a file with EC key in CDoc1 format"))
 {
-    encryptV1({checkDataFile(sources[0])}, formTargetFile("ECKeyUsageV1.cdoc"), fetchDataFile(ECCertFile));
+    encryptV1({checkDataFile(sources[0])}, formTargetFile("ECKeyUsageV1.cdoc"), fetchDataFile(EC384CertFile));
 }
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1, DecryptFixture,
                      * utf::depends_on("CDoc1ECKeySingle/EncryptWithECKeyV1")
                      * utf::description("Decrypting a file in CDoc1 format with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsageV1.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0])}, checkTargetFile("ECKeyUsageV1.cdoc"), tmpDataPath.string(), fetchDataFile(EC384PrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -613,13 +619,13 @@ BOOST_AUTO_TEST_SUITE(CDoc1ECKeyMulti)
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithECKeyV1Multi, EncryptFixture,
         * utf::description("Encrypting multiple files with EC key in CDoc1 format"))
 {
-    encryptV1({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, formTargetFile("ECKeyUsageV1Multi.cdoc"), fetchDataFile(ECCertFile));
+    encryptV1({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, formTargetFile("ECKeyUsageV1Multi.cdoc"), fetchDataFile(EC384CertFile));
 }
 BOOST_FIXTURE_TEST_CASE_WITH_DECOR(DecryptWithECKeyV1Multi, DecryptFixture,
                      * utf::depends_on("CDoc1ECKeyMulti/EncryptWithECKeyV1Multi")
                      * utf::description("Decrypting multiple files in CDoc1 format with with EC private key"))
 {
-    decrypt({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, checkTargetFile("ECKeyUsageV1Multi.cdoc"), tmpDataPath.string(), fetchDataFile(ECPrivKeyFile));
+    decrypt({checkDataFile(sources[0]), checkDataFile(sources[1]), checkDataFile(sources[2])}, checkTargetFile("ECKeyUsageV1Multi.cdoc"), tmpDataPath.string(), fetchDataFile(EC384PrivKeyFile));
 }
 BOOST_AUTO_TEST_SUITE_END()
 

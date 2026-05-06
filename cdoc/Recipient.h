@@ -161,34 +161,15 @@ struct CDOC_EXPORT Recipient {
 	static Recipient makeSymmetric(std::string label, int32_t kdf_iter);
 
     /**
-     * @brief Create a new public key based Recipient with RSA algorithm
-     * 
-     * @param label 
-     * @param public_key 
-     * @return Recipient 
-     */
-    static Recipient makeRSA(std::string label, std::vector<uint8_t> public_key);
-    static Recipient makeECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type);
-    /**
      * @brief Create a new public key based Recipient
      * 
      * If the label is empty, a machine-readable label will be created according to CDoc2 specification
      * 
      * @param label the label text
      * @param public_key the public key value
-     * @param pk_type the algorithm type (either ECC or RSA)
      * @return a new Recipient structure
      */
-    static Recipient makePublicKey(std::string label, std::vector<uint8_t> public_key, Algorithm pk_type) {
-        switch(pk_type) {
-            case RSA:
-                return makeRSA(label, public_key);
-            case ECC:
-                return makeECC(label, public_key, Curve::SECP_384_R1);
-            default:
-                return {};
-        }
-    }
+    static Recipient makePublicKey(std::string label, std::vector<uint8_t> public_key);
 
     /**
      * @brief Create a new public key based Recipient
@@ -207,41 +188,17 @@ struct CDOC_EXPORT Recipient {
      */
     static Recipient makeCertificate(std::string label, std::vector<uint8_t> cert);
 
-    static Recipient makeServerRSA(std::string label, std::vector<uint8_t> public_key, std::string server_id);
-    static Recipient makeServerECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type, std::string server_id);
     /**
      * @brief Create a new capsule server based Recipient
      * 
      * If the label is empty, a machine-readable label text (public key version) is automatically generated according to CDoc2 specification.
      * 
      * @param label the label text
-     * @param public_key the public key value
-     * @param pk_type the algorithm type (either ECC or RSA)
+     * @param public_key Recipient's public key or certificate (der-encoded)
      * @param server_id the keyserver id
      * @return a new Recipient structure
      */
-    static Recipient makeServer(std::string label, std::vector<uint8_t> public_key, Algorithm pk_type, std::string server_id) {
-        switch(pk_type) {
-            case RSA:
-                return makeServerRSA(label, public_key, server_id);
-            case ECC:
-                return makeServerECC(label, public_key, Curve::SECP_384_R1, server_id);
-            default:
-                return {};
-        }
-    }
-
-    /**
-     * @brief Create a new capsule server based Recipient
-     * 
-     * If the label is empty, a machine-readable label text (either eID or certificate version) is automatically generated according to CDoc2 specification.
-     * 
-     * @param label the label text
-     * @param cert the recipient's certificate (der-encoded) 
-     * @param server_id the keyserver id
-     * @return a new Recipient structure
-     */
-    static Recipient makeServer(std::string label, std::vector<uint8_t> cert, std::string server_id);
+    static Recipient makeServer(std::string label, std::vector<uint8_t> public_key, std::string server_id);
 
     /**
      * @brief Create a new capsule server based Recipient
@@ -292,20 +249,6 @@ struct CDOC_EXPORT Recipient {
      * @return true if Recipient is valid
      */
     bool validate() const;
-
-    /**
-     * @brief Set a property for automatic label generation
-     * 
-     * @param key the property name
-     * @param value the property value
-     */
-    void setLabelValue(std::string_view key, std::string_view value) {
-        if (!value.empty()) {
-            lbl_parts[std::string(key)] = value;
-        } else {
-            lbl_parts.erase(std::string(key));
-        }
-    }
 
     bool operator== (const Recipient& other) const = default;
 protected:
