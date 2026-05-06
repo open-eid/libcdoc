@@ -33,7 +33,6 @@
 
 #include <sstream>
 #include <map>
-#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
@@ -222,15 +221,6 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
 };
 
-static int
-EVP_PKEY_get_nid(EVP_PKEY *pkey)
-{
-    std::array<char, 256> name;
-    if (SSL_FAILED(EVP_PKEY_get_utf8_string_param(pkey, OSSL_PKEY_PARAM_GROUP_NAME, name.data(), name.size(), nullptr), "EVP_PKEY_get_utf8_string_param"))
-        return NID_undef;
-    return OBJ_sn2nid(name.data());
-}
-
 int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, const vector<string>& files)
 {
     for (const libcdoc::Recipient& rcpt : rcpts) {
@@ -277,24 +267,24 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
         Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.cert, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.cert, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+                key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert);
             }
         } else if (rcpt.type == RcptInfo::Type::SKEY) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
             LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.secret, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.secret, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, rcpt.secret);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret);
             }
             LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
@@ -308,19 +298,19 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             }
             LOG_DBG("Public key ({}): {}", (algo == libcdoc::Algorithm::RSA) ? "rsa" : "ecc", toHex(val));
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, val, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeServer(std::move(label), val, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, val);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), val);
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
-            key = libcdoc::Recipient::makeSymmetric(label, 65535);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 65535);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
 #ifdef HAS_KEYSHARES
         } else if (rcpt.type == RcptInfo::Type::SHARE) {
             LOG_DBG("Creating keyshare recipient:");
-            key = libcdoc::Recipient::makeShare(label, conf.servers[0].ID, "PNOEE-" + rcpt.id);
+            key = libcdoc::Recipient::makeShare(std::move(label), conf.servers[0].ID, "PNOEE-" + rcpt.id);
 #endif
         }
 
@@ -669,6 +659,7 @@ void CDocCipher::Locks(const char* file) const
         return;
     }
 
+    restoreFlags rf(cout);
     int lock_id = 1;
     for (const Lock& lock : rdr->getLocks()) {
         map<string, string> parsed_label(Lock::parseLabel(lock.label));

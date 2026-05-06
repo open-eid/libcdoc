@@ -186,12 +186,34 @@ urlDecode(std::string_view src)
     return ret;
 }
 
+struct restoreFlags {
+    std::ostream& os;
+    std::ios_base::fmtflags f;
+    restoreFlags(std::ostream &os) : os(os), f(os.flags()) {}
+    CDOC_DISABLE_MOVE_COPY(restoreFlags)
+    ~restoreFlags() { os.flags(f); }
+};
+
+[[nodiscard]] constexpr auto range_to_sv(auto begin, auto end) noexcept {
+    if (begin == end)
+        return std::string_view();
+    return std::string_view(&*begin, std::ranges::distance(begin, end));
+};
+
+[[nodiscard]] constexpr auto range_to_sv(auto range) noexcept {
+    return range_to_sv(range.begin(), range.end());
+};
+
 #ifndef SWIG
 template<typename... Args>
-static inline void LogFormat(LogLevel level, std::string_view file, int line, fmt::format_string<Args...> fmt, Args&&... args)
+static inline void LogFormat(LogLevel level, std::string_view file, int line, fmt::format_string<Args...> fmt, Args&&... args) noexcept
 {
-    auto msg = fmt::format(fmt, std::forward<Args>(args)...);
-    libcdoc::log(level, file, line, msg);
+    try {
+        libcdoc::log(level, file, line, fmt::format(fmt, std::forward<Args>(args)...));
+    } catch (const std::exception&) {
+        auto sv = fmt.get();
+        libcdoc::log(level, file, line, std::string_view(sv.data(), sv.size()));
+    }
 }
 
 static inline void LogFormat(LogLevel level, std::string_view file, int line, std::string_view msg)

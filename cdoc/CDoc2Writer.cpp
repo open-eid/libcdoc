@@ -82,12 +82,11 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     std::vector<uint8_t> nonce;
     crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN);
     LOG_TRACE_KEY("nonce: {}", nonce);
-    auto cipher = std::make_unique<EncryptionConsumer>(*dst, EVP_chacha20_poly1305(), Crypto::Key(std::move(cek), nonce));
-    std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
-    aad.insert(aad.end(), header.cbegin(), header.cend());
-    aad.insert(aad.end(), headerHMAC.cbegin(), headerHMAC.cend());
-    if(auto rv = cipher->writeAAD(aad); rv < 0)
-        return rv;
+    auto cipher = std::make_unique<EncryptionConsumer>(*dst, EVP_chacha20_poly1305(), Crypto::Key(std::move(cek), std::move(nonce)));
+    for(const auto &aad: {libcdoc::CDoc2::PAYLOAD, std::move(header), std::move(headerHMAC)}) {
+        if(auto rv = cipher->writeAAD(aad); rv < 0)
+            return rv;
+    }
 
     auto *zcons = new ZConsumer(cipher.release(), true);
     tar = std::make_unique<TarConsumer>(zcons, true);
@@ -209,7 +208,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
     flatbuffers::FlatBufferBuilder builder;
     std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> fb_rcpts;
 
-    std::vector<uint8_t> xor_key(libcdoc::CDoc2::KEY_LEN);
+    std::vector<uint8_t> xor_key;
     for (unsigned int rcpt_idx = 0; rcpt_idx < recipients.size(); rcpt_idx++) {
         const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
         if (rcpt.isPKI()) {
@@ -226,8 +225,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             }
             if(rcpt.pk_type == libcdoc::Algorithm::RSA) {
                 crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
-                if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK)
-                    FAIL("Internal error", libcdoc::CRYPTO_ERROR);
+                if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
+                    FAIL("Internal error", err);
                 auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt.rcpt_key);
                 if(!publicKey)
                     FAIL("Invalid RSA key", libcdoc::CRYPTO_ERROR);
@@ -265,8 +264,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, rcpt.rcpt_key);
 
                 kek = libcdoc::Crypto::expand(kekPm, info_str, fmk.size());
-                if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK)
-                    FAIL("Internal error", libcdoc::CRYPTO_ERROR);
+                if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
+                    FAIL("Internal error", err);
 
                 LOG_DBG("info: {}", toHex(info_str));
                 LOG_TRACE_KEY("publicKeyDer: {}", rcpt.rcpt_key);
@@ -313,8 +312,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             LOG_TRACE_KEY("kek: {}", kek);
 
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-            if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK)
-                FAIL("Internal error", libcdoc::CRYPTO_ERROR);
+            if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
+                FAIL("Internal error", err);
             if (rcpt.kdf_iter > 0) {
                 fb_rcpts.push_back(createPasswordCapsule(builder, rcpt, salt, pw_salt, xor_key));
             } else {
@@ -356,8 +355,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str);
             LOG_TRACE_KEY("kek: {}", kek);
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-            if (libcdoc::Crypto::xor_data(xor_key, fmk, kek) != libcdoc::OK)
-                FAIL("Internal error", libcdoc::CRYPTO_ERROR);
+            if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
+                FAIL("Internal error", err);
 
             // # Splitting KEK_i into shares
             // for j in (2, 3, ..., n):
@@ -369,8 +368,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             // KEK_i_share_1 = XOR(KEK_i, KEK_i_share_2, KEK_i_share_3,..., KEK_i_share_n)
             kek_shares[0] = std::move(kek);
             for (int i = 1; i < N_SHARES; i++) {
-                if (libcdoc::Crypto::xor_data(kek_shares[0], kek_shares[0], kek_shares[i]) != libcdoc::OK)
-                    FAIL("Internal error", libcdoc::CRYPTO_ERROR);
+                if (auto err = libcdoc::Crypto::xor_data(kek_shares[0], kek_shares[0], kek_shares[i]); err != libcdoc::OK)
+                    FAIL("Internal error", err);
             }
             //   # Client uploads all shares of KEK_i to CSS servers and
             //   # gets corresponding Capsule_i_Share_j_ID for each KEK_i_share_j
@@ -427,20 +426,20 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
         FAIL("Cannot add Recipient when files are added", libcdoc::WORKFLOW_ERROR);
     // Validate
     switch(rcpt.type) {
-        case Recipient::SYMMETRIC_KEY:
-            if (!crypto)
-                FAIL("Symmetric key requires CryptoBackend", libcdoc::WORKFLOW_ERROR);
-            if(!rcpt.validate())
-                FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
-            break;
-        case Recipient::PUBLIC_KEY:
-            if(!rcpt.server_id.empty() && !network)
-                FAIL("Server capsule requires NetworkBackend", libcdoc::WORKFLOW_ERROR);
-            if(!rcpt.validate())
-                FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
-            break;
-        default:
-            FAIL("Invalid recipient type", WRONG_ARGUMENTS);
+    case Recipient::SYMMETRIC_KEY:
+        if (!crypto)
+            FAIL("Symmetric key requires CryptoBackend", libcdoc::WORKFLOW_ERROR);
+        if(!rcpt.validate())
+            FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
+        break;
+    case Recipient::PUBLIC_KEY:
+        if(!rcpt.server_id.empty() && !network)
+            FAIL("Server capsule requires NetworkBackend", libcdoc::WORKFLOW_ERROR);
+        if(!rcpt.validate())
+            FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
+        break;
+    default:
+        FAIL("Invalid recipient type", WRONG_ARGUMENTS);
     }
     recipients.push_back(rcpt);
     return libcdoc::OK;
@@ -470,7 +469,7 @@ CDoc2Writer::addFile(const std::string& name, size_t size)
         FAIL("Encryption not started", libcdoc::WORKFLOW_ERROR);
     if (name.empty() || !libcdoc::isValidUtf8(name))
         FAIL("Invalid file name", libcdoc::DATA_FORMAT_ERROR);
-    if (size > 8ULL * 1024 * 1024 * 1024)
+    if (constexpr size_t MAX_SIZE = 8ULL * 1024 * 1024 * 1024; size > MAX_SIZE)
         FAIL("Invalid file size", libcdoc::WRONG_ARGUMENTS);
     if(auto rv = tar->open(name, size); rv < 0)
         FAIL(tar->getLastErrorStr(rv), rv);
@@ -511,7 +510,7 @@ CDoc2Writer::encrypt(libcdoc::MultiDataSource& src, const std::vector<libcdoc::R
 {
     if (finished)
         FAIL("Encryption finished", libcdoc::WORKFLOW_ERROR);
-    for (auto rcpt : keys) {
+    for (const auto &rcpt : keys) {
         if(auto rv = addRecipient(rcpt); rv != libcdoc::OK)
             return rv;
     }

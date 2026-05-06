@@ -20,14 +20,27 @@
 #include "Utils.h"
 
 #include <array>
+#include <charconv>
 #include <cstring>
+#include <ranges>
 
 using namespace libcdoc;
 
 constexpr unsigned int BLOCKSIZE = 512;
 
+template<class T = int>
+[[nodiscard]] static constexpr auto svtoi(std::string_view data) noexcept
+{
+    T result {};
+    if (data.empty())
+        return result;
+    auto p = &*data.begin();
+    std::from_chars(p, p + std::ranges::distance(data), result);
+    return result;
+}
+
 template<std::size_t SIZE>
-static int64_t fromOctal(const std::array<char,SIZE> &data)
+static constexpr int64_t fromOctal(const std::array<char,SIZE> &data) noexcept
 {
 	int64_t i = 0;
 	for(const char c: data)
@@ -41,7 +54,7 @@ static int64_t fromOctal(const std::array<char,SIZE> &data)
 }
 
 template<std::size_t SIZE>
-static void toOctal(std::array<char,SIZE> &data, int64_t value)
+static constexpr void toOctal(std::array<char,SIZE> &data, int64_t value) noexcept
 {
 	data.fill(' ');
 	for(auto it = data.rbegin() + 1; it != data.rend(); ++it)
@@ -70,7 +83,7 @@ struct libcdoc::Header {
 	std::array<char,155> prefix;
 	std::array<char, 12> padding;
 
-	std::pair<int64_t,int64_t> checksum() const
+	std::pair<int64_t,int64_t> checksum() const noexcept
 	{
 		int64_t unsignedSum = 0;
 		int64_t signedSum = 0;
@@ -81,12 +94,12 @@ struct libcdoc::Header {
 		return {unsignedSum, signedSum};
 	}
 
-    bool isNull() const {
-        static const Header empty{};
+    constexpr bool isNull() const noexcept {
+        constexpr Header empty{};
         return *this == empty;
 	}
 
-	bool verify() {
+    bool verify() noexcept {
 		auto copy = chksum;
 		chksum.fill(' ');
 		auto checkSum = checksum();
@@ -100,22 +113,22 @@ struct libcdoc::Header {
 		return std::string(name.data(), std::min<size_t>(name.size(), strlen(name.data())));
 	}
 
-	int64_t getSize() const {
+    constexpr int64_t getSize() const noexcept {
 		return fromOctal(size);
 	}
 
-	bool operator==(const Header&) const = default;
+    constexpr bool operator==(const Header&) const noexcept = default;
 };
 
 static_assert (sizeof(Header) == BLOCKSIZE, "Header struct size is incorrect");
 
-static int padding(int64_t size)
+static constexpr int padding(int64_t size) noexcept
 {
 	return BLOCKSIZE * ((size + BLOCKSIZE - 1) / BLOCKSIZE) - size;
 }
 
-std::string toPaxRecord (const std::string &keyword, const std::string &value) {
-	std::string record = ' ' + keyword + '=' + value + '\n';
+std::string toPaxRecord (std::string &&keyword, const std::string &value) {
+    std::string record = ' ' + std::move(keyword) + '=' + value + '\n';
 	std::string result;
 	for(auto len = record.size() + 1; result.size() != len; ++len)
 		result = std::to_string(len + 1) + record;
@@ -125,7 +138,6 @@ std::string toPaxRecord (const std::string &keyword, const std::string &value) {
 libcdoc::TarConsumer::TarConsumer(DataConsumer *dst, bool take_ownership)
 	: _dst(dst), _owned(take_ownership)
 {
-
 }
 
 libcdoc::TarConsumer::~TarConsumer()
@@ -166,7 +178,7 @@ libcdoc::TarConsumer::writeHeader(const std::string& name, int64_t size, char ty
 
 libcdoc::result_t
 libcdoc::TarConsumer::writePadding(int64_t size) noexcept {
-    static const std::array<uint8_t,BLOCKSIZE> pad {};
+    static constexpr std::array<uint8_t,BLOCKSIZE> pad {};
     auto padSize = padding(size);
     if(auto rv = _dst->write(pad.data(), padSize); rv != padSize)
         return rv < OK ? rv : OUTPUT_ERROR;
@@ -217,13 +229,15 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
     _current_size = size;
 	_current_written = 0;
 
-	bool need_pax_name = (name.size() >= 100);
-	for (auto c : name) {
-		if ((c & 0x80) || (c < ' ')) {
-			need_pax_name = true;
-			break;
-		}
-	}
+    bool need_pax_name = (name.size() >= 100);
+    if (!need_pax_name) {
+        for (auto c : name) {
+            if ((c & 0x80) || (c < ' ')) {
+                need_pax_name = true;
+                break;
+            }
+        }
+    }
     if(need_pax_name || size > 07777777) {
 		LOG_DBG("Writing Pax header: name {} size {}", name, size);
 		std::string paxData;
@@ -249,9 +263,8 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 }
 
 libcdoc::TarSource::TarSource(DataSource *src, bool take_ownership)
-    : _src(src), _owned(take_ownership), _eof(false), _error(OK), _block_size(0), _data_size(0), _pos(0)
+    : _src(src), _owned(take_ownership)
 {
-
 }
 
 libcdoc::TarSource::~TarSource()
@@ -303,33 +316,30 @@ libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t&
 		return _error;
 	}
 	_src->skip(padding(h_size));
-	// Parse Pax data
-	for(const std::string &data: split(paxData, '\n')) {
-		if(data.empty()) break;
-		size_t eq_pos = data.find_first_of('=');
-		if (eq_pos == std::string::npos) {
-			_error = DATA_FORMAT_ERROR;
-			return _error;
-		}
-		std::string headerValue = data.substr(eq_pos + 1, data.size() - eq_pos - 1);
-		size_t sp_pos = data.find_first_of(' ');
-		if ((sp_pos == std::string::npos) || (sp_pos >= eq_pos)) {
-			_error = DATA_FORMAT_ERROR;
-			return _error;
-		}
-		std::string lenStr = data.substr(0, sp_pos);
-		std::string keyWord = data.substr(sp_pos + 1, eq_pos - sp_pos - 1);
-		if(data.size() + 1 != stoi(lenStr)) {
-			_error = DATA_FORMAT_ERROR;
-			return _error;
-		}
-		LOG_DBG("PAX {} : {}", keyWord, headerValue);
-		if(keyWord == "path")
-			name = std::move(headerValue);
-		if(keyWord == "size")
-			size = stoll(headerValue);
-	}
-	return OK;
+    // Parse Pax data: each line is "<length> <key>=<value>\n"
+    for(const auto &line: paxData | std::views::split('\n')) {
+        if(line.empty()) break;
+
+        auto sp = std::ranges::find(line, ' ');
+        if (sp == line.end()) { _error = DATA_FORMAT_ERROR; return _error; }
+        auto eq = std::ranges::find(std::next(sp), line.end(), '=');
+        if (eq == line.end()) { _error = DATA_FORMAT_ERROR; return _error; }
+
+        auto lenStr = range_to_sv(line.begin(), sp);
+        auto keyWord = range_to_sv(std::next(sp), eq);
+        auto headerValue = range_to_sv(std::next(eq), line.end());
+
+        if (std::ranges::distance(line) + 1 != svtoi(lenStr)) {
+            _error = DATA_FORMAT_ERROR;
+            return _error;
+        }
+        LOG_DBG("PAX {} : {}", keyWord, headerValue);
+        if (keyWord == "path")
+            name = headerValue;
+        if (keyWord == "size")
+            size = svtoi<int64_t>(headerValue);
+    }
+    return OK;
 }
 
 libcdoc::result_t
@@ -403,11 +413,10 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			_block_size = size + padding(size);
 			_eof = false;
             return OK;
-		} else {
-			// Skip other header types ('g')
-			h_size = h.getSize();
-			_src->skip(h_size + padding(h_size));
-		}
+        }
+        // Skip other header types ('g')
+        h_size = h.getSize();
+        _src->skip(h_size + padding(h_size));
 	}
 	return END_OF_STREAM;
 }

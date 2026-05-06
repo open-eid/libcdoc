@@ -159,28 +159,6 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert)
     return rcpt;
 }
 
-static Recipient
-makeServerRSA(std::string label, std::vector<uint8_t> public_key, std::string server_id)
-{
-    Recipient rcpt = makeRSA(std::move(label), std::move(public_key));
-    rcpt.server_id = std::move(server_id);
-    const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
-    const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
-    rcpt.expiry_ts = uint64_t(expiry_ts);
-    return rcpt;
-}
-
-static Recipient
-makeServerECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type, std::string server_id)
-{
-    Recipient rcpt = makeECC(std::move(label), std::move(public_key), ec_type);
-    rcpt.server_id = std::move(server_id);
-    const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
-    const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
-    rcpt.expiry_ts = uint64_t(expiry_ts);
-    return rcpt;
-}
-
 Recipient
 Recipient::makeServer(std::string label, std::vector<uint8_t> public_key, std::string server_id) {
     Recipient rcpt;
