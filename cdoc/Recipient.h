@@ -142,8 +142,9 @@ struct CDOC_EXPORT Recipient {
      * @return true if the public keys are identical
      */
 	bool isTheSameRecipient(const Recipient &other) const;
+
     /**
-     * @brief A convenience method to check whether a recipient is public key based and has the given keys.
+     * @brief A convenience method to check whether a recipient is public key based and has the given key.
      * @param public_key a public key to test
      * @return true if the public keys are identical
      */
@@ -167,16 +168,19 @@ struct CDOC_EXPORT Recipient {
      * 
      * @param label the label text
      * @param public_key the public key value
+     * @param server_id the keyserver id or empty string for offline capsule
      * @return a new Recipient structure
      */
-    static Recipient makePublicKey(std::string label, std::vector<uint8_t> public_key);
+    static Recipient makePublicKey(std::string label, std::vector<uint8_t> public_key, std::string server_id = {});
 
     /**
      * @brief Create a new public key based Recipient
      * @param lock Lock to derive parameters from
+     * @param server_id the keyserver id or empty string for offline capsule
      * @return a new Recipient structure
      */
-    static Recipient makePublicKey(const Lock &lock);
+    static Recipient makePublicKey(const Lock &lock, std::string server_id = {});
+
     /**
      * @brief Create a new certificate based Recipient
      * 
@@ -184,30 +188,10 @@ struct CDOC_EXPORT Recipient {
      * 
      * @param label the label text
      * @param cert the certificate value (der-encoded)
+     * @param server_id the keyserver id or empty string for offline capsule
      * @return a new Recipient structure
      */
-    static Recipient makeCertificate(std::string label, std::vector<uint8_t> cert);
-
-    /**
-     * @brief Create a new capsule server based Recipient
-     * 
-     * If the label is empty, a machine-readable label text (public key version) is automatically generated according to CDoc2 specification.
-     * 
-     * @param label the label text
-     * @param public_key Recipient's public key or certificate (der-encoded)
-     * @param server_id the keyserver id
-     * @return a new Recipient structure
-     */
-    static Recipient makeServer(std::string label, std::vector<uint8_t> public_key, std::string server_id);
-
-    /**
-     * @brief Create a new capsule server based Recipient
-     *
-     * @param lock Lock to derive parameters from
-     * @param server_id the keyserver id
-     * @return a new Recipient structure
-     */
-    static Recipient makeServer(const Lock &lock, std::string server_id);
+    static Recipient makeCertificate(std::string label, std::vector<uint8_t> cert, std::string server_id = {});
 
 #ifdef HAS_KEYSHARES
     /**

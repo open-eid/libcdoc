@@ -267,7 +267,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
         Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.cert, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert, conf.servers[0].ID);
             } else {
                 key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert);
             }
@@ -278,7 +278,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(std::move(label), rcpt.secret, conf.servers[0].ID);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret, conf.servers[0].ID);
             } else {
                 key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret);
             }
@@ -289,16 +289,15 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
             std::vector<uint8_t> val;
-            libcdoc::Algorithm algo;
             ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-            int result = p11->getPublicKey(val, algo, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+            int result = p11->getPublicKey(val, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
             if (result != libcdoc::OK) {
                 LOG_ERROR("No such public key: {}", rcpt.p11.key_label);
                 continue;
             }
-            LOG_DBG("Public key ({}): {}", (algo == libcdoc::Algorithm::RSA) ? "rsa" : "ecc", toHex(val));
+            LOG_DBG("Public key: {}", toHex(val));
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(std::move(label), val, conf.servers[0].ID);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), val, conf.servers[0].ID);
             } else {
                 key = libcdoc::Recipient::makePublicKey(std::move(label), val);
             }
