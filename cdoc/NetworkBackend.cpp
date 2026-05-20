@@ -477,7 +477,10 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     }
     std::string recipient = v.get<std::string>();
     std::vector<uint8_t> shareval = fromBase64(share64);
-    shareval.resize(32);
+    if (shareval.size() != 32) {
+        error = FORMAT("Invalid share size: expected 32, got {}", shareval.size());
+        return NETWORK_ERROR;
+    }
     LOG_DBG("Share: {}", toHex(shareval));
     share = {std::move(shareval), std::move(recipient)};
     return OK;

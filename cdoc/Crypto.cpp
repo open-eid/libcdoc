@@ -138,51 +138,19 @@ Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
     auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(pub, nullptr));
 	size_t size = 0;
     if (SSL_FAILED(EVP_PKEY_encrypt_init(ctx.get()), "EVP_PKEY_encrypt_init") ||
-        SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding") ||
-        SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
+        SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding"))
 		return {};
 	if(padding == RSA_PKCS1_OAEP_PADDING) {
         if (SSL_FAILED(EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_oaep_md") ||
             SSL_FAILED(EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_mgf1_md"))
 			return {};
 	}
+    if (SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
+		return {};
 	std::vector<uint8_t> result(int(size), 0);
     if(SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), result.data(), &size,
             data.data(), data.size()), "EVP_PKEY_encrypt"))
 		return {};
-	return result;
-}
-
-std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
-{
-	std::vector<uint8_t> result;
-	if (!data)
-    {
-        LOG_ERROR("decodeBase64: null pointer was provided as input data");
-		return result;
-    }
-	result.resize(strlen((const char*)data));
-    auto ctx = make_unique_ptr<EVP_ENCODE_CTX_free>(EVP_ENCODE_CTX_new());
-    if (!ctx)
-    {
-        LOG_SSL_ERROR("EVP_ENCODE_CTX_new");
-        return {};
-    }
-
-	EVP_DecodeInit(ctx.get());
-	int size1 = 0, size2 = 0;
-	if(EVP_DecodeUpdate(ctx.get(), result.data(), &size1, data, int(result.size())) == -1)
-	{
-        LOG_SSL_ERROR("EVP_DecodeUpdate");
-		result.clear();
-		return result;
-	}
-
-    if(SSL_FAILED(EVP_DecodeFinal(ctx.get(), result.data(), &size2), "EVP_DecodeFinal"))
-        result.clear();
-	else
-        result.resize(size_t(size1 + size2));
-
 	return result;
 }
 

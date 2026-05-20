@@ -19,10 +19,33 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <vector>
 
+#include <openssl/crypto.h>
+
 namespace libcdoc {
+
+template<typename T>
+void cleanse(std::vector<T>& v) noexcept
+{
+	if (!v.empty()) {
+		OPENSSL_cleanse(v.data(), v.size() * sizeof(T));
+	}
+}
+
+template<typename T, size_t N>
+void cleanse(std::array<T, N>& a) noexcept
+{
+	OPENSSL_cleanse(a.data(), a.size() * sizeof(T));
+}
+
+inline bool constant_time_compare(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) noexcept
+{
+	if (a.size() != b.size()) return false;
+	return CRYPTO_memcmp(a.data(), b.data(), a.size()) == 0;
+}
 
 template<auto D>
 struct free_deleter

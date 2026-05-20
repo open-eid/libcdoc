@@ -58,8 +58,8 @@ public:
 
         Key() {}
 		~Key() {
-			std::fill(key.begin(), key.end(), 0);
-			std::fill(iv.begin(), iv.end(), 0);
+			libcdoc::cleanse(key);
+			libcdoc::cleanse(iv);
 		}
         Key(std::vector<uint8_t> _key, std::vector<uint8_t> _iv) : key(std::move(_key)), iv(std::move(_iv)) {}
         Key(size_t keySize, size_t ivSize) : key(keySize), iv(ivSize) {}
@@ -71,7 +71,6 @@ public:
 	static std::vector<uint8_t> concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 		const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo);
 	static std::vector<uint8_t> encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data);
-	static std::vector<uint8_t> decodeBase64(const uint8_t *data);
 	static std::vector<uint8_t> deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPKey);
 	static Key generateKey(const std::string &method);
 	static uint32_t keySize(const std::string &algo);
@@ -113,6 +112,7 @@ public:
 struct EncryptionConsumer final : public DataConsumer {
     EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key);
     EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
+    ~EncryptionConsumer() { libcdoc::cleanse(buf); }
     CDOC_DISABLE_MOVE_COPY(EncryptionConsumer)
     result_t write(const uint8_t *src, size_t size) noexcept final;
     result_t writeAAD(const std::vector<uint8_t> &data) noexcept;
@@ -129,6 +129,7 @@ private:
 struct DecryptionSource final : public DataSource {
     DecryptionSource(DataSource &src, const std::string &method, const std::vector<unsigned char> &key, size_t ivLen = 0);
     DecryptionSource(DataSource &src, const EVP_CIPHER *cipher, const std::vector<unsigned char> &key, size_t ivLen = 0);
+    ~DecryptionSource() { libcdoc::cleanse(tag); }
     CDOC_DISABLE_MOVE_COPY(DecryptionSource)
 
     result_t read(unsigned char* dst, size_t size) noexcept final;

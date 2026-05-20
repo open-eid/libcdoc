@@ -86,7 +86,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
         LOG_DBG("Secret: {}", toHex(secret));
 
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
-		std::fill(secret.begin(), secret.end(), 0);
+		libcdoc::cleanse(secret);
 		if (key_material.empty()) return OPENSSL_ERROR;
 	} else {
         int result = getSecret(key_material, idx);
@@ -112,7 +112,7 @@ CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8
     int result = getKeyMaterial(key_material, pw_salt, kdf_iter, idx);
 	if (result) return result;
 	kek_pm = libcdoc::Crypto::extract(key_material, salt);
-	std::fill(key_material.begin(), key_material.end(), 0);
+	libcdoc::cleanse(key_material);
 	if (kek_pm.empty()) return OPENSSL_ERROR;
 
     LOG_TRACE_KEY("Extract: {}", kek_pm);

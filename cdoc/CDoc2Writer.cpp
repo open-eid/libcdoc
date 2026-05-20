@@ -51,23 +51,23 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     if(auto rv = crypto->random(rnd, libcdoc::CDoc2::KEY_LEN); rv < 0)
         return rv;
     std::vector<uint8_t> fmk = libcdoc::Crypto::extract(rnd, {libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()});
-    std::fill(rnd.begin(), rnd.end(), 0);
+    libcdoc::cleanse(rnd);
     LOG_TRACE_KEY("fmk: {}", fmk);
 
     std::vector<uint8_t> header;
     if(auto rv = buildHeader(header, recipients, fmk); rv < 0)
     {
-        std::fill(fmk.begin(), fmk.end(), 0);
+        libcdoc::cleanse(fmk);
         return rv;
     }
 
     auto hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
     auto cek = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::CEK);
-    std::fill(fmk.begin(), fmk.end(), 0);
+    libcdoc::cleanse(fmk);
     LOG_TRACE_KEY("cek: {}", cek);
     LOG_TRACE_KEY("hhk: {}", hhk);
     std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
-    std::fill(hhk.begin(), hhk.end(), 0);
+    libcdoc::cleanse(hhk);
     LOG_TRACE_KEY("hmac: {}", headerHMAC);
 
     uint32_t hs = uint32_t(header.size());

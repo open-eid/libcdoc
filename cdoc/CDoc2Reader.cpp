@@ -32,6 +32,7 @@
 
 #include "header_generated.h"
 
+// TODO: Port to new OpenSSL
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/evp.h>
@@ -341,6 +342,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     if (auto err = libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek); err != libcdoc::OK) {
         setLastError(t_("Failed to decrypt/derive fmk"));
         LOG_ERROR("{}", last_error);
+        libcdoc::cleanse(kek);
         return err;
     }
     std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
@@ -350,11 +352,15 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     LOG_TRACE_KEY("hhk: {}", hhk);
     LOG_TRACE_KEY("hmac: {}", priv->headerHMAC);
 
-    if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
+    if(!libcdoc::constant_time_compare(libcdoc::Crypto::sign_hmac(hhk, priv->header_data), priv->headerHMAC)) {
         setLastError(t_("Wrong decryption key (user key)"));
         LOG_ERROR("{}", last_error);
+        libcdoc::cleanse(kek);
+        libcdoc::cleanse(hhk);
         return libcdoc::WRONG_KEY;
     }
+    libcdoc::cleanse(kek);
+    libcdoc::cleanse(hhk);
     setLastError({});
     return libcdoc::OK;
 }

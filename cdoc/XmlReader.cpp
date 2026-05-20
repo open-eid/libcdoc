@@ -18,7 +18,8 @@
 
 #include "XmlReader.h"
 
-#include "Crypto.h"
+#include "Io.h"
+#include "Utils.h"
 
 #include <libxml/xmlreader.h>
 
@@ -80,7 +81,7 @@ bool XMLReader::read()
 std::vector<uint8_t> XMLReader::readBase64()
 {
     xmlTextReaderRead(d);
-    return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d));
+    return libcdoc::fromBase64(reinterpret_cast<const char*>(xmlTextReaderConstValue(d)));
 }
 
 std::string XMLReader::readText()

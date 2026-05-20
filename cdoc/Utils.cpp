@@ -39,7 +39,7 @@ toBase64(const uint8_t *data, size_t len)
 }
 
 std::vector<uint8_t>
-fromBase64(const std::string& data)
+fromBase64(std::string_view data)
 {
     std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
     return std::vector<uint8_t>(str.cbegin(), str.cend());

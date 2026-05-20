@@ -363,8 +363,8 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 		return CRYPTO_ERROR;
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
-    if (w.empty()) {
-        LOG_DBG("PKCS11: getValue CKA_EC_POINT error");
+    if (w.size() < 2) {
+        LOG_DBG("PKCS11: getValue CKA_EC_POINT too short");
         return CRYPTO_ERROR;
     }
     const uint8_t *p = v.data();
@@ -374,7 +374,16 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
         return CRYPTO_ERROR;
     }
     EC_POINT *pub_key_point = EC_POINT_new(group);
-    int result =  EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL);
+    if (!pub_key_point) {
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
+    if (EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL) != 1) {
+        LOG_DBG("PKCS11: EC_POINT_oct2point error");
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     // Associate the Point with an EC_KEY: Finally, set up an EC_KEY structure and assign the point as the public key.
     EC_KEY *key = EC_KEY_new();
     EC_KEY_set_group(key, group);
