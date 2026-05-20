@@ -83,12 +83,12 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
             ll.encrypted_fmk.empty())
             continue;
         switch(cc.getAlgorithm()) {
-        case libcdoc::PKType::RSA:
+        case libcdoc::Algorithm::RSA:
             if (ll.getString(Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
             }
             break;
-        case libcdoc::PKType::ECC:
+        case libcdoc::Algorithm::ECC:
             if(!ll.getBytes(Lock::Params::KEY_MATERIAL).empty() &&
                 std::find(SUPPORTED_KWAES.cbegin(), SUPPORTED_KWAES.cend(), ll.getString(Lock::Params::METHOD)) != SUPPORTED_KWAES.cend()) {
                 return i;

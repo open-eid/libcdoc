@@ -19,7 +19,7 @@
 #ifndef __CDOC_H__
 #define __CDOC_H__
  
-#include "Exports.h"
+#include <cdoc/Exports.h>
 
 #include <cstdint>
 #include <string>
@@ -30,20 +30,6 @@ namespace libcdoc {
  * @brief A typedef that indicates that integer value may contain libcdoc result code
  */
 using result_t = int64_t;
-
-/**
- * @brief The public key type
- */
-enum class PKType : uint8_t {
-    /**
-     * Elliptic curve
-     */
-    ECC,
-    /**
-     * RSA
-     */
-    RSA
-};
 
 enum {
     /**
@@ -153,6 +139,32 @@ CDOC_EXPORT std::string getErrorStr(int64_t code);
  * @return The version string
  */
 CDOC_EXPORT std::string getVersion();
+
+/**
+ * @brief The public key algorithm
+ */
+enum Algorithm : uint8_t {
+    UNKNOWN_ALGORITHM,
+    /**
+     * Elliptic curve
+     */
+    ECC,
+    /**
+     * RSA
+     */
+    RSA
+};
+
+/**
+ * @brief The EC curve used
+ */
+enum Curve : uint8_t {
+    UNKNOWN_CURVE,
+    SECP_384_R1,
+    SECP_256_R1,
+    SECP_521_R1
+};
+
 
 // Logging interface
 

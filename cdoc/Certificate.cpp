@@ -148,7 +148,15 @@ Certificate::getPublicKey() const
     return {};
 }
 
-PKType
+std::vector<uint8_t>
+Certificate::getPublicKeyLong() const
+{
+    if(cert)
+        return Crypto::toPublicKeyDerLong(X509_get0_pubkey(cert.get()));
+    return {};
+}
+
+Algorithm
 Certificate::getAlgorithm() const
 {
     if(!cert)
@@ -157,7 +165,7 @@ Certificate::getAlgorithm() const
     EVP_PKEY *pkey = X509_get0_pubkey(cert.get());
 	int alg = EVP_PKEY_get_base_id(pkey);
 
-    return (alg == EVP_PKEY_RSA) ? PKType::RSA : PKType::ECC;
+	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : (alg == EVP_PKEY_EC) ? Algorithm::ECC : Algorithm::UNKNOWN_ALGORITHM;
 }
 
 std::vector<uint8_t> Certificate::getDigest() const

@@ -181,8 +181,11 @@
     Type getType() {
         return $self->type;
     }
-    PKType getPKType() {
+    Algorithm getAlgorithm() {
         return $self->pk_type;
+    }
+    Curve getCurve() {
+        return $self->ec_type;
     }
     std::string getLabel() {
         return $self->label;

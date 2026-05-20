@@ -72,7 +72,7 @@ struct CDOC_EXPORT CryptoBackend {
     /**
 	 * @brief Derive shared secret
 	 *
-     * Derive a shared secret from private key of given lock and public key using ECDH1 algorithm.
+     * Derive a shared secret using the private key of recipient and the public key of lock using ECDH1 algorithm.
 	 * @param dst the container for shared secret
 	 * @param public_key ECDH public key used to derive shared secret
      * @param idx lock index (0-based) in container
@@ -153,11 +153,11 @@ struct CDOC_EXPORT CryptoBackend {
                             int32_t kdf_iter, unsigned int idx);
 
     /**
-     * @brief sign Sign message with given algorithm
+     * @brief sign Sign message with given hash algorithm using the private key of given lock
      * @param dst the destination container for signed message
      * @param algorithm hashing algorithm
      * @param digest a message to sign
-     * @param idx lock or recipient index (0-based) in container
+     * @param idx lock index (0-based) in container
      * @return error code or OK
      */
     virtual result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) {
