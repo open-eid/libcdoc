@@ -668,7 +668,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     } else {
         cout << "Successfully re-encrypted container " << conf.input_files[0] << " to " << conf.out << std::endl;
     }
-    return 0;
+    return RESULT_OK;
 }
 
 //
