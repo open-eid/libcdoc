@@ -120,10 +120,10 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 	const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo)
 {
-    LOG_DBG("Ksr {}", toHex(z));
-    LOG_DBG("AlgorithmID {}", toHex(AlgorithmID));
-    LOG_DBG("PartyUInfo {}", toHex(PartyUInfo));
-    LOG_DBG("PartyVInfo {}", toHex(PartyVInfo));
+    LOG_TRACE_KEY("Ksr {}", z);
+    LOG_TRACE_KEY("AlgorithmID {}", AlgorithmID);
+    LOG_TRACE_KEY("PartyUInfo {}", PartyUInfo);
+    LOG_TRACE_KEY("PartyVInfo {}", PartyVInfo);
 
 	std::vector<uint8_t> otherInfo;
 	otherInfo.insert(otherInfo.cend(), AlgorithmID.cbegin(), AlgorithmID.cend());

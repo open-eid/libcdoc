@@ -202,8 +202,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             key_material = lock.getBytes(Lock::Params::KEY_MATERIAL);
         }
 
-        LOG_DBG("Public key: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
-        LOG_DBG("Key material: {}", toHex(key_material));
+        LOG_TRACE_KEY("Public key: {}", lock.getBytes(Lock::Params::RCPT_KEY));
+        LOG_TRACE_KEY("Key material: {}", key_material);
 
         if (lock.isRSA()) {
             int result = crypto->decryptRSA(kek, key_material, true, lock_idx);
@@ -615,7 +615,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             std::string urls = join(strs, ";");
             LOG_DBG("Keyshare urls: {}", urls);
             std::vector<uint8_t> salt = toUint8Vector(capsule->salt());
-            LOG_DBG("Keyshare salt: {}", toHex(salt));
+            LOG_TRACE_KEY("Keyshare salt: {}", salt);
             std::string recipient_id = capsule->recipient_id()->str();
             LOG_DBG("Keyshare recipient id: {}", recipient_id);
             lock.type = Lock::SHARE_SERVER;

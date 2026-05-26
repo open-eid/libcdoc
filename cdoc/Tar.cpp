@@ -29,14 +29,14 @@ using namespace libcdoc;
 constexpr unsigned int BLOCKSIZE = 512;
 
 template<class T = int>
-[[nodiscard]] static constexpr auto svtoi(std::string_view data) noexcept
+[[nodiscard]] static constexpr bool svtoi(std::string_view data, T& result) noexcept
 {
-    T result {};
     if (data.empty())
-        return result;
-    auto p = &*data.begin();
-    std::from_chars(p, p + std::ranges::distance(data), result);
-    return result;
+        return false;
+    const auto *p = data.data();
+    const auto *end = p + data.size();
+    auto [ptr, ec] = std::from_chars(p, end, result);
+    return ec == std::errc{} && ptr == end;
 }
 
 template<std::size_t SIZE>
@@ -329,15 +329,22 @@ libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t&
         auto keyWord = range_to_sv(std::next(sp), eq);
         auto headerValue = range_to_sv(std::next(eq), line.end());
 
-        if (std::ranges::distance(line) + 1 != svtoi(lenStr)) {
+        int parsedLen;
+        if (!svtoi(lenStr, parsedLen) || std::ranges::distance(line) + 1 != parsedLen) {
             _error = DATA_FORMAT_ERROR;
             return _error;
         }
         LOG_DBG("PAX {} : {}", keyWord, headerValue);
         if (keyWord == "path")
             name = headerValue;
-        if (keyWord == "size")
-            size = svtoi<int64_t>(headerValue);
+        if (keyWord == "size") {
+            int64_t parsedSize;
+            if (!svtoi(headerValue, parsedSize)) {
+                _error = DATA_FORMAT_ERROR;
+                return _error;
+            }
+            size = parsedSize;
+        }
     }
     return OK;
 }

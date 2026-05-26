@@ -138,7 +138,7 @@ Returns the client's TLS certificate for authentication with the key-server.
 int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst)
 ```
 
-Returns the list of acceptable peer certificates for the key-server.
+Returns the list of acceptable peer certificates for the key-server. Returning empty list disables TLS peer certificate check in debug builds but results in CONFIGURATION_ERROR in release builds.
 
 #### `signTLS`
 

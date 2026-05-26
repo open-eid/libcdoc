@@ -184,10 +184,15 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
         }
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
-    } else {
-        // TODO: Allow only if global parameter is set
+    }
+    else {
+#ifdef NDEBUG
+        error = "No peer TLS certificates configured";
+        return libcdoc::CONFIGURATION_ERROR;
+#else
         cli.enable_server_certificate_verification(false);
         cli.enable_server_hostname_verification(false);
+#endif
     }
     return libcdoc::OK;
 }
@@ -212,6 +217,20 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
         return libcdoc::OK;
     default: return result;
     }
+}
+
+//
+// Set SSL timeouts
+//
+static libcdoc::result_t
+applySSLTimeout(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
+{
+    libcdoc::result_t timeout = network->getSSLTimeout();
+    if (timeout < 0) return libcdoc::CONFIGURATION_ERROR;
+    cli.set_connection_timeout(timeout);
+    cli.set_read_timeout(timeout);
+    cli.set_write_timeout(timeout);
+    return libcdoc::OK;
 }
 
 //
@@ -278,6 +297,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     if (result != libcdoc::OK) return result;
 
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -298,9 +318,13 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
+    constexpr std::string_view kCapsulePrefix = "/key-capsules/";
+    if (location.compare(0, kCapsulePrefix.size(), kCapsulePrefix) != 0) {
+        error = FORMAT("Unexpected Location header value");
+        return NETWORK_ERROR;
+    }
     error = {};
-    /* Remove /key-capsules/ */
-    location.erase(0, 14);
+    location.erase(0, kCapsulePrefix.size());
     dst.transaction_id = std::move(location);
 
     std::string expiry_str = rsp.get_header_value("x-expiry-time");
@@ -336,6 +360,7 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
     if (result != libcdoc::OK) return result;
 
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -351,10 +376,14 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
+    constexpr std::string_view kSharePrefix = "/key-shares/";
+    if (location.compare(0, kSharePrefix.size(), kSharePrefix) != 0) {
+        error = FORMAT("Unexpected Location header value");
+        return NETWORK_ERROR;
+    }
     error = {};
 
-    /* Remove /key-shares/ */
-    dst.assign(location.cbegin() + 12, location.cend());
+    dst.assign(location.cbegin() + kSharePrefix.size(), location.cend());
     LOG_DBG("Share: {}", std::string((const char *) dst.data(), dst.size()));
 
     return OK;
@@ -376,6 +405,7 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     if (!cert.empty() && (!d->x509 || !d->pkey)) return CRYPTO_ERROR;
 
     httplib::SSLClient cli(host, port, d->x509.handle(), d->pkey);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -411,6 +441,7 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -446,6 +477,7 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
 
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
@@ -702,6 +734,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -824,6 +857,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;

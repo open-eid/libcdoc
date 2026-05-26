@@ -166,7 +166,7 @@ FileListSource::next(std::string& name, int64_t& size)
 	name = _files[_current];
     std::error_code ec;
     size = fs::file_size(path, ec);
-    if (!ec) return IO_ERROR;
+    if (ec) return IO_ERROR;
     return OK;
 }
 

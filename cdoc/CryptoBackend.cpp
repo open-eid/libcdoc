@@ -83,7 +83,7 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
         int result = getSecret(secret, idx);
 		if (result) return result;
 
-        LOG_DBG("Secret: {}", toHex(secret));
+        LOG_TRACE_KEY("Secret: {}", secret);
 
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 		libcdoc::cleanse(secret);
@@ -91,13 +91,13 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 	} else {
         int result = getSecret(key_material, idx);
 		if (result) return result;
-        LOG_DBG("Secret: {}", toHex(key_material));
+        LOG_TRACE_KEY("Secret: {}", key_material);
         if (key_material.size() != 32) {
             return INVALID_PARAMS;
         }
 	}
 
-    LOG_DBG("Key material: {}", toHex(key_material));
+    LOG_TRACE_KEY("Key material: {}", key_material);
 
     return OK;
 }
