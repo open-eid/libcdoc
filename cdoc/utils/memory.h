@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <openssl/crypto.h>
@@ -123,14 +124,8 @@ public:
         lock();
     }
 
-    void assign(std::vector<uint8_t>::const_iterator first, std::vector<uint8_t>::const_iterator last) {
-        cleanse();
-        unlock();
-        data_.assign(first, last);
-        lock();
-    }
-
-    void assign(std::string::const_iterator first, std::string::const_iterator last) {
+    template<typename InputIt>
+    void assign(InputIt first, InputIt last) {
         cleanse();
         unlock();
         data_.assign(first, last);
