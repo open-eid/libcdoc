@@ -386,9 +386,20 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
     }
     // Associate the Point with an EC_KEY: Finally, set up an EC_KEY structure and assign the point as the public key.
     EC_KEY *key = EC_KEY_new();
+    if (!key) {
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EC_KEY_set_group(key, group);
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    if (!evp_pkey) {
+        EC_KEY_free(key);
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
     val = Crypto::toPublicKeyDer(evp_pkey);
     EVP_PKEY_free(evp_pkey);

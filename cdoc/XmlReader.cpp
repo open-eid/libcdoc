@@ -18,6 +18,7 @@
 
 #include "XmlReader.h"
 
+#include "Crypto.h"
 #include "Io.h"
 #include "Utils.h"
 
@@ -57,6 +58,7 @@ XMLReader::~XMLReader() noexcept
 
 std::string XMLReader::attribute(const char *attr) const
 {
+    if (!d) return {};
     xmlChar *tmp = xmlTextReaderGetAttribute(d, pcxmlChar(attr));
     std::string result = tostring(tmp);
     xmlFree(tmp);
@@ -65,27 +67,32 @@ std::string XMLReader::attribute(const char *attr) const
 
 bool XMLReader::isEndElement() const
 {
+    if (!d) return false;
     return xmlTextReaderNodeType(d) == XML_READER_TYPE_END_ELEMENT;
 }
 
 bool XMLReader::isElement(const char *elem) const
 {
+    if (!d) return false;
     return xmlStrEqual(xmlTextReaderConstLocalName(d), pcxmlChar(elem)) == 1;
 }
 
 bool XMLReader::read()
 {
+    if (!d) return false;
     return xmlTextReaderRead(d) == 1;
 }
 
 std::vector<uint8_t> XMLReader::readBase64()
 {
+    if (!d) return {};
     xmlTextReaderRead(d);
-    return libcdoc::fromBase64(reinterpret_cast<const char*>(xmlTextReaderConstValue(d)));
+    return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d));
 }
 
 std::string XMLReader::readText()
 {
+    if (!d) return {};
     xmlTextReaderRead(d);
     return tostring(xmlTextReaderConstValue(d));
 }

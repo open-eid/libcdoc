@@ -154,6 +154,39 @@ Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
 	return result;
 }
 
+std::vector<uint8_t> Crypto::decodeBase64(const uint8_t *data)
+{
+	std::vector<uint8_t> result;
+	if (!data)
+    {
+        LOG_ERROR("decodeBase64: null pointer was provided as input data");
+		return result;
+    }
+	result.resize(strlen((const char*)data));
+    auto ctx = make_unique_ptr<EVP_ENCODE_CTX_free>(EVP_ENCODE_CTX_new());
+    if (!ctx)
+    {
+        LOG_SSL_ERROR("EVP_ENCODE_CTX_new");
+        return {};
+    }
+
+	EVP_DecodeInit(ctx.get());
+	int size1 = 0, size2 = 0;
+	if(EVP_DecodeUpdate(ctx.get(), result.data(), &size1, data, int(result.size())) == -1)
+	{
+        LOG_SSL_ERROR("EVP_DecodeUpdate");
+		result.clear();
+		return result;
+	}
+
+    if(SSL_FAILED(EVP_DecodeFinal(ctx.get(), result.data(), &size2), "EVP_DecodeFinal"))
+        result.clear();
+	else
+        result.resize(size_t(size1 + size2));
+
+	return result;
+}
+
 std::vector<uint8_t> Crypto::deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPKey)
 {
 	std::vector<uint8_t> sharedSecret;
