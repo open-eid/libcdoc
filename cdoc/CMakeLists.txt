@@ -82,6 +82,14 @@ target_include_directories(cdoc PUBLIC
 if(NOT BUILD_SHARED_LIBS)
     target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
 endif()
+option(LIBCDOC_ALLOW_INSECURE_TLS "Allow disabling TLS certificate verification (for testing only)" OFF)
+if(LIBCDOC_ALLOW_INSECURE_TLS)
+    target_compile_definitions(cdoc PRIVATE LIBCDOC_ALLOW_INSECURE_TLS)
+endif()
+option(LIBCDOC_CRYPTO_TRACE "Enable logging of cryptographic key material (for debugging only)" OFF)
+if(LIBCDOC_CRYPTO_TRACE)
+    target_compile_definitions(cdoc PRIVATE LIBCDOC_CRYPTO_TRACE)
+endif()
 target_link_libraries(cdoc PRIVATE
     OpenSSL::SSL
     LibXml2::LibXml2

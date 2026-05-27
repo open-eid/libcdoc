@@ -41,14 +41,26 @@
 using namespace std;
 using namespace libcdoc;
 
+static libcdoc::result_t validateRcptIdx(const std::vector<libcdoc::RcptInfo>& rcpts, unsigned int& idx)
+{
+    if (rcpts.empty()) return libcdoc::WRONG_ARGUMENTS;
+    if (idx < rcpts.size()) return libcdoc::OK;
+    if ((int)idx == rcpts[0].resolved_lock_idx) {
+        idx = 0;
+        return libcdoc::OK;
+    }
+    return libcdoc::WRONG_ARGUMENTS;
+}
+
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
     const std::vector<libcdoc::RcptInfo>& rcpts;
 
     ToolPKCS11(const std::string& library, const std::vector<libcdoc::RcptInfo>& vec) : libcdoc::PKCS11Backend(library), rcpts(vec) {}
 
     libcdoc::result_t connectToKey(int idx, bool priv) override final {
-        if (idx >= rcpts.size()) idx = 0;
-        const libcdoc::RcptInfo& rcpt = rcpts[idx];
+        unsigned int l_idx = idx;
+        if (auto rv = validateRcptIdx(rcpts, l_idx); rv != libcdoc::OK) return rv;
+        const libcdoc::RcptInfo& rcpt = rcpts[l_idx];
         if (!priv) {
             return useSecretKey(rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
         } else {
@@ -64,8 +76,9 @@ struct ToolWin : public libcdoc::WinBackend {
     ToolWin(const std::string& provider, const std::vector<libcdoc::RcptInfo>& vec) : libcdoc::WinBackend(provider), rcpts(vec) {}
 
     result_t connectToKey(int idx, bool priv) {
-        if (idx >= rcpts.size()) idx = 0;
-        const libcdoc::RcptInfo& rcpt = rcpts[idx];
+        unsigned int l_idx = idx;
+        if (auto rv = validateRcptIdx(rcpts, l_idx); rv != OK) return rv;
+        const libcdoc::RcptInfo& rcpt = rcpts[l_idx];
         return useKey(rcpt.p11.key_label, std::string(rcpt.secret.cbegin(), rcpt.secret.cend()));
     }
 };
@@ -97,7 +110,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
         if (p11) return p11->decryptRSA(dst, data, oaep, idx);
-        if (idx >= rcpts.size()) idx = 0;
+        if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
         const libcdoc::RcptInfo& rcpt = rcpts[idx];
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
         const uint8_t *p = rcpt.secret.data();
@@ -129,7 +142,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     }
 
     libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {
-        if (idx >= rcpts.size()) idx = 0;
+        if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
         const libcdoc::RcptInfo& rcpt = rcpts[idx];
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
         const uint8_t *p = rcpt.secret.data();
@@ -181,7 +194,7 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     }
 
     libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
-        if (idx >= rcpts.size()) idx = 0;
+        if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
         const libcdoc::RcptInfo& rcpt = rcpts[idx];
         secret = rcpt.secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
@@ -204,8 +217,9 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
-        if (rcpt_idx >= crypto->rcpts.size()) rcpt_idx = 0;
-        const libcdoc::RcptInfo& rcpt = crypto->rcpts[rcpt_idx];
+        unsigned int l_idx = rcpt_idx;
+        if (auto rv = validateRcptIdx(crypto->rcpts, l_idx); rv != libcdoc::OK) return rv;
+        const libcdoc::RcptInfo& rcpt = crypto->rcpts[l_idx];
         return crypto->p11->getCertificate(dst, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
     }
 
@@ -215,7 +229,8 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     libcdoc::result_t signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
-        if (rcpt_idx >= crypto->rcpts.size()) rcpt_idx = 0;
+        unsigned int l_idx = rcpt_idx;
+        if (auto rv = validateRcptIdx(crypto->rcpts, l_idx); rv != libcdoc::OK) return rv;
         return crypto->p11->sign(dst, algorithm, digest, rcpt_idx);
     }
 
@@ -377,7 +392,6 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
     }
     LOG_DBG("Reader created");
 
-    // Find lock by label/index/certificate
     int lock_idx = -1;
     const vector<Lock>& locks = rdr->getLocks();
     if (!recipient.label.empty()) {
@@ -389,7 +403,7 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
             }
         }
     } else if (recipient.lock_idx >= 0) {
-        if (recipient.lock_idx >= locks.size()) {
+        if (recipient.lock_idx >= (int)locks.size()) {
             LOG_ERROR("Label index is out of range");
             return 1;
         }
@@ -415,6 +429,7 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
         return 1;
     }
     LOG_INFO("Found matching lock: {}", recipient.label);
+    r[0].resolved_lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
 
     return Decrypt(rdr, lock_idx, conf.out);
@@ -544,6 +559,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, const RcptInfo& dec_info, std::vector<libc
         return 1;
     }
 
+    rcpt_list[0].resolved_lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
 
     // Encryption part

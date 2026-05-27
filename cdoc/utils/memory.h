@@ -25,7 +25,166 @@
 
 #include <openssl/crypto.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#endif
+
 namespace libcdoc {
+
+class SecureBytes {
+    std::vector<uint8_t> data_;
+    bool locked_ = false;
+
+    void lock() noexcept {
+        if (!data_.empty() && !locked_) {
+#ifdef _WIN32
+            locked_ = VirtualLock(data_.data(), data_.size());
+#else
+            locked_ = (mlock(data_.data(), data_.size()) == 0);
+#endif
+        }
+    }
+
+    void unlock() noexcept {
+        if (!data_.empty() && locked_) {
+#ifdef _WIN32
+            VirtualUnlock(data_.data(), data_.size());
+#else
+            munlock(data_.data(), data_.size());
+#endif
+            locked_ = false;
+        }
+    }
+
+public:
+    using iterator = std::vector<uint8_t>::iterator;
+    using const_iterator = std::vector<uint8_t>::const_iterator;
+
+    SecureBytes() noexcept = default;
+
+    ~SecureBytes() {
+        cleanse();
+        unlock();
+    }
+
+    SecureBytes(const SecureBytes& other) : data_(other.data_) {
+        lock();
+    }
+
+    SecureBytes(SecureBytes&& other) noexcept : data_(std::move(other.data_)), locked_(other.locked_) {
+        other.locked_ = false;
+    }
+
+    SecureBytes& operator=(const SecureBytes& other) {
+        if (this != &other) {
+            cleanse();
+            unlock();
+            data_ = other.data_;
+            lock();
+        }
+        return *this;
+    }
+
+    SecureBytes& operator=(SecureBytes&& other) noexcept {
+        if (this != &other) {
+            cleanse();
+            unlock();
+            data_ = std::move(other.data_);
+            locked_ = other.locked_;
+            other.locked_ = false;
+        }
+        return *this;
+    }
+
+    SecureBytes& operator=(std::vector<uint8_t> v) {
+        cleanse();
+        unlock();
+        data_ = std::move(v);
+        lock();
+        return *this;
+    }
+
+    SecureBytes(std::vector<uint8_t> v) noexcept : data_(std::move(v)) {
+        lock();
+    }
+
+    template<typename InputIt>
+    SecureBytes(InputIt first, InputIt last) : data_(first, last) {
+        lock();
+    }
+
+    explicit SecureBytes(size_t size) : data_(size) {
+        lock();
+    }
+
+    void assign(std::vector<uint8_t>::const_iterator first, std::vector<uint8_t>::const_iterator last) {
+        cleanse();
+        unlock();
+        data_.assign(first, last);
+        lock();
+    }
+
+    void assign(std::string::const_iterator first, std::string::const_iterator last) {
+        cleanse();
+        unlock();
+        data_.assign(first, last);
+        lock();
+    }
+
+    [[nodiscard]] bool empty() const noexcept { return data_.empty(); }
+    [[nodiscard]] size_t size() const noexcept { return data_.size(); }
+    [[nodiscard]] const uint8_t* data() const noexcept { return data_.data(); }
+    [[nodiscard]] uint8_t* data() noexcept { return data_.data(); }
+    [[nodiscard]] const uint8_t& operator[](size_t i) const noexcept { return data_[i]; }
+    [[nodiscard]] uint8_t& operator[](size_t i) noexcept { return data_[i]; }
+
+    [[nodiscard]] const_iterator cbegin() const noexcept { return data_.cbegin(); }
+    [[nodiscard]] const_iterator cend() const noexcept { return data_.cend(); }
+    [[nodiscard]] iterator begin() noexcept { return data_.begin(); }
+    [[nodiscard]] iterator end() noexcept { return data_.end(); }
+    [[nodiscard]] const_iterator begin() const noexcept { return data_.begin(); }
+    [[nodiscard]] const_iterator end() const noexcept { return data_.end(); }
+
+    void resize(size_t n) {
+        unlock();
+        data_.resize(n);
+        lock();
+    }
+
+    void clear() {
+        cleanse();
+        unlock();
+        data_.clear();
+    }
+
+    static inline void secure_cleanse(void* ptr, size_t len) noexcept {
+#if defined(_WIN32)
+        SecureZeroMemory(ptr, len);
+#else
+        volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr);
+        while (len--) *p++ = 0;
+#endif
+    }
+
+    void cleanse() noexcept {
+        if (!data_.empty()) {
+            secure_cleanse(data_.data(), data_.size());
+        }
+    }
+
+    [[nodiscard]] operator const std::vector<uint8_t>&() const noexcept { return data_; }
+
+    [[nodiscard]] bool operator==(const SecureBytes& other) const noexcept {
+        if (data_.size() != other.data_.size()) return false;
+        return CRYPTO_memcmp(data_.data(), other.data_.data(), data_.size()) == 0;
+    }
+
+    [[nodiscard]] bool operator!=(const SecureBytes& other) const noexcept {
+        return !(*this == other);
+    }
+};
 
 template<typename T>
 void cleanse(std::vector<T>& v) noexcept

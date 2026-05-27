@@ -230,10 +230,14 @@ static inline void LogFormat(LogLevel level, std::string_view file, int line, st
 
 #ifdef NDEBUG
 #define LOG_TRACE(...)
-#define LOG_TRACE_KEY(MSG, KEY)
 #else
 #define LOG_TRACE(...) LogFormat(libcdoc::LEVEL_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#endif
+
+#ifdef LIBCDOC_CRYPTO_TRACE
 #define LOG_TRACE_KEY(MSG, KEY) LogFormat(libcdoc::LEVEL_TRACE, __FILE__, __LINE__, MSG, toHex(KEY))
+#else
+#define LOG_TRACE_KEY(MSG, KEY)
 #endif
 
 } // namespace libcdoc

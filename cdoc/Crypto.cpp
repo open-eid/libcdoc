@@ -203,27 +203,30 @@ std::vector<uint8_t> Crypto::deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPK
 		return sharedSecret;
 
 	sharedSecret.resize(sharedSecretLen);
-	if(EVP_PKEY_derive(ctx.get(), sharedSecret.data(), &sharedSecretLen) <= 0)
+	if(EVP_PKEY_derive(ctx.get(), sharedSecret.data(), &sharedSecretLen) <= 0) {
 		sharedSecret.clear();
+		return sharedSecret;
+	}
+	sharedSecret.resize(sharedSecretLen);
 	return sharedSecret;
 }
 
 Crypto::Key Crypto::generateKey(const std::string &method)
 {
 	const EVP_CIPHER *c = cipher(method);
-#ifdef WIN32
-	RAND_screen();
-#else
-	RAND_load_file("/dev/urandom", 1024);
-#endif
-    Key key(EVP_CIPHER_key_length(c), EVP_CIPHER_iv_length(c));
-	uint8_t salt[PKCS5_SALT_LEN], indata[128];
-	RAND_bytes(salt, sizeof(salt));
-	RAND_bytes(indata, sizeof(indata));
-    if (SSL_FAILED(EVP_BytesToKey(c, EVP_sha256(), salt, indata, sizeof(indata), 1, key.key.data(), key.iv.data()), "EVP_BytesToKey"))
+    if (!c) {
+        LOG_ERROR("generateKey: unsupported cipher method {}", method);
         return {};
-    else
-        return key;
+    }
+    Key key(EVP_CIPHER_key_length(c), EVP_CIPHER_iv_length(c));
+    if (RAND_status() != 1) {
+        LOG_ERROR("generateKey: OpenSSL PRNG not seeded");
+        return {};
+    }
+    if (SSL_FAILED(RAND_bytes(key.key.data(), int(key.key.size())), "RAND_bytes") ||
+        SSL_FAILED(RAND_bytes(key.iv.data(), int(key.iv.size())), "RAND_bytes"))
+        return {};
+    return key;
 }
 
 uint32_t Crypto::keySize(const std::string &algo)

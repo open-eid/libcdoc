@@ -188,12 +188,13 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
         cli.enable_server_hostname_verification(true);
     }
     else {
-#ifdef NDEBUG
-        error = "No peer TLS certificates configured";
-        return libcdoc::CONFIGURATION_ERROR;
-#else
+#ifdef LIBCDOC_ALLOW_INSECURE_TLS
+        LOG_WARN("TLS certificate verification disabled (LIBCDOC_ALLOW_INSECURE_TLS)");
         cli.enable_server_certificate_verification(false);
         cli.enable_server_hostname_verification(false);
+#else
+        error = "No peer TLS certificates configured";
+        return libcdoc::CONFIGURATION_ERROR;
 #endif
     }
     return libcdoc::OK;
