@@ -241,15 +241,6 @@ struct CDOC_EXPORT NetworkBackend {
         return NOT_IMPLEMENTED;
     }
 
-    /**
-     * @brief Get SSL connection/read/write timeout
-     *
-     * @return timeout in seconds (default 30)
-     */
-    virtual result_t getSSLTimeout() const noexcept {
-        return 30;
-    }
-
 #ifdef HAS_KEYSHARES
     /**
      * @brief show MID/SID verification code

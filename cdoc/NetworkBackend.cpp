@@ -40,6 +40,8 @@
 #include <Windows.h>
 #endif
 
+#define CDOC_SSL_TIMEOUT 30
+
 using namespace std::literals::chrono_literals;
 
 using EC_KEY_sign = int (*)(int type, const unsigned char *dgst, int dlen, unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey);
@@ -225,11 +227,9 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
 static libcdoc::result_t
 applySSLTimeout(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
 {
-    libcdoc::result_t timeout = network->getSSLTimeout();
-    if (timeout < 0) return libcdoc::CONFIGURATION_ERROR;
-    cli.set_connection_timeout(timeout);
-    cli.set_read_timeout(timeout);
-    cli.set_write_timeout(timeout);
+    cli.set_connection_timeout(CDOC_SSL_TIMEOUT);
+    cli.set_read_timeout(CDOC_SSL_TIMEOUT);
+    cli.set_write_timeout(CDOC_SSL_TIMEOUT);
     return libcdoc::OK;
 }
 
@@ -318,13 +318,13 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
-    constexpr std::string_view kCapsulePrefix = "/key-capsules/";
-    if (location.compare(0, kCapsulePrefix.size(), kCapsulePrefix) != 0) {
+    constexpr std::string_view prefix = "/key-capsules/";
+    if (location.compare(0, prefix.size(), prefix) != 0) {
         error = FORMAT("Unexpected Location header value");
         return NETWORK_ERROR;
     }
     error = {};
-    location.erase(0, kCapsulePrefix.size());
+    location.erase(0, prefix.size());
     dst.transaction_id = std::move(location);
 
     std::string expiry_str = rsp.get_header_value("x-expiry-time");
@@ -376,14 +376,14 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
-    constexpr std::string_view kSharePrefix = "/key-shares/";
-    if (location.compare(0, kSharePrefix.size(), kSharePrefix) != 0) {
+    constexpr std::string_view prefix = "/key-shares/";
+    if (location.compare(0, prefix.size(), prefix) != 0) {
         error = FORMAT("Unexpected Location header value");
         return NETWORK_ERROR;
     }
     error = {};
 
-    dst.assign(location.cbegin() + kSharePrefix.size(), location.cend());
+    dst.assign(location.cbegin() + prefix.size(), location.cend());
     LOG_DBG("Share: {}", std::string((const char *) dst.data(), dst.size()));
 
     return OK;
