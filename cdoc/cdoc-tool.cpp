@@ -253,14 +253,16 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
 
 #ifndef NDEBUG
         // For debugging
-        cout << "Method: " << method << endl;
-        cout << "Slot: " << rcpt.p11.slot << endl;
-        if (!rcpt.secret.empty())
-            cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
+        LOG_DBG("Method: {}", method);
+        LOG_DBG("Slot: {}", rcpt.p11.slot);
+        if (!rcpt.secret.empty()) {
+            string str(rcpt.secret.cbegin(), rcpt.secret.cend());
+            LOG_TRACE("Pin: {}", str);
+        }
         if (!rcpt.p11.key_id.empty())
-            cout << "Key ID: " << toHex(rcpt.p11.key_id) << endl;
+            LOG_DBG("Key ID: {}", toHex(rcpt.p11.key_id));
         if (!rcpt.p11.key_label.empty())
-            cout << "Key label: " << rcpt.p11.key_label << endl;
+            LOG_DBG("Key label: {}", rcpt.p11.key_label);
 #endif
     } else if (method == "share") {
         // label:share:RECIPIENT_ID
@@ -539,7 +541,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     // Ask secret if not provided
-    if (ldata.secret[0] == '?') {
+    if (!ldata.secret.empty() && ldata.secret[0] == '?') {
         std::string secret = inputSecret("Enter password: ");
         ldata.secret.assign(secret.cbegin(), secret.cend());
     }
