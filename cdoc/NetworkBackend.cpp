@@ -215,7 +215,7 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
             cli.set_proxy(cred.host, cred.port);
         }
         if (!cred.username.empty()) {
-            cli.set_proxy_basic_auth(cred.username, cred.password.toString());
+            cli.set_proxy_basic_auth(cred.username, cred.password);
         }
         return libcdoc::OK;
     default: return result;
