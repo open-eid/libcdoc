@@ -28,6 +28,8 @@ using namespace libcdoc;
 
 constexpr unsigned int BLOCKSIZE = 512;
 
+constexpr int64_t CDOC2_MAX_FILE_SIZE = 8LL * 1024 * 1024 * 1024;
+
 template<class T = int>
 [[nodiscard]] static constexpr bool svtoi(std::string_view data, T& result) noexcept
 {
@@ -47,6 +49,8 @@ static constexpr int64_t fromOctal(const std::array<char,SIZE> &data) noexcept
 	{
 		if(c < '0' || c > '7')
 			continue;
+		if (i > (INT64_MAX >> 3))
+			return INT64_MAX;
 		i <<= 3;
 		i += c - '0';
 	}
@@ -114,7 +118,10 @@ struct libcdoc::Header {
 	}
 
     constexpr int64_t getSize() const noexcept {
-		return fromOctal(size);
+		int64_t s = fromOctal(size);
+		if (s < 0 || s > CDOC2_MAX_FILE_SIZE)
+			return -1;
+		return s;
 	}
 
     constexpr bool operator==(const Header&) const noexcept = default;
@@ -339,7 +346,7 @@ libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t&
             name = headerValue;
         if (keyWord == "size") {
             int64_t parsedSize;
-            if (!svtoi(headerValue, parsedSize)) {
+            if (!svtoi(headerValue, parsedSize) || parsedSize < 0 || parsedSize > CDOC2_MAX_FILE_SIZE) {
                 _error = DATA_FORMAT_ERROR;
                 return _error;
             }

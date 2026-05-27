@@ -215,7 +215,7 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
             cli.set_proxy(cred.host, cred.port);
         }
         if (!cred.username.empty()) {
-            cli.set_proxy_basic_auth(cred.username, cred.password);
+            cli.set_proxy_basic_auth(cred.username, cred.password.toString());
         }
         return libcdoc::OK;
     default: return result;
@@ -489,9 +489,6 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     httplib::Headers hdrs;
     hdrs.insert({"x-cdoc2-auth-ticket", ticket});
     hdrs.insert({"x-cdoc2-auth-x5c", std::string("-----BEGIN CERTIFICATE-----") + toBase64(cert) + "-----END CERTIFICATE-----"});
-    for (auto i = hdrs.cbegin(); i != hdrs.cend(); i++) {
-        std::cerr << i->first << ": " << i->second << std::endl;
-    }
     picojson::value rsp_json;
     result = get(cli, hdrs, full, rsp_json);
     if (result != libcdoc::OK) return result;

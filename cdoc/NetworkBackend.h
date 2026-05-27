@@ -21,6 +21,8 @@
 
 #include <cdoc/CryptoBackend.h>
 
+#include "utils/memory.h"
+
 namespace libcdoc {
 
 struct CDOC_EXPORT NetworkBackend {
@@ -120,7 +122,7 @@ struct CDOC_EXPORT NetworkBackend {
         /**
          * @brief Proxy password
          */
-        std::string password;
+        SecureBytes password;
     };
 
     NetworkBackend() = default;
