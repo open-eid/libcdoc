@@ -377,7 +377,7 @@ struct LockData {
     long slot = -1;
     vector<uint8_t> key_id;
     string key_label;
-    vector<uint8_t> secret;
+    SecureBytes secret;
 
     int validate(ToolConf& conf) {
         if (lock_label.empty() && (lock_idx == -1) && (slot < 0)) {

@@ -312,6 +312,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
     libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .secret=key, .lock_idx=idx};
     decrypt(files, container, dir, rcpt, remove);
 }
+
 static int
 unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
 {

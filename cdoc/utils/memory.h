@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/crypto.h>
 
 #ifdef _WIN32
@@ -174,10 +175,6 @@ public:
     }
 
     [[nodiscard]] operator const std::vector<uint8_t>&() const noexcept { return data_; }
-
-    [[nodiscard]] std::string toString() const {
-        return std::string(data_.cbegin(), data_.cend());
-    }
 
     [[nodiscard]] bool operator==(const SecureBytes& other) const noexcept {
         if (data_.size() != other.data_.size()) return false;
