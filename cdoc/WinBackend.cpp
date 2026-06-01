@@ -218,21 +218,24 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
     if (!oaep) {
         // If oaep is false, dst must be pre-allocated to the expected length.
         // This is required to apply the implicit-rejection countermeasure on padding failure.
-        if (dst.empty()) return libcdoc::WRONG_ARGUMENTS;
+        if (dst.empty()) {
+            LOG_ERROR("WinBackend::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+            return CRYPTO_ERROR;
+        };
         // Raw RSA decrypt: ask CNG NOT to strip the padding so we can apply the
         // implicit-rejection countermeasure in user space. CNG exposes raw
         // (textbook) RSA via paddingInfo=NULL and flags=0.
         DWORD em_size = 0;
         SECURITY_STATUS err = NCryptDecrypt(d->key, PBYTE(data.data()), DWORD(data.size()), nullptr, nullptr, 0, &em_size, 0);
         if (err != ERROR_SUCCESS) {
-            LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt(size) failed (status={:#x})", DWORD(err));
+            LOG_ERROR("WinBackend::decryptRSA: NCryptDecrypt(size) failed (status={:#x})", DWORD(err));
             return CRYPTO_ERROR;
         }
         std::vector<uint8_t> em(em_size, 0);
         err = NCryptDecrypt(d->key, PBYTE(data.data()), DWORD(data.size()), nullptr, PBYTE(em.data()), em_size, &em_size, 0);
         if (err != ERROR_SUCCESS) {
             libcdoc::cleanse(em);
-            LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt failed (status={:#x})", DWORD(err));
+            LOG_ERROR("WinBackend::decryptRSA: NCryptDecrypt failed (status={:#x})", DWORD(err));
             return CRYPTO_ERROR;
         }
         em.resize(em_size);

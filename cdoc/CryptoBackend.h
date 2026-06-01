@@ -82,16 +82,13 @@ struct CDOC_EXPORT CryptoBackend {
 	/**
 	 * @brief decrypt RSA ciphertext
      * 
-     * If oaep = false and dst.size() != 0, the method MUST always return OK with synthetic bytes on padding failure; only a fundamental
-     * error (e.g. ct size mismatch with modulus) yields a non-OK result.
-     *
-     * Implementations MUST apply the implicit-rejection countermeasure (RFC 8017 section 7.2.2 / OpenSSL 3.2's
-     * @c EVP_PKEY_CTX_set_rsa_implicit_rejection): on padding failure they MUST return @c OK with a deterministic synthetic plaintext of
-     * @p expected_len bytes derived from the private key, and otherwise the recovered plaintext, indistinguishable from a real one to an
-     * attacker who does not know the private key. The downstream AES decrypt acts as the authentication step that distinguishes a real key from a
-     * synthetic one.
+     * If @c oaep == false the implementations MUST apply the implicit-rejection countermeasure (RFC 8017 section 7.2.2 / OpenSSL 3.2's
+     * @c EVP_PKEY_CTX_set_rsa_implicit_rejection): on padding failure they MUST return @c OK with @c dst filled with deterministic synthetic
+     * plaintext derived from the private key, and otherwise the recovered plaintext, both indistinguishable to an attacker who does not know the
+     * private key. The downstream AES decrypt acts as the authentication step that distinguishes a real key from a
+     * synthetic one. The @c dst has to be pre-allocated to the expected plaintext length by caller.
      * 
-	 * @param dst the destination container for decrypted data
+	 * @param dst the destination container for decrypted data (has to be pre-allocated if @c oaep == false)
 	 * @param data RSA ciphertext (wrapped FMK)
      * @param oaep use OAEP padding
      * @param idx lock index (0-based) in container

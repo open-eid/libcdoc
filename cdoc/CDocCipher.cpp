@@ -126,7 +126,13 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         // plaintext and create a Bleichenbacher-style padding oracle for
         // PKCS#1 v1.5 (CDoc1) decryption.
 
-        if (!oaep && !dst.empty()) {
+        if (!oaep) {
+            // If oaep is false, dst must be pre-allocated to the expected length.
+            // This is required to apply the implicit-rejection countermeasure on padding failure.
+            if (dst.empty()) {
+                LOG_ERROR("ToolCrypto::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+                return libcdoc::CRYPTO_ERROR;
+            }
             // Implicit-rejection-aware decrypt. Returns OK on padding success
             // AND on padding failure (with synthetic output). Only fatal errors
             // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.

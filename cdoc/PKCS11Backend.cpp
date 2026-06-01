@@ -416,7 +416,13 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
     int result = connectToKey(idx, true);
     if (result != OK) return result;
 
-    if (!oaep && !dst.empty()) {
+    if (!oaep) {
+        // If oaep is false, dst must be pre-allocated to the expected length.
+        // This is required to apply the implicit-rejection countermeasure on padding failure.
+        if (dst.empty()) {
+            LOG_ERROR("PKCS11Backend::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+            return CRYPTO_ERROR;
+        }
         // Use raw RSA (CKM_RSA_X_509) so libcdoc can apply RFC 8017 implicit
         // rejection in user space. CKM_RSA_PKCS lets the token strip the
         // padding, but most PKCS#11 tokens leak the success/failure bit
