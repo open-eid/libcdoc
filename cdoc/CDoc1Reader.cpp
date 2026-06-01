@@ -147,10 +147,11 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     constexpr auto FAIL_MSG = "Failed to derive FMK";
 
     if (lock.isRSA()) {
-        // Implicit-rejection-aware decrypt. Returns OK with synthetic
-        // bytes on padding failure; only a fundamental error (e.g. ct size
-        // mismatch with modulus) yields a non-OK result.
-        int result = crypto->decryptRSACDoc1(fmk, lock.encrypted_fmk, expected_fmk_len, lock_idx);
+        // If OAEP = false and and fmk.size() != 0, the decryptRSA always
+        // returns OK with synthetic bytes on padding failure; only a
+        // fundamental error (e.g. ct size mismatch with modulus) yields a non-OK result.
+        fmk.resize(expected_fmk_len);
+        int result = crypto->decryptRSA(fmk, lock.encrypted_fmk, false, lock_idx);
         if (result != libcdoc::OK) {
             libcdoc::cleanse(fmk);
             fmk.clear();

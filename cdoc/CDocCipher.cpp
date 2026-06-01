@@ -110,9 +110,14 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
         if (p11) return p11->decryptRSA(dst, data, oaep, idx);
+
         if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
         const libcdoc::RcptInfo& rcpt = rcpts[idx];
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
+
+        const uint8_t *p = rcpt.secret.data();
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
+        if (!key) return libcdoc::CRYPTO_ERROR;
 
         // Note: EVP_PKEY_* functions return 1 on success, 0 on a (possibly
         // recoverable) failure such as RSA padding mismatch, and a negative
@@ -120,9 +125,13 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         // failure - returning 0 as success would leak partial/garbage
         // plaintext and create a Bleichenbacher-style padding oracle for
         // PKCS#1 v1.5 (CDoc1) decryption.
-        const uint8_t *p = rcpt.secret.data();
-        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
-        if (!key) return libcdoc::CRYPTO_ERROR;
+
+        if (!oaep && !dst.empty()) {
+            // Implicit-rejection-aware decrypt. Returns OK on padding success
+            // AND on padding failure (with synthetic output). Only fatal errors
+            // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.
+            return libcdoc::Crypto::decryptRSAv15_implicitReject(dst, key.get(), data, dst.size());
+        }
 
         auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
         if (!ctx) return libcdoc::CRYPTO_ERROR;
@@ -155,25 +164,6 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         dst.resize(outlen);
 
         return libcdoc::OK;
-    }
-
-    libcdoc::result_t decryptRSACDoc1(std::vector<uint8_t>& dst,
-                                      const std::vector<uint8_t> &data,
-                                      size_t expected_len,
-                                      unsigned int idx) override final {
-        if (p11) return p11->decryptRSACDoc1(dst, data, expected_len, idx);
-        if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
-        const libcdoc::RcptInfo& rcpt = rcpts[idx];
-        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
-
-        const uint8_t *p = rcpt.secret.data();
-        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
-        if (!key) return libcdoc::CRYPTO_ERROR;
-
-        // Implicit-rejection-aware decrypt. Returns OK on padding success
-        // AND on padding failure (with synthetic output). Only fatal errors
-        // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.
-        return libcdoc::Crypto::decryptRSAv15_implicitReject(dst, key.get(), data, expected_len);
     }
 
     libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {

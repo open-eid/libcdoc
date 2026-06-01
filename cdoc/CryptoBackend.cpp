@@ -45,35 +45,6 @@ CryptoBackend::getLastErrorStr(result_t code) const
 }
 
 libcdoc::result_t
-CryptoBackend::decryptRSACDoc1(std::vector<uint8_t>& dst,
-                               const std::vector<uint8_t>& data,
-                               size_t expected_len,
-                               unsigned int idx)
-{
-    // Default fallback for custom backends that do not implement the
-    // implicit-rejection countermeasure themselves. We invoke the legacy
-    // decryptRSA() for PKCS#1 v1.5 unwrap and enforce a fixed plaintext
-    // length here, so that callers see the same "OK / CRYPTO_ERROR" surface
-    // as the new path. NOTE: this fallback does NOT add any constant-time
-    // guarantee on top of whatever the legacy backend provides - custom
-    // backends that decrypt CDoc1 RSA SHOULD override this method.
-    int rv = decryptRSA(dst, data, /*oaep=*/false, idx);
-    if (rv != OK) {
-        if (!dst.empty()) {
-            libcdoc::cleanse(dst);
-            dst.clear();
-        }
-        return rv < 0 ? rv : CRYPTO_ERROR;
-    }
-    if (dst.size() != expected_len) {
-        libcdoc::cleanse(dst);
-        dst.clear();
-        return CRYPTO_ERROR;
-    }
-    return OK;
-}
-
-libcdoc::result_t
 CryptoBackend::random(std::vector<uint8_t>& dst, unsigned int size)
 {
     // RAND_bytes returns 1 on success, 0 if the PRNG could not gather enough
