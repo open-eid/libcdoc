@@ -149,6 +149,7 @@ struct CDOC_EXPORT PKCS11Backend : public CryptoBackend {
 
     virtual result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override;
     virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idxl) override;
+    virtual result_t decryptRSACDoc1(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, size_t expected_len, unsigned int idx) override;
     virtual result_t extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override;
     virtual result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) override;
 private:

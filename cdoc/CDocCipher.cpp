@@ -113,32 +113,67 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
         const libcdoc::RcptInfo& rcpt = rcpts[idx];
         if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
-        const uint8_t *p = rcpt.secret.data();
 
+        // Note: EVP_PKEY_* functions return 1 on success, 0 on a (possibly
+        // recoverable) failure such as RSA padding mismatch, and a negative
+        // value on fatal errors. Anything other than 1 must be treated as
+        // failure - returning 0 as success would leak partial/garbage
+        // plaintext and create a Bleichenbacher-style padding oracle for
+        // PKCS#1 v1.5 (CDoc1) decryption.
+        const uint8_t *p = rcpt.secret.data();
         auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
         if (!key) return libcdoc::CRYPTO_ERROR;
 
         auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
         if (!ctx) return libcdoc::CRYPTO_ERROR;
 
-        int result = EVP_PKEY_decrypt_init(ctx.get());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt_init(ctx.get()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         if (oaep) {
-            if ((EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) < 0))
+            if (EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) != 1 ||
+                EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) != 1 ||
+                EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) != 1) {
                 return libcdoc::CRYPTO_ERROR;
+            }
         }
 
-        size_t outlen;
-        result = EVP_PKEY_decrypt(ctx.get(), NULL, &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        // First call queries the maximum output size.
+        size_t outlen = 0;
+        if (EVP_PKEY_decrypt(ctx.get(), nullptr, &outlen, data.data(), data.size()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         dst.resize(outlen);
-        result = EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size()) != 1) {
+            // Wipe any partial plaintext that may have been written before
+            // padding verification failed; it could otherwise be observed by
+            // callers and used to mount a padding-oracle attack.
+            libcdoc::cleanse(dst);
+            dst.clear();
+            return libcdoc::CRYPTO_ERROR;
+        }
         dst.resize(outlen);
 
         return libcdoc::OK;
+    }
+
+    libcdoc::result_t decryptRSACDoc1(std::vector<uint8_t>& dst,
+                                      const std::vector<uint8_t> &data,
+                                      size_t expected_len,
+                                      unsigned int idx) override final {
+        if (p11) return p11->decryptRSACDoc1(dst, data, expected_len, idx);
+        if (auto rv = validateRcptIdx(rcpts, idx); rv != libcdoc::OK) return rv;
+        const libcdoc::RcptInfo& rcpt = rcpts[idx];
+        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
+
+        const uint8_t *p = rcpt.secret.data();
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
+        if (!key) return libcdoc::CRYPTO_ERROR;
+
+        // Implicit-rejection-aware decrypt. Returns OK on padding success
+        // AND on padding failure (with synthetic output). Only fatal errors
+        // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.
+        return libcdoc::Crypto::decryptRSAv15_implicitReject(dst, key.get(), data, expected_len);
     }
 
     libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {

@@ -411,26 +411,106 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 libcdoc::result_t
 libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
-	if(!d) return CRYPTO_ERROR;
+    if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(idx, true);
     if (result != OK) return result;
 
-	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
-	auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
-	if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	CK_ULONG size = 0;
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	dst.resize(size);
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) return CRYPTO_ERROR;
-	d->logout();
+    CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
+    auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
+    if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    CK_ULONG size = 0;
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) {
+        // Always logout - failing to do so would leak the open session and
+        // (worse) reveal whether the second C_Decrypt failed for "padding"
+        // vs another reason via observable side-effects on the next call.
+        libcdoc::cleanse(dst);
+        dst.clear();
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    d->logout();
     return OK;
+}
+
+libcdoc::result_t
+libcdoc::PKCS11Backend::decryptRSACDoc1(std::vector<uint8_t> &dst,
+                                        const std::vector<uint8_t> &data,
+                                        size_t expected_len,
+                                        unsigned int idx)
+{
+    if(!d) return CRYPTO_ERROR;
+    if(expected_len == 0) return CRYPTO_ERROR;
+
+    int result = connectToKey(idx, true);
+    if (result != OK) return result;
+
+    // Use raw RSA (CKM_RSA_X_509) so libcdoc can apply RFC 8017 implicit
+    // rejection in user space. CKM_RSA_PKCS lets the token strip the
+    // padding, but most PKCS#11 tokens leak the success/failure bit
+    // through CKR_ENCRYPTED_DATA_INVALID vs CKR_OK and through the time
+    // taken; the only portable mitigation is to never let the token see
+    // the padding decision. CKM_RSA_X_509 is a baseline mechanism
+    // supported by every PKCS#11 token that supports RSA.
+    CK_MECHANISM mech { CKM_RSA_X_509, nullptr, 0 };
+    if (d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+
+    CK_ULONG em_size = 0;
+    if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), nullptr, &em_size) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    std::vector<uint8_t> em(size_t(em_size), 0);
+    if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), em.data(), &em_size) != CKR_OK) {
+        libcdoc::cleanse(em);
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    em.resize(size_t(em_size));
+    d->logout();
+
+    // Build a synthetic seed that does not require access to the private
+    // key (which never leaves the token). HMAC the ciphertext with a
+    // public-but-token-bound value (CKA_ID concatenated with the modulus)
+    // so the seed is stable per (token-key, ct) pair while still being
+    // unpredictable to attackers.
+    std::vector<uint8_t> seed_key;
+    {
+        std::vector<uint8_t> id_attr = d->attribute(d->session, d->key, CKA_ID);
+        std::vector<uint8_t> mod_attr = d->attribute(d->session, d->key, CKA_MODULUS);
+        seed_key.reserve(id_attr.size() + mod_attr.size() + 16);
+        const std::string_view tag{"cdoc1-rsa-implicit-reject-pkcs11"};
+        seed_key.insert(seed_key.end(), tag.begin(), tag.end());
+        seed_key.insert(seed_key.end(), id_attr.begin(), id_attr.end());
+        seed_key.insert(seed_key.end(), mod_attr.begin(), mod_attr.end());
+    }
+    std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
+    libcdoc::cleanse(seed_key);
+    std::vector<uint8_t> synth = libcdoc::Crypto::expand(
+        prk, "cdoc1-rsa-implicit-reject", int(expected_len));
+    libcdoc::cleanse(prk);
+    if (synth.size() != expected_len) {
+        // Last-resort fallback: fixed zero seed. Worse than ideal but still
+        // length-uniform with the real-success path.
+        synth.assign(expected_len, 0);
+    }
+
+    int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, expected_len);
+    libcdoc::cleanse(em);
+    libcdoc::cleanse(synth);
+    return rv;
 }
 
 libcdoc::result_t

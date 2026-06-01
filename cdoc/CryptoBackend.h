@@ -88,6 +88,40 @@ struct CDOC_EXPORT CryptoBackend {
 	 * @return error code or OK
 	 */
     virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
+
+    /**
+     * @brief Decrypt a CDoc1 RSA-PKCS#1-v1.5-wrapped FMK with implicit rejection.
+     *
+     * CDoc1 wraps the AES File Master Key with raw RSA PKCS#1 v1.5 (no AES
+     * Key Wrap), which historically exposed a Bleichenbacher oracle. This
+     * method is the recommended decryption entry point for CDoc1 RSA recipients.
+     *
+     * Implementations MUST apply the implicit-rejection countermeasure
+     * (RFC 8017 section 7.2.2 / OpenSSL 3.2's
+     * @c EVP_PKEY_CTX_set_rsa_implicit_rejection): on padding failure they
+     * MUST return @c OK with a deterministic synthetic plaintext of
+     * @p expected_len bytes derived from the private key, and otherwise the
+     * recovered plaintext, indistinguishable from a real one to an
+     * attacker who does not know the private key. The downstream AES decrypt
+     * acts as the authentication step that distinguishes a real key from a
+     * synthetic one.
+     *
+     * The default implementation delegates to @ref decryptRSA and enforces
+     * @p expected_len. Backends provided by libcdoc override it to deliver
+     * the constant-time guarantee. Custom backends are encouraged to
+     * override it; the legacy @ref decryptRSA fallback is retained only for
+     * source compatibility.
+     *
+     * @param dst          destination buffer (resized to @p expected_len)
+     * @param data         RSA ciphertext (wrapped FMK)
+     * @param expected_len plaintext (FMK) length the caller expects
+     * @param idx          lock index (0-based) in the container
+     * @return OK or CRYPTO_ERROR
+     */
+    virtual result_t decryptRSACDoc1(std::vector<uint8_t>& dst,
+                                     const std::vector<uint8_t>& data,
+                                     size_t expected_len,
+                                     unsigned int idx);
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *

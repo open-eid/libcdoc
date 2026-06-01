@@ -678,7 +678,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    libcdoc::setLogLevel(LEVEL_TRACE);
+    libcdoc::setLogLevel(LEVEL_WARNING);
 
     string_view command(argv[1]);
 

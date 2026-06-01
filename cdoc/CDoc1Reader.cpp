@@ -25,6 +25,9 @@
 #include "Lock.h"
 #include "Utils.h"
 #include "ZStream.h"
+#include "utils/memory.h"
+
+#include <openssl/evp.h>
 
 #include <map>
 
@@ -109,14 +112,56 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
     const Lock &lock = d->locks.at(lock_idx);
     setLastError({});
+
+    // Determine the FMK length from the container's body cipher. The CDoc1
+    // body uses AES-128/192/256 in CBC or GCM mode, so the FMK is 16, 24
+    // or 32 bytes long. We pin this length up-front and pass it to the RSA
+    // decrypt path so that an attacker observing this function cannot
+    // distinguish between
+    //   (a) RSA padding failed
+    //   (b) RSA padding succeeded but the resulting length was wrong
+    //   (c) a wholly different recipient was used to derive a wrong key.
+    //
+    // All three cases must look the same: the function returns OK with a
+    // candidate FMK of the right length, and the eventual AES decrypt at
+    // the container body level either authenticates that FMK (success) or
+    // rejects it. CDoc1 has no header HMAC, so the AES-GCM tag is the
+    // only bit of authentication we can rely on. AES-CBC containers
+    // therefore retain a residual oracle (PKCS#7 stripping); using GCM
+    // when re-encrypting with libcdoc is strongly preferred.
+    size_t expected_fmk_len = 0;
+    if (const EVP_CIPHER *c = libcdoc::Crypto::cipher(d->method); c) {
+        expected_fmk_len = size_t(EVP_CIPHER_key_length(c));
+    }
+    if (expected_fmk_len != 16 && expected_fmk_len != 24 && expected_fmk_len != 32) {
+        // Method-level error - independent of key bits, so does NOT feed
+        // an oracle.
+        setLastError("Failed to derive FMK");
+        LOG_ERROR("Unsupported CDoc1 encryption method: {}", d->method);
+        return libcdoc::CRYPTO_ERROR;
+    }
+
+    // From this point on, every error path returns the SAME error code and
+    // SAME last-error string, so that the only bit of information leaking
+    // back to the caller is "this lock did/did not produce a usable FMK".
+    constexpr auto FAIL_MSG = "Failed to derive FMK";
+
     if (lock.isRSA()) {
-        int result = crypto->decryptRSA(fmk, lock.encrypted_fmk, false, lock_idx);
-		if (result < 0) {
-			setLastError(crypto->getLastErrorStr(result));
+        // Implicit-rejection-aware decrypt. Returns OK with synthetic
+        // bytes on padding failure; only a fundamental error (e.g. ct size
+        // mismatch with modulus) yields a non-OK result.
+        int result = crypto->decryptRSACDoc1(fmk, lock.encrypted_fmk, expected_fmk_len, lock_idx);
+        if (result != libcdoc::OK) {
+            libcdoc::cleanse(fmk);
+            fmk.clear();
+            setLastError(FAIL_MSG);
             LOG_ERROR("{}", last_error);
-			return libcdoc::CRYPTO_ERROR;
-		}
-	} else {
+            return libcdoc::CRYPTO_ERROR;
+        }
+        // Even on "OK" the contents may be synthetic - that is the point.
+        // The downstream AES decrypt at the body level is what tells
+        // success from failure.
+    } else {
         std::vector<uint8_t> key;
         int result = crypto->deriveConcatKDF(key,
             lock.getBytes(Lock::Params::KEY_MATERIAL),
@@ -125,18 +170,31 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             lock.getBytes(Lock::Params::PARTY_UINFO),
             lock.getBytes(Lock::Params::PARTY_VINFO),
             lock_idx);
-		if (result < 0) {
-			setLastError(crypto->getLastErrorStr(result));
+        if (result < 0) {
+            libcdoc::cleanse(key);
+            setLastError(FAIL_MSG);
             LOG_ERROR("{}", last_error);
-			return libcdoc::CRYPTO_ERROR;
-		}
+            return libcdoc::CRYPTO_ERROR;
+        }
         fmk = libcdoc::Crypto::AESWrap(key, lock.encrypted_fmk, false);
-	}
-	if (fmk.empty()) {
-		setLastError("Failed to decrypt/derive fmk");
+        libcdoc::cleanse(key);
+        // AESWrap returns {} on failure. Pad the candidate to expected
+        // length so the failure shape matches the RSA path; the bytes
+        // are arbitrary because the body decrypt is going to reject
+        // them anyway.
+        if (fmk.size() != expected_fmk_len) {
+            libcdoc::cleanse(fmk);
+            fmk.assign(expected_fmk_len, 0);
+        }
+    }
+
+    if (fmk.size() != expected_fmk_len) {
+        libcdoc::cleanse(fmk);
+        fmk.clear();
+        setLastError(FAIL_MSG);
         LOG_ERROR("{}", last_error);
-		return libcdoc::CRYPTO_ERROR;
-	}
+        return libcdoc::CRYPTO_ERROR;
+    }
     return libcdoc::OK;
 }
 
@@ -393,18 +451,47 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk,
         setLastError("Failed to decode base64 data");
         return libcdoc::IO_ERROR;
     }
+
+    // Treat any post-FMK decrypt error - including AES-CBC PKCS#7 stripping
+    // failures and AES-GCM tag mismatches - as the same "container body
+    // decrypt failed" event. This is the single bit of information an
+    // attacker can extract per submission of a tampered CDoc1, and we
+    // rate-limit it. A per-process exponential backoff turns a remote
+    // Bleichenbacher campaign of 2^20+ queries into hours/days of
+    // wall-clock cost without penalising legitimate single-shot use.
+    constexpr auto THROTTLE_SCOPE = "cdoc1-rsa-decrypt";
+    auto report_failure = [&]{
+        libcdoc::Crypto::rsaOracleThrottleOnFailure(THROTTLE_SCOPE);
+    };
+
     VectorSource src(b64);
     libcdoc::DecryptionSource dec(src, d->method, fmk);
     if(dec.isError()) {
-        setLastError("Failed to decrypt data, verify if FMK is correct");
+        setLastError("Failed to decrypt data");
+        report_failure();
         return CRYPTO_ERROR;
     }
+    libcdoc::result_t inner_rv = libcdoc::OK;
     if (d->mime == MIME_ZLIB) {
         libcdoc::ZSource zsrc(&dec);
-        if(auto rv = f(zsrc, d->properties["OriginalMimeType"]); rv < OK)
-            return rv;
+        inner_rv = f(zsrc, d->properties["OriginalMimeType"]);
+    } else {
+        inner_rv = f(dec, d->mime);
     }
-    else if(auto rv = f(dec, d->mime); rv < OK)
-        return rv;
-    return dec.close();
+    if (inner_rv < OK) {
+        // Body parse/decrypt failure. Could be a real I/O glitch, or a
+        // tampered container - we cannot tell, and on principle we treat
+        // both alike to deny the attacker a distinguisher.
+        setLastError("Failed to decrypt data");
+        report_failure();
+        return inner_rv;
+    }
+    libcdoc::result_t close_rv = dec.close();
+    if (close_rv != libcdoc::OK) {
+        setLastError("Failed to decrypt data");
+        report_failure();
+        return close_rv;
+    }
+    libcdoc::Crypto::rsaOracleThrottleOnSuccess(THROTTLE_SCOPE);
+    return libcdoc::OK;
 }

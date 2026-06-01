@@ -63,6 +63,7 @@ struct CDOC_EXPORT WinBackend : public CryptoBackend {
     virtual result_t usePSS(int idx) {return true;}
 
     virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx);
+    virtual result_t decryptRSACDoc1(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, size_t expected_len, unsigned int idx) override;
     virtual result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::string &digest,
 								 const std::vector<uint8_t> &algorithm_id, const std::vector<uint8_t> &party_uinfo,
                                  const std::vector<uint8_t> &party_vinfo, unsigned int idx);
