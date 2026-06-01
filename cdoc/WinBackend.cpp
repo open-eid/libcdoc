@@ -215,6 +215,68 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
     int result = connectToKey(idx, true);
     if (result != OK) return result;
 
+    if (!oaep) {
+        // If oaep is false, dst must be pre-allocated to the expected length.
+        // This is required to apply the implicit-rejection countermeasure on padding failure.
+        if (dst.empty()) return libcdoc::WRONG_ARGUMENTS;
+        // Raw RSA decrypt: ask CNG NOT to strip the padding so we can apply the
+        // implicit-rejection countermeasure in user space. CNG exposes raw
+        // (textbook) RSA via paddingInfo=NULL and flags=0.
+        DWORD em_size = 0;
+        SECURITY_STATUS err = NCryptDecrypt(d->key, PBYTE(data.data()), DWORD(data.size()), nullptr, nullptr, 0, &em_size, 0);
+        if (err != ERROR_SUCCESS) {
+            LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt(size) failed (status={:#x})", DWORD(err));
+            return CRYPTO_ERROR;
+        }
+        std::vector<uint8_t> em(em_size, 0);
+        err = NCryptDecrypt(d->key, PBYTE(data.data()), DWORD(data.size()), nullptr, PBYTE(em.data()), em_size, &em_size, 0);
+        if (err != ERROR_SUCCESS) {
+            libcdoc::cleanse(em);
+            LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt failed (status={:#x})", DWORD(err));
+            return CRYPTO_ERROR;
+        }
+        em.resize(em_size);
+
+        // Build a stable synthetic seed from a token-bound public value (the
+        // public key blob) plus the ciphertext. The private key never leaves
+        // CNG's keystore, but the public modulus is exportable and serves the
+        // same role of "private to this key, public-immutable" that OpenSSL's
+        // i2d_PrivateKey gives us elsewhere.
+        std::vector<uint8_t> seed_key;
+        {
+            DWORD blob_size = 0;
+            if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr, nullptr, 0, &blob_size, 0) == ERROR_SUCCESS &&
+                    blob_size > 0) {
+                std::vector<uint8_t> blob(blob_size, 0);
+                if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr, blob.data(), blob_size, &blob_size, 0) == ERROR_SUCCESS) {
+                    blob.resize(blob_size);
+                    const std::string_view tag{"cdoc1-rsa-implicit-reject-cng"};
+                    seed_key.reserve(tag.size() + blob.size());
+                    seed_key.insert(seed_key.end(), tag.begin(), tag.end());
+                    seed_key.insert(seed_key.end(), blob.begin(), blob.end());
+                }
+            }
+            // If export failed, fall back to a fixed tag - still length-uniform
+            // but slightly less unpredictable. Better than leaking the failure.
+            if (seed_key.empty()) {
+                const std::string_view tag{"cdoc1-rsa-implicit-reject-cng-fallback"};
+                seed_key.assign(tag.begin(), tag.end());
+            }
+        }
+        std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
+        libcdoc::cleanse(seed_key);
+        std::vector<uint8_t> synth = libcdoc::Crypto::expand(prk, "cdoc1-rsa-implicit-reject", int(dst.size()));
+        libcdoc::cleanse(prk);
+        if (synth.size() != dst.size()) 
+            synth.assign(dst.size(), 0);
+
+        int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
+        libcdoc::cleanse(em);
+        libcdoc::cleanse(synth);
+        return rv;
+    }
+    // With oaep == true CNG will apply OAEP padding and the implicit-rejection countermeasure internally,
+    // so we can just call NCryptDecrypt directly with the right flags.
 	BCRYPT_OAEP_PADDING_INFO padding {BCRYPT_SHA256_ALGORITHM, nullptr, 0};
 	PVOID paddingInfo = oaep ? &padding : nullptr;
 	DWORD flags = oaep ? NCRYPT_PAD_OAEP_FLAG : NCRYPT_PAD_PKCS1_FLAG;
@@ -229,85 +291,6 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
         return CRYPTO_ERROR;
     }
     return OK;
-}
-
-libcdoc::result_t
-libcdoc::WinBackend::decryptRSACDoc1(std::vector<uint8_t>& dst,
-                                     const std::vector<uint8_t>& data,
-                                     size_t expected_len,
-                                     unsigned int idx)
-{
-    if(!d->prov) return CRYPTO_ERROR;
-    if(expected_len == 0) return CRYPTO_ERROR;
-    int result = connectToKey(idx, true);
-    if (result != OK) return result;
-
-    // Raw RSA decrypt: ask CNG NOT to strip the padding so we can apply the
-    // implicit-rejection countermeasure in user space. CNG exposes raw
-    // (textbook) RSA via paddingInfo=NULL and flags=0.
-    DWORD em_size = 0;
-    SECURITY_STATUS err = NCryptDecrypt(d->key,
-                                        PBYTE(data.data()), DWORD(data.size()),
-                                        nullptr,
-                                        nullptr, 0, &em_size, 0);
-    if (err != ERROR_SUCCESS) {
-        LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt(size) failed (status={:#x})",
-                  DWORD(err));
-        return CRYPTO_ERROR;
-    }
-    std::vector<uint8_t> em(em_size, 0);
-    err = NCryptDecrypt(d->key,
-                        PBYTE(data.data()), DWORD(data.size()),
-                        nullptr,
-                        PBYTE(em.data()), em_size, &em_size, 0);
-    if (err != ERROR_SUCCESS) {
-        libcdoc::cleanse(em);
-        LOG_ERROR("WinBackend::decryptRSACDoc1: NCryptDecrypt failed (status={:#x})",
-                  DWORD(err));
-        return CRYPTO_ERROR;
-    }
-    em.resize(em_size);
-
-    // Build a stable synthetic seed from a token-bound public value (the
-    // public key blob) plus the ciphertext. The private key never leaves
-    // CNG's keystore, but the public modulus is exportable and serves the
-    // same role of "private to this key, public-immutable" that OpenSSL's
-    // i2d_PrivateKey gives us elsewhere.
-    std::vector<uint8_t> seed_key;
-    {
-        DWORD blob_size = 0;
-        if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr,
-                            nullptr, 0, &blob_size, 0) == ERROR_SUCCESS &&
-            blob_size > 0) {
-            std::vector<uint8_t> blob(blob_size, 0);
-            if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr,
-                                blob.data(), blob_size, &blob_size, 0) == ERROR_SUCCESS) {
-                blob.resize(blob_size);
-                const std::string_view tag{"cdoc1-rsa-implicit-reject-cng"};
-                seed_key.reserve(tag.size() + blob.size());
-                seed_key.insert(seed_key.end(), tag.begin(), tag.end());
-                seed_key.insert(seed_key.end(), blob.begin(), blob.end());
-            }
-        }
-        // If export failed, fall back to a fixed tag - still length-uniform
-        // but slightly less unpredictable. Better than leaking the failure.
-        if (seed_key.empty()) {
-            const std::string_view tag{"cdoc1-rsa-implicit-reject-cng-fallback"};
-            seed_key.assign(tag.begin(), tag.end());
-        }
-    }
-    std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
-    libcdoc::cleanse(seed_key);
-    std::vector<uint8_t> synth = libcdoc::Crypto::expand(
-        prk, "cdoc1-rsa-implicit-reject", int(expected_len));
-    libcdoc::cleanse(prk);
-    if (synth.size() != expected_len)
-        synth.assign(expected_len, 0);
-
-    int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, expected_len);
-    libcdoc::cleanse(em);
-    libcdoc::cleanse(synth);
-    return rv;
 }
 
 libcdoc::result_t
