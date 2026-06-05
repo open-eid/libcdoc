@@ -102,17 +102,48 @@ OStreamConsumer::OStreamConsumer(const std::string& path)
 }
 
 result_t FileListConsumer::open(const std::string &name, int64_t size) {
-    std::string_view fileName = name;
     if (ofs.is_open()) {
         ofs.close();
     }
-    size_t lastSlashPos = fileName.find_last_of("\\/");
-    if (lastSlashPos != std::string::npos) {
-        fileName = fileName.substr(lastSlashPos + 1);
+
+    // The file name comes from inside the (encrypted) container and is
+    // therefore fully attacker-controlled. Run it through the central
+    // sanitiser; reject the entry rather than write to a tampered path.
+    std::string safeName = libcdoc::sanitiseExtractedFilename(name);
+    if (safeName.empty()) {
+        LOG_ERROR("FileListConsumer::open: refusing unsafe entry name '{}'", name);
+        return DATA_FORMAT_ERROR;
     }
-    fs::path path(base);
-    path /= encodeName(fileName);
-    ofs.open(path, std::ios_base::binary);
+
+    fs::path target = base / fs::path(encodeName(safeName));
+
+    // Defence in depth: even after sanitising the leaf name, an attacker
+    // who can plant a symlink at `base` (e.g. by extracting an earlier
+    // entry that the host application created earlier) could redirect
+    // writes outside `base`. weakly_canonical resolves any symlinks that
+    // already exist in the path; we then verify the parent directory of
+    // the target equals the canonical base.
+    std::error_code ec;
+    fs::path canonicalBase = fs::weakly_canonical(base, ec);
+    if (ec) {
+        LOG_ERROR("FileListConsumer::open: cannot canonicalise base {}: {}",
+                  base.string(), ec.message());
+        return OUTPUT_STREAM_ERROR;
+    }
+    fs::path canonicalTarget = fs::weakly_canonical(target, ec);
+    if (ec) {
+        LOG_ERROR("FileListConsumer::open: cannot canonicalise target {}: {}",
+                  target.string(), ec.message());
+        return OUTPUT_STREAM_ERROR;
+    }
+    if (canonicalTarget.parent_path() != canonicalBase) {
+        LOG_ERROR("FileListConsumer::open: refusing entry '{}' - target {} "
+                  "escapes base {}",
+                  name, canonicalTarget.string(), canonicalBase.string());
+        return DATA_FORMAT_ERROR;
+    }
+
+    ofs.open(target, std::ios_base::binary);
     return ofs.bad() ? OUTPUT_STREAM_ERROR : OK;
 }
 

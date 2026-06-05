@@ -489,15 +489,40 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
     result = rdr->nextFile(name, size);
     while (result == libcdoc::OK) {
         LOG_DBG("Got file: {} {}", name, size);
-        filesystem::path fpath(name);
-        if (fpath.is_absolute()) {
-            LOG_WARN("File has absolute path, stripping");
-            fpath = fpath.filename();
-        } else if (fpath.has_parent_path()) {
-            LOG_WARN("File has parent path, stripping");
-            fpath = fpath.filename();
+
+        // Sanitise the attacker-controlled file name before composing the
+        // extraction path. See libcdoc::sanitiseExtractedFilename for the
+        // exact set of rejections (path separators, "..", drive letters,
+        // NUL bytes, reserved Windows device names, etc.).
+        std::string safeName = libcdoc::sanitiseExtractedFilename(name);
+        if (safeName.empty()) {
+            LOG_ERROR("Refusing unsafe entry name '{}'", name);
+            return 1;
         }
-        fpath = base_path / fpath;
+        filesystem::path fpath = base_path / filesystem::path(libcdoc::encodeName(safeName));
+
+        // Defence in depth: ensure the lexically-resolved target stays
+        // under base_path, even if a previously-extracted entry placed a
+        // symlink there.
+        std::error_code ec;
+        filesystem::path canonicalBase = filesystem::weakly_canonical(base_path, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise base path {}: {}",
+                      base_path.string(), ec.message());
+            return 1;
+        }
+        filesystem::path canonicalTarget = filesystem::weakly_canonical(fpath, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise target path {}: {}",
+                      fpath.string(), ec.message());
+            return 1;
+        }
+        if (canonicalTarget.parent_path() != canonicalBase) {
+            LOG_ERROR("Refusing entry '{}': target {} escapes base {}",
+                      name, canonicalTarget.string(), canonicalBase.string());
+            return 1;
+        }
+
         std::ofstream ofs(fpath, std::ios_base::binary);
         if (ofs.bad()) {
             LOG_ERROR("Cannot open file {} for writing", fpath.string());

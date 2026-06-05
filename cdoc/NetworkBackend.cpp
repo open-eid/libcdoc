@@ -138,6 +138,39 @@ getMIDSIDDescription(libcdoc::result_t code)
     }
     return {};
 }
+
+// Map a CryptoBackend::HashAlgorithm to the algorithm name string the
+// SK Smart-ID / Mobile-ID JSON API expects ("SHA224", "SHA256",
+// "SHA384", "SHA512"). Returns an empty string_view when the algorithm
+// is not in the supported set; callers MUST treat that as a hard error
+// rather than indexing an array - foreign-language bindings (SWIG / Java
+// / C#) and any future addition to the HashAlgorithm enum can otherwise
+// drive the previous `algo_names[(int)algo]` lookup out of bounds.
+//
+// The function is constexpr so that the static_assert block below can
+// verify at compile time that every documented enumerator maps to a
+// non-empty string. Any new HashAlgorithm value added to CryptoBackend.h
+// will trigger -Wswitch (no default branch covers it) and the
+// static_asserts will catch it explicitly.
+static constexpr std::string_view
+hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm algo) noexcept
+{
+    switch (algo) {
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_224: return "SHA224";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_256: return "SHA256";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_384: return "SHA384";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_512: return "SHA512";
+    }
+    return {};
+}
+
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_224) == "SHA224");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_256) == "SHA256");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_384) == "SHA384");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_512) == "SHA512");
+// Out-of-range value (e.g. coming from a SWIG-generated foreign caller)
+// must produce an empty result rather than reading past the array.
+static_assert(hashAlgorithmToSidMidName(static_cast<libcdoc::CryptoBackend::HashAlgorithm>(99)).empty());
 #endif
 
 thread_local std::string error;
@@ -455,7 +488,12 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     LOG_DBG("Response: {}", rsp.body);
     picojson::value rsp_json;
-    picojson::parse(rsp_json, rsp.body);
+    std::string parse_err = picojson::parse(rsp_json, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NETWORK_ERROR;
+    }
     picojson::value v = rsp_json.get("nonce");
     if (!v.is<std::string>()) {
         error = FORMAT("No 'nonce' in response");
@@ -750,7 +788,12 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Response: {}", rsp.body);
     picojson::value v;
-    picojson::parse(v, rsp.body);
+    std::string parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
@@ -773,8 +816,19 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     // Sign
     //
-    std::string algo_names[] = {"SHA224", "SHA256", "SHA384", "SHA512"};
-    std::string algo_name = algo_names[(int) algo];
+    std::string_view algo_name = hashAlgorithmToSidMidName(algo);
+    if (algo_name.empty()) {
+        error = "Unsupported hash algorithm for Smart-ID";
+        LOG_ERROR("Unsupported hash algorithm for Smart-ID: {}",
+                  static_cast<int>(algo));
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
+    if (digest.empty()) {
+        error = "Empty digest";
+        LOG_ERROR("Empty digest passed to signSID");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
 
     // Generate code
     uint8_t b[32];
@@ -794,7 +848,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
         {"relyingPartyUUID", picojson::value(rp_uuid)},
         {"relyingPartyName", picojson::value(rp_name)},
         {"hash", picojson::value(toBase64(digest))},
-        {"hashType", picojson::value(algo_name)},
+        {"hashType", picojson::value(std::string(algo_name))},
         {"allowedInteractionsOrder",
             picojson::value(aio)
         }
@@ -809,7 +863,12 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     result = post(cli, full, hdrs, query.serialize(), rsp);
     if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
-    picojson::parse(v, rsp.body);
+    parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
@@ -841,6 +900,31 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     const std::string& url, const std::string& rp_uuid, const std::string& rp_name, const std::string& phone,
     const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo)
 {
+    // Validate rcpt_id BEFORE doing anything else (network setup, key
+    // material, etc.). The previous implementation called
+    // rcpt_id.substr(11, 11) which throws std::out_of_range when
+    // rcpt_id.size() < 11 and silently returns a too-short identifier
+    // when 11 <= size < 22 - both of which would propagate to the SK
+    // Mobile-ID service as garbage and (worse) leak partially-filled
+    // payloads to the network in the latter case.
+    libcdoc::EtsiRecipientId parsed = libcdoc::parseEtsiRecipientId(rcpt_id);
+    if (!parsed.valid()) {
+        error = "Invalid Mobile ID recipient identifier";
+        LOG_ERROR("Invalid Mobile ID recipient identifier: '{}'", rcpt_id);
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
+    // The SK Mobile-ID API expects `nationalIdentityNumber` to be the
+    // bare digits with no country prefix, so we use the parsed national
+    // identifier directly.
+    const std::string &id_num = parsed.national_id;
+
+    if (digest.empty()) {
+        error = "Empty digest";
+        LOG_ERROR("Empty digest passed to signMID");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
     std::string certificateLevel = "QUALIFIED";
     std::string nonce = libcdoc::toBase64(Crypto::random(16));
 
@@ -863,23 +947,26 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     // Authenticate
     //
-    std::string algo_names[] = {"SHA224", "SHA256", "SHA384", "SHA512"};
-    std::string algo_name = algo_names[(int) algo];
+    std::string_view algo_name = hashAlgorithmToSidMidName(algo);
+    if (algo_name.empty()) {
+        error = "Unsupported hash algorithm for Mobile-ID";
+        LOG_ERROR("Unsupported hash algorithm for Mobile-ID: {}",
+                  static_cast<int>(algo));
+        return libcdoc::WRONG_ARGUMENTS;
+    }
 
-    // Generate code
+    // Generate verification code. digest is guaranteed non-empty above.
     unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
     result = showVerificationCode(code);
     if (result != OK) return result;
 
-    // etsi/PNOEE-01234567890
-    std::string id_num = rcpt_id.substr(11, 11);
     picojson::object qobj = {
         {"relyingPartyUUID", picojson::value(rp_uuid)},
         {"relyingPartyName", picojson::value(rp_name)},
         {"phoneNumber", picojson::value(phone)},
         {"nationalIdentityNumber", picojson::value(id_num)},
         {"hash", picojson::value(toBase64(digest))},
-        {"hashType", picojson::value(algo_name)},
+        {"hashType", picojson::value(std::string(algo_name))},
         {"language", picojson::value("ENG")},
         {"displayText", picojson::value("Tahad dekryptida?")},
         {"displayTextFormat", picojson::value("GSM-7")}
@@ -898,15 +985,22 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("Response: {}", rsp.body);
 
     picojson::value v;
-    picojson::parse(v, rsp.body);
+    parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid Mobile ID response";
-        LOG_WARN("Invalid Monbile ID response");
+        LOG_WARN("Invalid Mobile ID response");
+        return NetworkBackend::NETWORK_ERROR;
     }
     picojson::value w = v.get("sessionID");
     if (!w.is<std::string>()) {
         error = "Invalid Mobile ID response";
-        LOG_WARN("Invalid Monbile ID response");
+        LOG_WARN("Invalid Mobile ID response");
+        return NetworkBackend::NETWORK_ERROR;
     }
     std::string sessionID  = w.get<std::string>();
     LOG_DBG("SessionID: {}", sessionID);

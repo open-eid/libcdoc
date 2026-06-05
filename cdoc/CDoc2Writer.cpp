@@ -208,11 +208,23 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
     flatbuffers::FlatBufferBuilder builder;
     std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> fb_rcpts;
 
+    // xor_key is XOR(fmk, kek). It is published in the header as the
+    // "encrypted FMK" so it is not itself a long-term secret, but while in
+    // scope it is bitwise-paired with the secret KEK and we wipe it on
+    // exit anyway as a hygiene measure.
     std::vector<uint8_t> xor_key;
+    libcdoc::Cleanser xor_key_guard(xor_key);
+
     for (unsigned int rcpt_idx = 0; rcpt_idx < recipients.size(); rcpt_idx++) {
         const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
         if (rcpt.isPKI()) {
             std::vector<uint8_t> key_material, kek;
+            // Per-iteration RAII cleanse: even if FAIL(...) (which expands
+            // to `return fail(...);`) shortcuts the loop, both buffers are
+            // wiped during stack unwind. The same applies to all other
+            // iteration-local secrets below.
+            libcdoc::Cleanser key_material_guard(key_material);
+            libcdoc::Cleanser kek_guard(kek);
             std::string send_url;
             if(rcpt.isKeyServer()) {
                 if(!conf)
@@ -259,8 +271,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 }
                 auto ephKey = libcdoc::Crypto::genECKey(publicKey.get());
                 std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), publicKey.get());
+                libcdoc::Cleanser sharedSecret_guard(sharedSecret);
                 key_material = libcdoc::Crypto::toPublicKeyDer(ephKey.get());
                 std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
+                libcdoc::Cleanser kekPm_guard(kekPm);
                 std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, rcpt.rcpt_key);
 
                 kek = libcdoc::Crypto::expand(kekPm, info_str, fmk.size());
@@ -290,6 +304,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
         } else if (rcpt.isSymmetric()) {
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(rcpt.getLabel({}));
             std::vector<uint8_t> kek_pm(libcdoc::CDoc2::KEY_LEN);
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
             std::vector<uint8_t> salt;
             int64_t result = crypto->random(salt, libcdoc::CDoc2::KEY_LEN);
             if (result < 0)
@@ -302,6 +317,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             if (result < 0)
                 FAIL(crypto->getLastErrorStr(result), result);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
+            libcdoc::Cleanser kek_guard(kek);
 
             LOG_DBG("Label: {}", rcpt.label);
             LOG_DBG("KDF iter: {}", rcpt.kdf_iter);
@@ -345,14 +361,18 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             //KeyMaterial_i = CSRNG(256)
             std::vector<uint8_t> key_material;
             crypto->random(key_material, libcdoc::CDoc2::KEY_LEN);
+            // key_material is split-share-input material; wipe on exit.
+            libcdoc::Cleanser key_material_guard(key_material);
 
             //KEK_i_pm = HKDF_Extract(KeyMaterialSalt_i, KeyMaterial_i)
             std::vector<uint8_t> kek_pm = libcdoc::Crypto::extract(key_material_salt, key_material);
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
 
             // KEK_i = HKDF_Expand(KEK_i_pm, "CDOC2kek" + FMKEncryptionMethod + RecipientInfo_i, L)
             std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
             LOG_DBG("Info: {}", info_str);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str);
+            libcdoc::Cleanser kek_guard(kek);
             LOG_TRACE_KEY("kek: {}", kek);
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
             if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
@@ -361,6 +381,18 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             // # Splitting KEK_i into shares
             // for j in (2, 3, ..., n):
             std::vector<std::vector<uint8_t>> kek_shares(N_SHARES);
+            // Each individual share is itself sensitive: combined with the
+            // remaining shares it reconstructs KEK_i (and thus the FMK).
+            // Wipe every kek_shares[i] on exit. The lambda runs from the
+            // destructor of `shares_guard` regardless of how we leave
+            // scope (early return, exception).
+            struct KekSharesCleanser {
+                std::vector<std::vector<uint8_t>>& v;
+                ~KekSharesCleanser() noexcept {
+                    for (auto &s : v) libcdoc::cleanse(s);
+                }
+            } shares_guard{kek_shares};
+
             for (int i = 1; i < N_SHARES; i++) {
                 // KEK_i_share_j = CSRNG(256)
                 crypto->random(kek_shares[i], libcdoc::CDoc2::KEY_LEN);

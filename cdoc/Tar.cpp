@@ -30,6 +30,16 @@ constexpr unsigned int BLOCKSIZE = 512;
 
 constexpr int64_t CDOC2_MAX_FILE_SIZE = 8LL * 1024 * 1024 * 1024;
 
+// Cap on the declared size of an "auxiliary" tar header - i.e. extended
+// PAX header ('x') or global PAX header ('g'). The PAX standard places no
+// formal upper bound on these, but realistic records produced by tar(1)
+// are O(KB) (one entry per path/size override). A malicious archive could
+// otherwise declare an 8 GiB PAX header and force the decryption pipeline
+// to either allocate that much memory (readPaxHeader) or spin through it
+// in skip() (next()). 64 KiB is well above anything legitimate while
+// keeping per-entry memory and stream-skip work bounded.
+constexpr int64_t MAX_AUX_HEADER_SIZE = 64 * 1024;
+
 template<class T = int>
 [[nodiscard]] static constexpr bool svtoi(std::string_view data, T& result) noexcept
 {
@@ -316,6 +326,15 @@ libcdoc::result_t
 libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t& size)
 {
 	int64_t h_size = hdr.getSize();
+	// Validate the declared size BEFORE allocating the buffer. getSize()
+	// already returns -1 for malformed octal or sizes above
+	// CDOC2_MAX_FILE_SIZE, but that 8 GiB ceiling is meant for payload
+	// files; PAX headers themselves must be much smaller. See the
+	// MAX_AUX_HEADER_SIZE comment near the top of this file.
+	if (h_size < 0 || h_size > MAX_AUX_HEADER_SIZE) {
+		_error = DATA_FORMAT_ERROR;
+		return _error;
+	}
 	std::string paxData(h_size, 0);
 	result_t result = _src->read((uint8_t *) paxData.data(), paxData.size());
 	if (result != h_size) {
@@ -428,8 +447,16 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			_eof = false;
             return OK;
         }
-        // Skip other header types ('g')
+        // Skip other header types ('g' = global PAX header, plus any tar
+        // type we don't recognise as data). Cap the declared size at the
+        // same ceiling we use for 'x' headers so an attacker cannot force
+        // the upstream decryption pipeline to spin through gigabytes of
+        // payload bytes per malicious header.
         h_size = h.getSize();
+        if (h_size < 0 || h_size > MAX_AUX_HEADER_SIZE) {
+            _error = DATA_FORMAT_ERROR;
+            return _error;
+        }
         _src->skip(h_size + padding(h_size));
 	}
 	return END_OF_STREAM;

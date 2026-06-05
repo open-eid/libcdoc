@@ -200,6 +200,49 @@ void cleanse(std::array<T, N>& a) noexcept
 	OPENSSL_cleanse(a.data(), a.size() * sizeof(T));
 }
 
+/**
+ * @brief Scope guard that wipes a contiguous secret on destruction.
+ *
+ * Wraps a reference to a @c std::vector<uint8_t> (or @c std::array<uint8_t,N>)
+ * and calls @ref libcdoc::cleanse on it from the destructor, including the
+ * exceptional and early-return paths. Intended for the short-lived KEK / FMK
+ * pre-master / shared-secret buffers in CDoc2Reader / CDoc2Writer where every
+ * function has multiple early-return branches and remembering to cleanse at
+ * each one is fragile.
+ *
+ * Note: this only wipes the *currently-allocated* storage. It does NOT wipe
+ * earlier allocations that @c std::vector may have freed during a resize.
+ * For long-lived secrets that get assigned over multiple times, use
+ * @ref SecureBytes (which serialises through cleanse/unlock on each resize)
+ * or a fixed-size container.
+ *
+ * Usage:
+ * @code
+ *   std::vector<uint8_t> kek;
+ *   Cleanser kek_guard(kek);     // wipes `kek` on every exit from this scope
+ *   ...
+ *   if (failure) return ERROR;   // kek is wiped before unwind
+ *   ...
+ * @endcode
+ */
+template<typename Container>
+class Cleanser {
+public:
+    explicit Cleanser(Container& c) noexcept : c_(c) {}
+    ~Cleanser() noexcept { libcdoc::cleanse(c_); }
+
+    Cleanser(const Cleanser&) = delete;
+    Cleanser& operator=(const Cleanser&) = delete;
+    Cleanser(Cleanser&&) = delete;
+    Cleanser& operator=(Cleanser&&) = delete;
+private:
+    Container& c_;
+};
+
+// Class template argument deduction: `Cleanser g(vec);` infers the type.
+template<typename Container>
+Cleanser(Container&) -> Cleanser<Container>;
+
 inline bool constant_time_compare(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) noexcept
 {
 	if (a.size() != b.size()) return false;

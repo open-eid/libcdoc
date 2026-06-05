@@ -115,14 +115,18 @@ libcdoc::result_t
 CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                            int32_t kdf_iter, unsigned int idx)
 {
-	if (salt.empty()) return INVALID_PARAMS;
-	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
-	std::vector<uint8_t> key_material;
+    if (salt.empty()) return INVALID_PARAMS;
+    if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
+    std::vector<uint8_t> key_material;
     int result = getKeyMaterial(key_material, pw_salt, kdf_iter, idx);
-	if (result) return result;
-	kek_pm = libcdoc::Crypto::extract(key_material, salt);
-	libcdoc::cleanse(key_material);
-	if (kek_pm.empty()) return OPENSSL_ERROR;
+    if (result) return result;
+    kek_pm = libcdoc::Crypto::extract(key_material, salt);
+    libcdoc::cleanse(key_material);
+    if (kek_pm.empty()) return OPENSSL_ERROR;
+    if (kek_pm.size() != 32) {
+        LOG_ERROR("KEK has incorrect size: {} (expected {})", kek_pm.size(), 32);
+        return INVALID_PARAMS;
+    }
 
     LOG_TRACE_KEY("Extract: {}", kek_pm);
 
