@@ -42,20 +42,27 @@ static std::map<std::string_view,libcdoc::LogLevel> str2level = {
 
 enum {
     RESULT_OK = 0,
-    RESULT_ERROR,
-    RESULT_USAGE
+    RESULT_ERROR = -1,
+    RESULT_USAGE = -2
 };
 
-static void print_usage(ostream& ofs)
+static void
+print_version(ostream& ofs)
 {
     ofs << "cdoc-tool version: " << VERSION_STR << endl;
     ofs << "libcdoc version: " << libcdoc::getVersion() << endl;
+}
+
+static void
+print_usage(ostream& ofs)
+{
+    ofs << "Usage:" << endl;
     ofs << "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] [-v1] [--genlabel] --out OUTPUTFILE FILE [FILE...]" << endl;
     ofs << "  Encrypt files for one or more recipients" << endl;
     ofs << "  RECIPIENT has to be one of the following:" << endl;
     ofs << "    [label]:cert:CERTIFICATE_FILE     - public key from certificate file (DER format)" << endl;
-    ofs << "    [label]:pkey:SECRET_KEY_HEX       - hex encoded public key (DER format; rsa, secp384r1 or secp256r1 key)." << endl;
-    ofs << "    [label]:pfkey:PUB_KEY_FILE        - public key from file (DER format; rsa, secp384r1 or secp256r1 key)." << endl;
+    ofs << "    [label]:pkey:SECRET_KEY_HEX       - hex encoded public key (DER format; rsa, secp384r1, secp256r1 or secp521r1 key)." << endl;
+    ofs << "    [label]:pfkey:PUB_KEY_FILE        - public key from file (DER format; rsa, secp384r1, secp256r1 or secp521r1 key)." << endl;
     ofs << "    [label]:skey:SECRET_KEY_HEX       - AES key, hex encoded" << endl;
     ofs << "    [label]:pw:PASSWORD               - AES key derived from password with PWBKDF" << endl;
     ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
@@ -68,7 +75,7 @@ static void print_usage(ostream& ofs)
     ofs << "  Decrypt CDoc container using lock specified by label or number" << endl;
     ofs << "  Supported arguments" << endl;
     ofs << "    --label LABEL           - lock label" << endl;
-    ofs << "    --label_idx INDEX       - lock number (1-based)" << endl;
+    ofs << "    --lock-idx INDEX       - lock number (1-based)" << endl;
     ofs << "    --pkey PRIVATE_KEY_HEX  - hex encoded private key (DER format)" << endl;
     ofs << "    --pfkey PRIVATE_KEY_HEX - private key from file (DER format)" << endl;
     ofs << "    --slot SLOT             - PKCS11 slot number" << endl;
@@ -368,7 +375,13 @@ static int ParseAndEncrypt(int argc, char *argv[])
     }
 
     CDocCipher cipher;
-    return cipher.Encrypt(conf, rcpts);
+    if (int ret = cipher.Encrypt(conf, rcpts); ret != 0) {
+        cerr << "Encryption failed";
+        return ret;
+    } else {
+        cout << "Container " << conf.out << " encrypted successfully" << endl;
+    }
+    return 0;
 }
 
 struct LockData {
@@ -380,7 +393,11 @@ struct LockData {
     SecureBytes secret;
 
     int validate(ToolConf& conf) {
-        if (lock_label.empty() && (lock_idx == -1) && (slot < 0)) {
+        if (lock_idx == 0) {
+            LOG_ERROR("Lock indices start from 1");
+            return RESULT_USAGE;
+        }
+        if (lock_label.empty() && (lock_idx < 0) && (slot < 0)) {
             LOG_ERROR("No label nor index was provided");
             return RESULT_USAGE;
         }
@@ -396,18 +413,22 @@ static int
 parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
 {
     string_view arg(argv[arg_idx]);
-    if ((arg == "--label" || arg == "--label_idx") && (arg_idx + 1) < argc) {
+    if ((arg == "--label" || arg == "--label_idx" || arg == "--lock-idx") && (arg_idx + 1) < argc) {
         // Make sure the label or label index is provided only once.
-        if (!ldata.lock_label.empty() || ldata.lock_idx != -1) {
+        if (!ldata.lock_label.empty() || ldata.lock_idx > 0) {
             LOG_ERROR("The label or label's index was already provided");
             return RESULT_USAGE;
         }
-        if (arg == "--label_idx") {
+        if (arg == "--label_idx" || arg == "--lock-idx") {
             size_t last_char_idx;
             string str(argv[arg_idx + 1]);
             ldata.lock_idx = std::stol(str, &last_char_idx);
             if (last_char_idx < str.size()) {
                 LOG_ERROR("Label index is not a number");
+                return RESULT_USAGE;
+            }
+            if (ldata.lock_idx < 1) {
+                LOG_ERROR("Lock indices start from 1");
                 return RESULT_USAGE;
             }
         } else {
@@ -548,7 +569,13 @@ static int ParseAndDecrypt(int argc, char *argv[])
 
     CDocCipher cipher;
     RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
-    return cipher.Decrypt(conf, rcpt);
+    if (int ret = cipher.Decrypt(conf, rcpt); ret != 0) {
+        cerr << "Decryption failed" << endl;
+        return ret;
+    } else {
+        cout << "Container " << conf.input_files[0] << " decrypted successfully" << endl;
+    }
+    return 0;
 }
 
 static int ParseAndReEncrypt(int argc, char *argv[])
@@ -630,12 +657,20 @@ static int ParseAndReEncrypt(int argc, char *argv[])
         }
     }
 
-    CDocCipher cipher;
-    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx};
-    if (ldata.lock_idx != -1) {
-        return cipher.ReEncrypt(conf, rcpt, rcpts);
+    if ((ldata.lock_idx < 0) && (ldata.lock_label.empty())) {
+        LOG_ERROR("Lock index or label must be provided");
+        return RESULT_USAGE;
     }
-    return true;
+
+    CDocCipher cipher;
+    RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
+    if (int ret = cipher.ReEncrypt(conf, rcpt, rcpts); ret != 0) {
+        cerr << "Re-encryption failed" << std::endl;
+        return ret;
+    } else {
+        cout << "Successfully re-encrypted container " << conf.input_files[0] << " to " << conf.out << std::endl;
+    }
+    return RESULT_OK;
 }
 
 //
@@ -673,6 +708,8 @@ static int ParseAndGetLocks(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    print_version(cout);
+
     if (argc < 2) {
         print_usage(cerr);
         return 1;
@@ -696,7 +733,7 @@ int main(int argc, char *argv[])
         cerr << "Invalid command: " << command << endl;
     }
 
-    if (retVal == 2) {
+    if (retVal == RESULT_USAGE) {
         // We print usage information only in case the parse-function returned 2. Value 1 indicates other error.
         print_usage(cout);
     }
