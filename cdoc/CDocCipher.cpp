@@ -604,7 +604,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
         LOG_ERROR("Lock not found: {}", dec_info.label);
         return 1;
     }
-
+    dec_info.lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
 
     vector<libcdoc::Recipient> rcpts;
