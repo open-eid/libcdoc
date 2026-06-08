@@ -93,7 +93,7 @@ struct ToolWin : public libcdoc::WinBackend {
     result_t connectToKey(int idx, bool priv) {
         const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
         if (!rcpt) return libcdoc::INTERNAL_ERROR;
-        return useKey(rcpt.p11.key_label, std::string(rcpt.secret.cbegin(), rcpt.secret.cend()));
+        return useKey(rcpt->p11.key_label, std::string(rcpt->secret.cbegin(), rcpt->secret.cend()));
     }
 };
 #endif

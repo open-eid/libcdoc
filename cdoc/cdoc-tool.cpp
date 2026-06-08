@@ -728,7 +728,6 @@ int main(int argc, char *argv[])
     }
 
     if (retVal == RESULT_USAGE) {
-        // We print usage information only in case the parse-function returned 2. Value 1 indicates other error.
         print_usage(cout);
     }
 
