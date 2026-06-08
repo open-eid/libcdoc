@@ -113,7 +113,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
             LOG_DBG("PKCS11:C_Login CANCELED");
 			break;
 		default:
-      LOG_DBG("PKCS11:C_Login {}", result);
+            LOG_DBG("PKCS11:C_Login {}", result);
 			f->C_CloseSession(session);
 			session = CK_INVALID_HANDLE;
 			return PKCS11_ERROR;
@@ -381,7 +381,7 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
-    val = Crypto::toPublicKeyDer(evp_pkey);
+    val = Crypto::toPublicKeyDerLong(evp_pkey);
     EVP_PKEY_free(evp_pkey);
     EC_POINT_free(pub_key_point);
     EC_GROUP_free(group);

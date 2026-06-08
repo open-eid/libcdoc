@@ -68,14 +68,14 @@ print_usage(ostream& ofs)
     ofs << "    [label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use AES key from PKCS11 module" << endl;
     ofs << "    [label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL] - use public key from PKCS11 module" << endl;
     ofs << "    [label]:share:ID                  - keyshares with given ID (personal code)" << endl;
-    ofs << "  -v1                       - creates CDOC1 version container. Supported only for encryption with certificate." << endl;
+    ofs << "  --v1                      - creates CDOC1 version container. Supported only for encryption with certificate." << endl;
     ofs << "  --genlabel                - Generate machine-readable label." << endl;
     ofs << endl;
     ofs << "cdoc-tool decrypt ARGUMENTS FILE [OUTPU_DIR]" << endl;
     ofs << "  Decrypt CDoc container using lock specified by label or number" << endl;
     ofs << "  Supported arguments" << endl;
     ofs << "    --label LABEL           - lock label" << endl;
-    ofs << "    --lock-idx INDEX       - lock number (1-based)" << endl;
+    ofs << "    --lock-idx INDEX        - lock number (1-based)" << endl;
     ofs << "    --pkey PRIVATE_KEY_HEX  - hex encoded private key (DER format)" << endl;
     ofs << "    --pfkey PRIVATE_KEY_HEX - private key from file (DER format)" << endl;
     ofs << "    --slot SLOT             - PKCS11 slot number" << endl;
@@ -123,31 +123,74 @@ load_certs(ToolConf& conf, const std::string& filename)
     }
 }
 
+static void
+inputSecret(std::vector<uint8_t>& secret, std::string_view text)
+{
+    cout << text;
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(hStdin, &mode);
+    SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT);
+#else
+    termios o {};
+    tcgetattr(STDIN_FILENO, &o);
+    termios n = o;
+    n.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &n);
+#endif
+    string result;
+    getline(std::cin, result);
+#ifdef _WIN32
+    SetConsoleMode(hStdin, mode);
+#else
+    tcsetattr(STDIN_FILENO, TCSANOW, &o);
+    cout << endl;
+#endif
+    secret.assign(result.begin(), result.end());
+}
+
 // Return the number of arguments consumed or error code
 
 static int
 parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
 {
     string_view arg(argv[arg_idx]);
-    if ((arg == "--library") && ((arg_idx + 1) < argc)) {
+    if (arg == "--library") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
         conf.library = argv[arg_idx + 1];
         return 2;
-    } else if ((arg == "--server") && ((arg_idx + 2) < argc)) {
+    } else if (arg == "--server") {
+        if ((arg_idx + 2) >= argc) return RESULT_USAGE;
         ToolConf::ServerData sdata;
         sdata.ID = argv[arg_idx + 1];
         sdata.url = argv[arg_idx + 2];
         conf.servers.push_back(sdata);
         return 3;
-    } else if ((arg == "--accept") && ((arg_idx + 1) < argc)) {
+    } else if (arg == "--accept") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
         load_certs(conf, argv[arg_idx + 1]);
         return 2;
-    } else if ((arg == "--conf") && ((arg_idx + 1) < argc)) {
+    } else if (arg == "--conf") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
         conf.parse(argv[arg_idx + 1]);
         return 2;
-    } else if ((arg == "--log-level") && ((arg_idx + 1) < argc)) {
+    } else if (arg == "--log-level") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
         if (!str2level.contains(argv[arg_idx + 1])) return 0;
         libcdoc::setLogLevel(str2level[argv[arg_idx + 1]]);
         return 2;
+    } else if (arg == "--out") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        conf.out = argv[arg_idx + 1];
+        arg_idx += 1;
+        return 2;
+    } else if ((arg == "-v1") || (arg == "--v1")) {
+        conf.cdocVersion = 1;
+        return 1;
+    } else if (arg == "--genlabel") {
+        conf.gen_label = true;
+        return 1;
     }
     return 0;
 }
@@ -185,7 +228,7 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
         rcpt.secret = readAllBytes(parts[2]);
         if (rcpt.secret.empty()) {
             // Occurs when the file does not exist. readAllBytes already output the error message.
-            return 1;
+            return RESULT_ERROR;
         }
 
         filesystem::path key_file(parts[2]);
@@ -215,16 +258,18 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
 
         size_t last_char_idx;
         if (parts[2].starts_with("0x")) {
-            rcpt.p11.slot = std::stoul(parts[2].substr(2), &last_char_idx, 16);
+            rcpt.p11.slot = std::stoll(parts[2].substr(2), &last_char_idx, 16);
             last_char_idx += 2;
         } else {
-            rcpt.p11.slot = std::stoul(parts[2], &last_char_idx);
+            rcpt.p11.slot = std::stoll(parts[2], &last_char_idx);
         }
         if (last_char_idx < parts[2].size()) {
             LOG_ERROR("Slot is not a number");
             return RESULT_USAGE;
+        } else if ((rcpt.p11.slot < 0) || (rcpt.p11.slot > UINT32_MAX)) {
+            LOG_ERROR("Slot is out of range");
+            return RESULT_USAGE;
         }
-
         if (parts.size() > 3) {
             rcpt.secret.assign(parts[3].cbegin(), parts[3].cend());
             if (parts.size() > 4) {
@@ -283,109 +328,10 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
     return 2;
 }
 
-//
-// cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]
-// Where RECIPIENT has a format:
-//   label:cert:CERTIFICATE_HEX
-//	 label:key:SECRET_KEY_HEX
-//   label:pw:PASSWORD
-//	 label:p11sk:SLOT:[PIN]:[ID]:[LABEL]
-//	 label:p11pk:SLOT:[PIN]:[ID]:[LABEL]
-//
-
-static int ParseAndEncrypt(int argc, char *argv[])
-{
-    LOG_INFO("Encrypting");
-
-    ToolConf conf;
-    std::vector<libcdoc::RcptInfo> rcpts;
-
-    //
-    // Parse all arguments into ToolConf structure
-    //
-    int arg_idx = 0;
-    while (arg_idx < argc) {
-        int result = parse_common(conf, arg_idx, argc, argv);
-        if (result < 0) return result;
-        arg_idx += result;
-        if (result > 0) continue;
-        result = parse_rcpt(conf, rcpts, arg_idx, argc, argv);
-        if (result < 0) return result;
-        arg_idx += result;
-        if (result > 0) continue;
-
-        string_view arg(argv[arg_idx]);
-        if (arg == "--out" && ((arg_idx + 1) < argc)) {
-            conf.out = argv[arg_idx + 1];
-            arg_idx += 1;
-        } else if (arg == "-v1") {
-            conf.cdocVersion = 1;
-        } else if (arg == "--genlabel") {
-            conf.gen_label = true;
-        } else if (arg[0] == '-') {
-            LOG_ERROR("Unknown argument: {}", arg);
-            return 2;
-        } else {
-            conf.input_files.push_back(argv[arg_idx]);
-        }
-        arg_idx += 1;
-    }
-
-    // Validate input parameters
-    if (rcpts.empty()) {
-        LOG_ERROR("No recipients");
-        return RESULT_USAGE;
-    }
-    if (!conf.gen_label) {
-        // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
-        if (rcpt_wo_label != rcpts.cend()) {
-            if (rcpts.size() > 1) {
-                LOG_ERROR("Not all Recipients have label");
-            } else {
-                LOG_ERROR("Label not provided");
-            }
-            return 2;
-        }
-    }
-
-    if (conf.input_files.empty()) {
-        LOG_ERROR("No files specified");
-        return 2;
-    }
-    if (conf.out.empty()) {
-        LOG_ERROR("No output specified");
-        return 2;
-    }
-
-    if (conf.libraryRequired && conf.library.empty()) {
-        LOG_ERROR("Cryptographic library is required");
-        return 2;
-    }
-
-    // CDOC1 is supported only for encryption with certificate.
-    if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
-        if (rcpt_type_non_cert != rcpts.cend()) {
-            LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
-            return 1;
-        }
-    }
-
-    CDocCipher cipher;
-    if (int ret = cipher.Encrypt(conf, rcpts); ret != 0) {
-        cerr << "Encryption failed";
-        return ret;
-    } else {
-        cout << "Container " << conf.out << " encrypted successfully" << endl;
-    }
-    return 0;
-}
-
 struct LockData {
     string lock_label;
     int lock_idx = -1;
-    long slot = -1;
+    int64_t slot = -1;
     vector<uint8_t> key_id;
     string key_label;
     vector<uint8_t> secret;
@@ -420,9 +366,14 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
         if (arg == "--label_idx" || arg == "--lock-idx") {
             size_t last_char_idx;
             string str(argv[arg_idx + 1]);
-            ldata.lock_idx = std::stol(str, &last_char_idx);
+            try {
+                ldata.lock_idx = std::stol(str, &last_char_idx);
+            } catch (...) {
+                LOG_ERROR("Invalid lock index");
+                return RESULT_USAGE;
+            }
             if (last_char_idx < str.size()) {
-                LOG_ERROR("Label index is not a number");
+                LOG_ERROR("Lock index is not a number");
                 return RESULT_USAGE;
             }
             if (ldata.lock_idx < 1) {
@@ -435,7 +386,6 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
         return 2;
     } else if (arg == "--password" || arg == "--pin") {
         if ((arg_idx + 1) >= argc) return RESULT_USAGE;
-
         string_view s(argv[arg_idx + 1]);
         ldata.secret.assign(s.cbegin(), s.cend());
         return 2;
@@ -453,18 +403,20 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
         return 2;
     } else if (arg == "--slot") {
         if ((arg_idx + 1) >= argc) return RESULT_USAGE;
-
         string str(argv[arg_idx + 1]);
         size_t last_char_idx;
         if (str.starts_with("0x")) {
-            ldata.slot = std::stol(str.substr(2), &last_char_idx, 16);
+            ldata.slot = std::stoll(str.substr(2), &last_char_idx, 16);
             last_char_idx += 2;
         } else {
-            ldata.slot = std::stol(str, &last_char_idx);
+            ldata.slot = std::stoll(str, &last_char_idx);
         }
         if (last_char_idx < str.size()) {
             LOG_ERROR("Slot is not a number");
-            return 2;
+            return RESULT_USAGE;
+        } else if ((ldata.slot < 0) || (ldata.slot > UINT32_MAX)) {
+            LOG_ERROR("Slot must be a positive integer");
+            return RESULT_USAGE;
         }
         return 2;
     } else if (arg == "--key-id") {
@@ -480,31 +432,109 @@ parse_key_data(LockData& ldata, const int& arg_idx, int argc, char *argv[])
     return 0;
 }
 
-static std::string
-inputSecret(std::string_view text)
+//
+// cdoc-tool encrypt --rcpt RECIPIENT [--rcpt...] --out OUTPUTFILE FILE [FILE...]
+// Where RECIPIENT has a format:
+//   label:cert:CERTIFICATE_HEX
+//	 label:key:SECRET_KEY_HEX
+//   label:pw:PASSWORD
+//	 label:p11sk:SLOT:[PIN]:[ID]:[LABEL]
+//	 label:p11pk:SLOT:[PIN]:[ID]:[LABEL]
+//
+
+static int
+validateEncryptionInfo(const ToolConf &conf, std::vector<libcdoc::RcptInfo> &rcpts)
 {
-    cout << text;
-#ifdef _WIN32
-    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD mode = 0;
-    GetConsoleMode(hStdin, &mode);
-    SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT);
-#else
-    termios o {};
-    tcgetattr(STDIN_FILENO, &o);
-    termios n = o;
-    n.c_lflag &= ~ECHO;
-    tcsetattr(STDIN_FILENO, TCSANOW, &n);
-#endif
-    string result;
-    getline(std::cin, result);
-#ifdef _WIN32
-    SetConsoleMode(hStdin, mode);
-#else
-    tcsetattr(STDIN_FILENO, TCSANOW, &o);
-    cout << endl;
-#endif
-    return result;
+    if (rcpts.empty()) {
+        LOG_ERROR("No recipients given");
+        return RESULT_USAGE;
+    }
+    if (!conf.gen_label) {
+        // If labels must not be generated then is there any Recipient without provided label?
+        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
+        if (rcpt_wo_label != rcpts.cend()) {
+            if (rcpts.size() > 1) {
+                LOG_ERROR("Not all Recipients have label");
+            } else {
+                LOG_ERROR("Label not provided");
+            }
+            return RESULT_USAGE;
+        }
+    }
+    if (conf.out.empty()) {
+        LOG_ERROR("No output specified");
+        return RESULT_USAGE;
+    }
+    if (conf.libraryRequired && conf.library.empty()) {
+        LOG_ERROR("Cryptographic library is required");
+        return RESULT_USAGE;
+    }
+    // CDOC1 is supported only for encryption with certificate.
+    if (conf.cdocVersion == 1) {
+        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
+        if (rcpt_type_non_cert != rcpts.cend()) {
+            LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
+            return RESULT_ERROR;
+        }
+    }
+    return RESULT_OK;
+}
+
+static int ParseAndEncrypt(int argc, char *argv[])
+{
+    LOG_INFO("Encrypting");
+
+    ToolConf conf;
+    std::vector<libcdoc::RcptInfo> rcpts;
+
+    //
+    // Parse all arguments into ToolConf structure
+    //
+    int arg_idx = 0;
+    while (arg_idx < argc) {
+        int result = parse_common(conf, arg_idx, argc, argv);
+        if (result < 0) return result;
+        arg_idx += result;
+        if (result > 0) continue;
+        result = parse_rcpt(conf, rcpts, arg_idx, argc, argv);
+        if (result < 0) return result;
+        arg_idx += result;
+        if (result > 0) continue;
+
+        if (*argv[arg_idx] == '-') {
+            LOG_ERROR("Unknown argument: {}", argv[arg_idx]);
+            return RESULT_USAGE;
+        } else {
+            conf.input_files.push_back(argv[arg_idx]);
+        }
+        arg_idx += 1;
+    }
+
+    if (conf.input_files.empty()) {
+        LOG_ERROR("No files specified");
+        return RESULT_USAGE;
+    }
+
+    if (int result = validateEncryptionInfo(conf, rcpts); result != RESULT_OK) {
+        return result;
+    }
+
+    // Ask encryption secrets if needed
+    for (auto idx = 0; idx < rcpts.size(); idx++) {
+        libcdoc::RcptInfo& rcpt = rcpts[idx];
+        if (rcpt.needPassword()) {
+            inputSecret(rcpt.secret, rcpt.isPKCS11() ? FORMAT("Enter PIN for recipient {}: ", idx + 1) : FORMAT("Enter password for recipient {}: ", idx + 1));
+        }
+    }
+
+    CDocCipher cipher;
+    if (int ret = cipher.Encrypt(conf, rcpts); ret != 0) {
+        cerr << "Encryption failed";
+        return ret;
+    } else {
+        cout << "Container " << conf.out << " encrypted successfully" << endl;
+    }
+    return 0;
 }
 
 //
@@ -541,6 +571,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
             }
             arg_idx += 1;
         } else {
+            LOG_ERROR("Unknown argument: {}", argv[arg_idx]);
             return RESULT_USAGE;
         }
     }
@@ -559,10 +590,9 @@ static int ParseAndDecrypt(int argc, char *argv[])
         conf.out = ".";
     }
 
-    // Ask secret if not provided
+    // Ask decryption secret if needed
     if (ldata.secret[0] == '?') {
-        std::string secret = inputSecret("Enter password: ");
-        ldata.secret.assign(secret.cbegin(), secret.cend());
+        inputSecret(ldata.secret, (ldata.slot >= 0) ? "Enter decryption PIN: " : "Enter decryption password: ");
     }
 
     CDocCipher cipher;
@@ -597,67 +627,33 @@ static int ParseAndReEncrypt(int argc, char *argv[])
         arg_idx += result;
         if (result > 0) continue;
 
-        string_view arg(argv[arg_idx]);
-        if (arg == "--out" && ((arg_idx + 1) < argc)) {
-            conf.out = argv[arg_idx + 1];
-            arg_idx += 1;
-        } else if (arg == "-v1") {
-            conf.cdocVersion = 1;
-        } else if (arg == "--genlabel") {
-            conf.gen_label = true;
-        } else if (argv[arg_idx][0] != '-') {
+        if (*argv[arg_idx] != '-') {
             conf.input_files.push_back(argv[arg_idx]);
         } else {
-            LOG_ERROR("Unknown argument: {}", arg);
+            LOG_ERROR("Unknown argument: {}", argv[arg_idx]);
             return RESULT_USAGE;
         }
         arg_idx += 1;
     }
 
-    // Validating the input parameters
-    int result = ldata.validate(conf);
-    if (result != RESULT_OK) return result;
-
-    if (rcpts.empty()) {
-        LOG_ERROR("No recipients");
-        return RESULT_USAGE;
+    if (int result = validateEncryptionInfo(conf, rcpts); result != RESULT_OK) {
+        return result;
     }
 
-    if (!conf.gen_label) {
-        // If labels must not be generated then is there any Recipient without provided label?
-        auto rcpt_wo_label{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.label.empty();}) };
-        if (rcpt_wo_label != rcpts.cend()) {
-            if (rcpts.size() > 1) {
-                LOG_ERROR("Not all Recipients have label");
-            } else {
-                LOG_ERROR("Label not provided");
-            }
-            return RESULT_USAGE;
+    if (int result = ldata.validate(conf); result != RESULT_OK) {
+        return result;
+    }
+
+    // Ask decryption secret if needed
+    if (ldata.secret[0] == '?') {
+        inputSecret(ldata.secret, (ldata.slot >= 0) ? "Enter decryption PIN: " : "Enter decryption password: ");
+    }
+    // Ask encryption secrets if needed
+    for (auto idx = 0; idx < rcpts.size(); idx++) {
+        libcdoc::RcptInfo& rcpt = rcpts[idx];
+        if (rcpt.needPassword()) {
+            inputSecret(rcpt.secret, rcpt.isPKCS11() ? FORMAT("Enter PIN for recipient {}: ", idx + 1) : FORMAT("Enter password for recipient {}: ", idx + 1));
         }
-    }
-
-    if (conf.out.empty()) {
-        LOG_ERROR("No output specified");
-        return RESULT_USAGE;
-    }
-
-    if (conf.libraryRequired && conf.library.empty()) {
-        LOG_ERROR("Cryptographic library is required");
-        return RESULT_USAGE;
-    }
-
-    // CDOC1 is supported only for encryption with certificate.
-    if (conf.cdocVersion == 1) {
-        auto rcpt_type_non_cert{ find_if(rcpts.cbegin(), rcpts.cend(), [](const libcdoc::RcptInfo &rcpt) -> bool {return rcpt.type != RcptInfo::CERT;}) };
-        if (rcpt_type_non_cert != rcpts.cend()) {
-            LOG_ERROR("CDOC version 1 container can be used for encryption with certificate only.");
-            return 1;
-        }
-    }
-
-    if ((ldata.lock_idx < 0) && (ldata.lock_label.empty())) {
-        LOG_ERROR("Lock index or label must be provided");
-        return RESULT_USAGE;
     }
 
     CDocCipher cipher;
