@@ -113,7 +113,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
             LOG_DBG("PKCS11:C_Login CANCELED");
 			break;
 		default:
-      LOG_DBG("PKCS11:C_Login {}", result);
+            LOG_DBG("PKCS11:C_Login {}", result);
 			f->C_CloseSession(session);
 			session = CK_INVALID_HANDLE;
 			return PKCS11_ERROR;
@@ -296,7 +296,10 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_SECRET_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: useSecretKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     d->key = handles[0];
     LOG_DBG("PKCS11: useSecretKey Using key {}", d->key);
     return OK;
@@ -312,7 +315,10 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PRIVATE_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePrivateKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
-    if (handles.size() != 1) return CRYPTO_ERROR;
+    if (handles.size() != 1) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     d->key = handles[0];
     LOG_DBG("PKCS11: usePrivateKey Using key {}", d->key);
     return OK;
@@ -328,13 +334,18 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, int slot, cons
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_CERTIFICATE, id, label, nullptr);
     LOG_DBG("PKCS11: getCertificate id={}; label={}; found {} certificates", toHex(id), label, handles.size());
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     CK_OBJECT_HANDLE handle = handles[0];
     val = d->attribute(d->session, handle, CKA_VALUE);
     if (val.empty()) {
         LOG_DBG("PKCS11: getCertificate CKA_VALUE error");
+    	d->logout();
         return CRYPTO_ERROR;
     }
+	d->logout();
     return OK;
 }
 
@@ -348,11 +359,15 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PUBLIC_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePublicKey id={}; label={}; found {} objects", toHex(id), label, handles.size());
-	if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+	if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
 	CK_OBJECT_HANDLE handle = handles[0];
 	std::vector<uint8_t> v = d->attribute(d->session, handle, CKA_KEY_TYPE);
 	if (v.empty()) {
         LOG_DBG("PKCS11: getValue CKA_KEY_TYPE error");
+    	d->logout();
 		return CRYPTO_ERROR;
 	}
 	if (*((CK_KEY_TYPE *) v.data()) != CKK_EC)
@@ -360,17 +375,20 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
     v = d->attribute(d->session, handle, CKA_EC_PARAMS);
 	if (v.empty()) {
         LOG_DBG("PKCS11: getValue CKA_EC_PARAMS error");
+    	d->logout();
 		return CRYPTO_ERROR;
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
     if (w.empty()) {
         LOG_DBG("PKCS11: getValue CKA_EC_POINT error");
+    	d->logout();
         return CRYPTO_ERROR;
     }
     const uint8_t *p = v.data();
     EC_GROUP *group = d2i_ECPKParameters(nullptr, &p, v.size());
     if (!group) {
         LOG_DBG("PKCS11: getValue d2i_ECPKParameters error");
+    	d->logout();
         return CRYPTO_ERROR;
     }
     EC_POINT *pub_key_point = EC_POINT_new(group);
@@ -381,10 +399,11 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
-    val = Crypto::toPublicKeyDer(evp_pkey);
+    val = Crypto::toPublicKeyDerLong(evp_pkey);
     EVP_PKEY_free(evp_pkey);
     EC_POINT_free(pub_key_point);
     EC_GROUP_free(group);
+	d->logout();
     return OK;
 }
 
@@ -544,15 +563,19 @@ libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm,
     data.insert(data.end(), digest.begin(), digest.end());
 
     if(d->f->C_SignInit(d->session, &mech, d->key) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
     CK_ULONG size = 0;
     if(d->f->C_Sign(d->session, CK_BYTE_PTR(data.data()), CK_ULONG(data.size()), nullptr, &size) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
     dst.resize(int(size));
     if(d->f->C_Sign(d->session, CK_BYTE_PTR(data.data()), CK_ULONG(data.size()), CK_BYTE_PTR(dst.data()), &size) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
+    d->logout();
     return OK;
 }
