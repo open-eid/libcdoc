@@ -591,7 +591,7 @@ static int ParseAndDecrypt(int argc, char *argv[])
     }
 
     // Ask decryption secret if needed
-    if (ldata.secret[0] == '?') {
+    if (!ldata.secret.empty() && ldata.secret[0] == '?') {
         inputSecret(ldata.secret, (ldata.slot >= 0) ? "Enter decryption PIN: " : "Enter decryption password: ");
     }
 
@@ -645,7 +645,7 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     }
 
     // Ask decryption secret if needed
-    if (ldata.secret[0] == '?') {
+    if (!ldata.secret.empty() && ldata.secret[0] == '?') {
         inputSecret(ldata.secret, (ldata.slot >= 0) ? "Enter decryption PIN: " : "Enter decryption password: ");
     }
     // Ask encryption secrets if needed

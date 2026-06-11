@@ -599,6 +599,21 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
             return 1;
         }
         lock_idx = dec_info.lock_idx;
+    } else if (crypto.p11) {
+        vector<uint8_t> cert_bytes;
+        ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
+        int64_t result = p11->getCertificate(cert_bytes, long(dec_info.p11.slot), dec_info.secret, dec_info.p11.key_id, dec_info.p11.key_label);
+        if (result != libcdoc::OK) {
+            LOG_ERROR("Certificate reading from SC card failed. Key label: {}", dec_info.p11.key_label);
+            return 1;
+        }
+        LOG_DBG("Got certificate from P11 module");
+        result = rdr->getLockForCert(cert_bytes);
+        if (result < 0) {
+            LOG_ERROR("No lock for certificate {}", dec_info.p11.key_label);
+            return 1;
+        }
+        lock_idx = (int) result;
     }
     if (lock_idx < 0) {
         LOG_ERROR("Lock not found: {}", dec_info.label);
