@@ -389,7 +389,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
-            key = libcdoc::Recipient::makeSymmetric(std::move(label), 65535);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 600000);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
 #ifdef HAS_KEYSHARES

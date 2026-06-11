@@ -117,12 +117,11 @@ parseURL(const std::string& url, std::string& host, int& port, std::string& path
         )) {
         return libcdoc::DATA_FORMAT_ERROR;
     }
-    bool is_https = (pssl == 1);
-    if (!is_https) {
+    if (!pssl) {
         OPENSSL_free(phost);
         OPENSSL_free(ppath);
         LOG_ERROR("URL scheme must be https: {}", url);
-        return libcdoc::DATA_FORMAT_ERROR;
+        return libcdoc::CONFIGURATION_ERROR;
     }
     host = phost;
     port = pport;

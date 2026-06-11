@@ -393,7 +393,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2EncryptErrors, EncryptFixture,
     BOOST_TEST(wrt->finishEncryption() == libcdoc::WORKFLOW_ERROR);
 
     // Add recipient
-    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test-recipient", 65536);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test-recipient", 600000);
     BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::OK);
     // Encryption cannot proceed before beginEncryption is called
     BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
@@ -662,7 +662,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
     // Create writer
     libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &pipec, false, nullptr, &pcrypto, nullptr);
     BOOST_TEST(writer != nullptr);
-    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 65536);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 600000);
     BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
     BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
 
