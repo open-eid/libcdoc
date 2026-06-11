@@ -27,13 +27,15 @@ namespace libcdoc {
 
 struct RcptInfo {
     struct PKCS11Info {
-        long slot = 0;
+        int64_t slot = -1;
         std::vector<uint8_t> key_id;
         std::string key_label;
     };
 
     enum Type {
         LOCK,
+        // For encryption
+        // Certificate from file
         CERT,
         PASSWORD,
         SKEY,
@@ -54,6 +56,8 @@ struct RcptInfo {
     std::string id;
     int lock_idx = -1;
     int resolved_lock_idx = -1;
+    bool isPKCS11() const { return p11.slot >= 0; }
+    bool needPassword() const { return (type == PASSWORD || type == P11_SYMMETRIC || type == P11_PKI) && !secret.empty() && secret[0] == '?'; }
 };
 
 }

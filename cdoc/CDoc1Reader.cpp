@@ -30,12 +30,13 @@
 #include <openssl/evp.h>
 
 #include <map>
+#include <span>
 
 using namespace libcdoc;
 
-static const std::string MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignments/media-types/application/zip";
-static const std::string MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
-static const std::string MIME_DDOC_OLD = "http://www.sk.ee/DigiDoc/1.3.0/digidoc.xsd";
+constexpr std::string_view MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignments/media-types/application/zip";
+constexpr std::string_view MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
+constexpr std::string_view MIME_DDOC_OLD = "http://www.sk.ee/DigiDoc/1.3.0/digidoc.xsd";
 
 constexpr std::array SUPPORTED_METHODS {
     libcdoc::Crypto::AES128CBC_MTH, libcdoc::Crypto::AES192CBC_MTH, libcdoc::Crypto::AES256CBC_MTH,
@@ -202,26 +203,6 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 libcdoc::result_t
 CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
-#ifdef USE_PULL
-    int64_t result = beginDecryption(fmk);
-    if (result != libcdoc::OK) return result;
-    std::string name;
-    int64_t size;
-    result = nextFile(name, size);
-    while (result == libcdoc::OK) {
-        result = dst->open(name, size);
-        if (result != libcdoc::OK) return result;
-        std::vector<uint8_t> t(size);
-        result = readData(t.data(), size);
-        if (result < 0) return result;
-        result = dst->write(t);
-        if (result < 0) return result;
-        result = nextFile(name, size);
-    }
-    if (result != libcdoc::END_OF_STREAM) return result;
-    result = finishDecryption();
-    return result;
-#else
     return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
         if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
             LOG_DBG("Contains DDoc content {}", mime);
@@ -238,7 +219,6 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
             return rv;
         return dst->close();
     });
-#endif
 }
 
 libcdoc::result_t
@@ -387,15 +367,24 @@ CDoc1Reader::~CDoc1Reader() noexcept
 bool
 CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 {
-    // todo: better check
     static constexpr std::string_view XML_TAG("<?xml");
-    std::array<uint8_t,XML_TAG.size()> buf;
-    if (src->read(buf.data(), XML_TAG.size()) != XML_TAG.size()) {
+    static constexpr std::array<uint8_t, 3> UTF8_BOM{0xEF, 0xBB, 0xBF};
+    std::array<uint8_t, UTF8_BOM.size() + XML_TAG.size()> buf;
+    auto n = src->read(buf.data(), buf.size());
+    if (n < 0)
+        return false;
+    size_t available = static_cast<size_t>(n);
+    const uint8_t *start = buf.data();
+    if (available >= UTF8_BOM.size() && std::equal(UTF8_BOM.begin(), UTF8_BOM.end(), start)) {
+        start += UTF8_BOM.size();
+        available -= UTF8_BOM.size();
+    }
+    if (available < XML_TAG.size()) {
         LOG_DBG("CDoc1Reader::isCDoc1File: Cannot read tag");
         return false;
     }
-    if (XML_TAG.compare(0, XML_TAG.size(), (const char *) buf.data(), buf.size())) {
-        LOG_DBG("CDoc1Reader::isCDoc1File: Invalid tag: {}", toHex(buf));
+    if (XML_TAG.compare(0, XML_TAG.size(), (const char *) start, XML_TAG.size())) {
+        LOG_DBG("CDoc1Reader::isCDoc1File: Invalid tag: {}", toHex(std::span{start, XML_TAG.size()}));
         LOG_DBG("CDoc1Reader::isCDoc1File: Should be  : {}", toHex(XML_TAG));
         return false;
     }

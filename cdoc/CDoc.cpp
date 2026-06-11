@@ -56,6 +56,7 @@ static constexpr Result results[] = {
     {HASH_MISMATCH, "Hash mismatch"},
     {CONFIGURATION_ERROR, "Configuration error"},
     {NOT_FOUND, "Object not found"},
+    {INTERNAL_ERROR, "Internal error"},
     {UNSPECIFIED_ERROR, "Unspecified error"},
     };
 

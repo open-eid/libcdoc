@@ -120,6 +120,10 @@ enum {
      */
     NOT_FOUND = -116,
     /**
+     * @brief Internal error in libcdoc logic
+     */
+    INTERNAL_ERROR = -117,
+    /**
      * @brief Unspecified error
      */
     UNSPECIFIED_ERROR = -199,
