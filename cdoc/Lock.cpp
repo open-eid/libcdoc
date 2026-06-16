@@ -102,12 +102,13 @@ Lock::parseLabel(const std::string& label)
         std::string key = urlDecode(range_to_sv(*it));
         std::ranges::transform(key, key.begin(), [](unsigned char c){ return std::tolower(c); });
         ++it;
+        // Ubuntu 22 ranges behave wrongly
         if (it == label_data_parts.end()) {
-            LOG_ERROR("The label '{}' has no value for key '{}'", label, key);
-            continue;
+            parsed_label[std::move(key)] = {};
+        } else {
+            std::string value = urlDecode(range_to_sv(*it));
+            parsed_label[std::move(key)] = std::move(value);
         }
-        std::string value = urlDecode(range_to_sv(*it));
-        parsed_label[std::move(key)] = std::move(value);
     }
 
     return parsed_label;

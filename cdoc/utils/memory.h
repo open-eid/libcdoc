@@ -35,6 +35,20 @@
 
 namespace libcdoc {
 
+template<typename T>
+void cleanse(std::vector<T>& v) noexcept
+{
+	if (!v.empty()) {
+		memset_s(v.data(), v.size() * sizeof(T), 0, v.size() * sizeof(T));
+	}
+}
+
+template<typename T, size_t N>
+void cleanse(std::array<T, N>& a) noexcept
+{
+	memset_s(a.data(), a.size() * sizeof(T), 0, a.size() * sizeof(T));
+}
+
 class SecureBytes {
     std::vector<uint8_t> data_;
     bool locked_ = false;
@@ -159,19 +173,8 @@ public:
         data_.clear();
     }
 
-    static inline void secure_cleanse(void* ptr, size_t len) noexcept {
-#if defined(_WIN32)
-        SecureZeroMemory(ptr, len);
-#else
-        volatile unsigned char* p = static_cast<volatile unsigned char*>(ptr);
-        while (len--) *p++ = 0;
-#endif
-    }
-
     void cleanse() noexcept {
-        if (!data_.empty()) {
-            secure_cleanse(data_.data(), data_.size());
-        }
+        ::libcdoc::cleanse(data_);
     }
 
     [[nodiscard]] operator const std::vector<uint8_t>&() const noexcept { return data_; }
@@ -185,20 +188,6 @@ public:
         return !(*this == other);
     }
 };
-
-template<typename T>
-void cleanse(std::vector<T>& v) noexcept
-{
-	if (!v.empty()) {
-		OPENSSL_cleanse(v.data(), v.size() * sizeof(T));
-	}
-}
-
-template<typename T, size_t N>
-void cleanse(std::array<T, N>& a) noexcept
-{
-	OPENSSL_cleanse(a.data(), a.size() * sizeof(T));
-}
 
 /**
  * @brief Scope guard that wipes a contiguous secret on destruction.
