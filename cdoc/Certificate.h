@@ -48,8 +48,7 @@ public:
 
     EIDType getEIDType() const;
 
-	std::vector<uint8_t> getPublicKey() const;
-	std::vector<uint8_t> getPublicKeyLong() const;
+    std::vector<uint8_t> getPublicKey() const;
     Algorithm getAlgorithm() const;
     time_t getNotAfter() const;
 

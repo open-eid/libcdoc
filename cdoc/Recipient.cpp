@@ -27,8 +27,8 @@
 #include <algorithm>
 #include <chrono>
 
-#include <openssl/evp.h>
 #include <openssl/core_names.h>
+#include <openssl/x509.h>
 
 using namespace std;
 
@@ -44,35 +44,6 @@ Recipient::makeSymmetric(std::string label, int32_t kdf_iter)
     return rcpt;
 }
 
-static Recipient
-makeRSA(std::string label, std::vector<uint8_t> public_key)
-{
-    if (public_key.empty())
-        return {};
-    Recipient rcpt;
-    rcpt.type = Recipient::Type::PUBLIC_KEY;
-    rcpt.label = std::move(label);
-    rcpt.pk_type = RSA;
-    rcpt.rcpt_key = std::move(public_key);
-    return rcpt;
-}
- 
-static Recipient
-makeECC(std::string label, std::vector<uint8_t> public_key, Curve ec_type)
-{
-    if (public_key.empty())
-        return {};
-    Recipient rcpt;
-    rcpt.type = Recipient::Type::PUBLIC_KEY;
-    rcpt.label = std::move(label);
-    rcpt.pk_type = ECC;
-    rcpt.ec_type = ec_type;
-    // 0x30 identifies SEQUENCE tag in ASN.1 encoding
-    auto evp = Crypto::fromECPublicKeyDer(public_key);
-    rcpt.rcpt_key = Crypto::toPublicKeyDer(evp.get());
-    return rcpt;
-}
-
 static int
 EVP_PKEY_get_nid(EVP_PKEY *pkey)
 {
@@ -82,33 +53,49 @@ EVP_PKEY_get_nid(EVP_PKEY *pkey)
     return OBJ_sn2nid(name.data());
 }
 
-Recipient
-Recipient::makePublicKey(std::string label, std::vector<uint8_t> public_key, std::string server_id) {
-    auto pkey = Crypto::fromPublicKeyDer(public_key);
-    if (!pkey)
-        return {};
+static Recipient
+makeEVP_PKEY(std::string label, EVP_PKEY *pkey, std::string server_id) {
     Recipient rcpt;
-    int id = EVP_PKEY_get_id(pkey.get());
-    if (id == EVP_PKEY_RSA) {
-        rcpt = makeRSA(label, public_key);
-    } else {
-        int nid = EVP_PKEY_get_nid(pkey.get());
-        switch(nid) {
+    auto public_key = Crypto::toPublicKeyDer(pkey);
+    if (public_key.empty())
+        return rcpt;
+    switch (EVP_PKEY_get_id(pkey)) {
+    case EVP_PKEY_RSA:
+        rcpt.pk_type = RSA;
+        break;
+    case EVP_PKEY_EC:
+        switch(EVP_PKEY_get_nid(pkey)) {
         case NID_secp384r1:
-            rcpt = makeECC(label, public_key, Curve::SECP_384_R1);
+            rcpt.ec_type = Curve::SECP_384_R1;
             break;
         case NID_X9_62_prime256v1:
-            rcpt = makeECC(label, public_key, Curve::SECP_256_R1);
+            rcpt.ec_type = Curve::SECP_256_R1;
             break;
         case NID_secp521r1:
-            rcpt = makeECC(label, public_key, Curve::SECP_521_R1);
+            rcpt.ec_type = Curve::SECP_521_R1;
             break;
         default:
             return rcpt;
         }
+        rcpt.pk_type = ECC;
+        break;
+    default:
+        return rcpt;
     }
-    if (!server_id.empty()) {
-        rcpt.server_id = std::move(server_id);
+    rcpt.type = Recipient::Type::PUBLIC_KEY;
+    rcpt.label = std::move(label);
+    rcpt.rcpt_key = std::move(public_key);
+    rcpt.server_id = std::move(server_id);
+    return rcpt;
+}
+
+Recipient
+Recipient::makePublicKey(std::string label, const std::vector<uint8_t> &public_key, std::string server_id) {
+    auto pkey = Crypto::fromPublicKeyDer(public_key);
+    Recipient rcpt = makeEVP_PKEY(std::move(label), pkey.get(), std::move(server_id));
+    if (rcpt.type == Type::NONE)
+        return rcpt;
+    if (!rcpt.server_id.empty()) {
         const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
         rcpt.expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
     }
@@ -146,7 +133,7 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert, std::st
     Certificate x509(cert);
     if (!x509)
         return {Type::NONE};
-    Recipient rcpt = makePublicKey(label, x509.getPublicKeyLong());
+    Recipient rcpt = makeEVP_PKEY(std::move(label), X509_get0_pubkey(x509.handle()), std::move(server_id));
     if (rcpt.type == Type::NONE)
         return rcpt;
     rcpt.cert = std::move(cert);
@@ -166,8 +153,7 @@ Recipient::makeCertificate(std::string label, std::vector<uint8_t> cert, std::st
             {std::string(CDoc2::Label::CERT_SHA1), toHex(x509.getDigest())},
         };
     }
-    if (!server_id.empty()) {
-        rcpt.server_id = std::move(server_id);
+    if (!rcpt.server_id.empty()) {
         const auto six_months_from_now = std::chrono::system_clock::now() + std::chrono::months(6);
         const auto expiry_ts = std::chrono::system_clock::to_time_t(six_months_from_now);
         rcpt.expiry_ts = std::min(rcpt.expiry_ts, uint64_t(expiry_ts));
