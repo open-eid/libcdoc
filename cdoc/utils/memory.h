@@ -41,14 +41,24 @@ template<typename T>
 void cleanse(std::vector<T>& v) noexcept
 {
 	if (!v.empty()) {
+#if defined(__GLIBC__)
+        explicit_bzero(v.data(), v.size() * sizeof(T));
+#else
 		memset_s(v.data(), v.size() * sizeof(T), 0, v.size() * sizeof(T));
+#endif
 	}
 }
 
 template<typename T, size_t N>
 void cleanse(std::array<T, N>& a) noexcept
 {
-	memset_s(a.data(), a.size() * sizeof(T), 0, a.size() * sizeof(T));
+	if (!a.empty()) {
+#if defined(__GLIBC__)
+        explicit_bzero(v.data(), v.size() * sizeof(T));
+#else
+		memset_s(a.data(), a.size() * sizeof(T), 0, a.size() * sizeof(T));
+#endif
+	}
 }
 
 class SecureBytes {
