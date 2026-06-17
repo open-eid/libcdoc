@@ -35,17 +35,21 @@
 #include <sys/mman.h>
 #endif
 
+#if defined(_WIN32)
+#define libcdoc_zero SecureZeroMemory
+#elif defined(__GLIBC__)
+#define libcdoc_zero explicit_bzero
+#else
+#define libcdoc_zero(p,s) memset_s(p,s,0,s)
+#endif
+
 namespace libcdoc {
 
 template<typename T>
 void cleanse(std::vector<T>& v) noexcept
 {
 	if (!v.empty()) {
-#if defined(__GLIBC__)
-        explicit_bzero(v.data(), v.size() * sizeof(T));
-#else
-		memset_s(v.data(), v.size() * sizeof(T), 0, v.size() * sizeof(T));
-#endif
+        libcdoc_zero(v.data(), v.size() * sizeof(T));
 	}
 }
 
@@ -53,11 +57,7 @@ template<typename T, size_t N>
 void cleanse(std::array<T, N>& a) noexcept
 {
 	if (!a.empty()) {
-#if defined(__GLIBC__)
-        explicit_bzero(v.data(), v.size() * sizeof(T));
-#else
-		memset_s(a.data(), a.size() * sizeof(T), 0, a.size() * sizeof(T));
-#endif
+        libcdoc_zero(a.data(), a.size() * sizeof(T));
 	}
 }
 
