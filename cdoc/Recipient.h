@@ -171,7 +171,7 @@ struct CDOC_EXPORT Recipient {
      * @param server_id the keyserver id or empty string for offline capsule
      * @return a new Recipient structure
      */
-    static Recipient makePublicKey(std::string label, std::vector<uint8_t> public_key, std::string server_id = {});
+    static Recipient makePublicKey(std::string label, const std::vector<uint8_t> &public_key, std::string server_id = {});
 
     /**
      * @brief Create a new public key based Recipient
