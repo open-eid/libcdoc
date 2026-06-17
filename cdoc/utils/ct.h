@@ -45,11 +45,10 @@ constexpr uint8_t eq8(uint8_t a, uint8_t b) noexcept {
 
 // Returns 0xFF when a >= b, otherwise 0x00. Branch-free for size_t inputs.
 constexpr uint8_t ge_size(size_t a, size_t b) noexcept {
-    // (b - a - 1) wraps to a huge value when a >= b, putting 1 in the top
-    // bit. We sample the top bit, invert, and broadcast to a byte.
+    // (b - a - 1) wraps to a huge value when a >= b, putting 1 in the top bit
     constexpr size_t shift = sizeof(size_t) * 8u - 1u;
     size_t top_bit = (b - a - 1u) >> shift;     // 1 if a < b, 0 if a >= b
-    return uint8_t((top_bit ^ 1u) * 0xFFu);
+    return uint8_t(top_bit * 0xFFu);
 }
 
 // Returns 0xFF when a == b, otherwise 0x00 (32-bit operands).
