@@ -18,8 +18,6 @@
 
 #pragma once
 
-#include <string.h>
-
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -35,21 +33,13 @@
 #include <sys/mman.h>
 #endif
 
-#if defined(_WIN32)
-#define libcdoc_zero SecureZeroMemory
-#elif defined(__GLIBC__)
-#define libcdoc_zero explicit_bzero
-#else
-#define libcdoc_zero(p,s) memset_s(p,s,0,s)
-#endif
-
 namespace libcdoc {
 
 template<typename T>
 void cleanse(std::vector<T>& v) noexcept
 {
 	if (!v.empty()) {
-        libcdoc_zero(v.data(), v.size() * sizeof(T));
+        OPENSSL_cleanse(v.data(), v.size() * sizeof(T));
 	}
 }
 
@@ -57,7 +47,7 @@ template<typename T, size_t N>
 void cleanse(std::array<T, N>& a) noexcept
 {
 	if (!a.empty()) {
-        libcdoc_zero(a.data(), a.size() * sizeof(T));
+        OPENSSL_cleanse(a.data(), a.size() * sizeof(T));
 	}
 }
 
