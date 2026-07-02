@@ -464,6 +464,12 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
 
 #ifdef HAS_KEYSHARES
 libcdoc::result_t
+libcdoc::NetworkBackend::authenticateForShares(std::vector<uint8_t>& dst)
+{
+    return NOT_IMPLEMENTED;
+}
+
+libcdoc::result_t
 libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id)
 {
     LOG_DBG("Get nonce from: {}", url);
@@ -987,7 +993,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("Response: {}", rsp.body);
 
     picojson::value v;
-    parse_err = picojson::parse(v, rsp.body);
+    std::string parse_err = picojson::parse(v, rsp.body);
     if (!parse_err.empty()) {
         error = FORMAT("JSON parse error: {}", parse_err);
         LOG_ERROR("{}", error);

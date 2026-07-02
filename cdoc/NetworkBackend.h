@@ -181,6 +181,7 @@ struct CDOC_EXPORT NetworkBackend {
 	 */
     virtual result_t fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id);
 #ifdef HAS_KEYSHARES
+    virtual result_t authenticateForShares(std::vector<uint8_t>& dst);
     /**
      * @brief fetch authentication nonce from share server
      * @param dst a destination container for nonce

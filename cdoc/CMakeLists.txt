@@ -50,6 +50,7 @@ add_library(cdoc
     CDoc2Writer.cpp CDoc2Writer.h
     DDocReader.cpp DDocReader.h
     DDocWriter.cpp DDocWriter.h
+    KeyShares.cpp KeyShares.h
     # KeyShares.cpp KeyShares.h
     XmlReader.cpp XmlReader.h
     XmlWriter.cpp XmlWriter.h
@@ -78,6 +79,9 @@ target_include_directories(cdoc PUBLIC
     $<INSTALL_INTERFACE:include>
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# Enable SID/MID
+target_compile_definitions(cdoc PRIVATE HAS_KEYSHARES)
 
 if(NOT BUILD_SHARED_LIBS)
     target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
