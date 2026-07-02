@@ -18,6 +18,12 @@
 
 #include "Io.h"
 
+#include "Utils.h"
+
+#include <array>
+
+namespace fs = std::filesystem;
+
 namespace libcdoc {
 
 static constexpr size_t BLOCK_SIZE = 65536;
@@ -55,16 +61,15 @@ DataSource::getLastErrorStr(result_t code) const
 }
 
 int64_t
-DataConsumer::writeAll(DataSource& src)
+DataConsumer::writeAll(DataSource& src) noexcept
 {
-	static const size_t BUF_SIZE = 64 * 1024;
-	uint8_t buf[BUF_SIZE];
+    std::array<uint8_t,64 * 1024> buf{};
 	size_t total_read = 0;
 	while (!src.isEof()) {
-		int64_t n_read = src.read(buf, BUF_SIZE);
+        int64_t n_read = src.read(buf.data(), buf.size());
 		if (n_read < 0) return n_read;
 		if (n_read > 0) {
-			int64_t n_written = write(buf, n_read);
+            int64_t n_written = write(buf.data(), n_read);
 			if (n_written < 0) return n_written;
 			total_read += n_written;
 		}
@@ -87,37 +92,85 @@ DataSource::skip(size_t size) {
 }
 
 IStreamSource::IStreamSource(const std::string& path)
-	: IStreamSource(new std::ifstream(path, std::ios_base::in | std::ios_base::binary), true)
+    : IStreamSource(new std::ifstream(fs::path(encodeName(path)), std::ios_base::binary), true)
 {
 }
 
 OStreamConsumer::OStreamConsumer(const std::string& path)
-	: OStreamConsumer(new std::ofstream(path, std::ios_base::binary), true)
+    : OStreamConsumer(new std::ofstream(fs::path(encodeName(path)), std::ios_base::binary), true)
 {
 }
 
+result_t FileListConsumer::open(const std::string &name, int64_t size) {
+    if (ofs.is_open()) {
+        ofs.close();
+    }
+
+    // The file name comes from inside the (encrypted) container and is
+    // therefore fully attacker-controlled. Run it through the central
+    // sanitiser; reject the entry rather than write to a tampered path.
+    std::string safeName = libcdoc::sanitiseExtractedFilename(name);
+    if (safeName.empty()) {
+        LOG_ERROR("FileListConsumer::open: refusing unsafe entry name '{}'", name);
+        return DATA_FORMAT_ERROR;
+    }
+
+    fs::path target = base / fs::path(encodeName(safeName));
+
+    // Defence in depth: even after sanitising the leaf name, an attacker
+    // who can plant a symlink at `base` (e.g. by extracting an earlier
+    // entry that the host application created earlier) could redirect
+    // writes outside `base`. weakly_canonical resolves any symlinks that
+    // already exist in the path; we then verify the parent directory of
+    // the target equals the canonical base.
+    std::error_code ec;
+    fs::path canonicalBase = fs::weakly_canonical(base, ec);
+    if (ec) {
+        LOG_ERROR("FileListConsumer::open: cannot canonicalise base {}: {}",
+                  base.string(), ec.message());
+        return OUTPUT_STREAM_ERROR;
+    }
+    fs::path canonicalTarget = fs::weakly_canonical(target, ec);
+    if (ec) {
+        LOG_ERROR("FileListConsumer::open: cannot canonicalise target {}: {}",
+                  target.string(), ec.message());
+        return OUTPUT_STREAM_ERROR;
+    }
+    if (canonicalTarget.parent_path() != canonicalBase) {
+        LOG_ERROR("FileListConsumer::open: refusing entry '{}' - target {} "
+                  "escapes base {}",
+                  name, canonicalTarget.string(), canonicalBase.string());
+        return DATA_FORMAT_ERROR;
+    }
+
+    ofs.open(target, std::ios_base::binary);
+    return ofs.bad() ? OUTPUT_STREAM_ERROR : OK;
+}
+
 FileListSource::FileListSource(const std::string& base, const std::vector<std::string>& files)
-	: _base(base), _files(files), _current(-1)
+    : _base(encodeName(base)), _files(files)
 {
 }
 
 int64_t
-FileListSource::read(uint8_t *dst, size_t size)
+FileListSource::read(uint8_t *dst, size_t size) noexcept try
 {
 	if ((_current < 0) || (_current >= _files.size())) return WORKFLOW_ERROR;
 	_ifs.read((char *) dst, size);
 	return (_ifs.bad()) ? INPUT_STREAM_ERROR : _ifs.gcount();
+} catch(...) {
+    return INPUT_STREAM_ERROR;
 }
 
 bool
-FileListSource::isError()
+FileListSource::isError() noexcept
 {
     if ((_current < 0) || (_current >= _files.size())) return OK;
 	return _ifs.bad();
 }
 
 bool
-FileListSource::isEof()
+FileListSource::isEof() noexcept
 {
 	if (_current < 0) return false;
 	if (_current >= _files.size()) return true;
@@ -136,13 +189,15 @@ FileListSource::next(std::string& name, int64_t& size)
 	_ifs.close();
 	_current += 1;
 	if (_current >= _files.size()) return END_OF_STREAM;
-	std::filesystem::path path(_base);
-	path.append(_files[_current]);
-	if (!std::filesystem::exists(path)) return IO_ERROR;
-	_ifs.open(path, std::ios_base::in | std::ios_base::binary);
+    fs::path path(_base);
+    path.append(encodeName(_files[_current]));
+    if (std::error_code ec; !fs::exists(path, ec)) return IO_ERROR;
+    _ifs.open(path, std::ios_base::binary);
 	if (_ifs.bad()) return IO_ERROR;
 	name = _files[_current];
-	size = std::filesystem::file_size(path);
+    std::error_code ec;
+    size = fs::file_size(path, ec);
+    if (ec) return IO_ERROR;
     return OK;
 }
 

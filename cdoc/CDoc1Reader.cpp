@@ -18,27 +18,25 @@
 
 #include "CDoc1Reader.h"
 
-#include "CDoc.h"
 #include "Certificate.h"
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "DDocReader.h"
-#include "ILogger.h"
 #include "Lock.h"
 #include "Utils.h"
-#include "XmlReader.h"
 #include "ZStream.h"
+#include "utils/memory.h"
 
-#include <openssl/x509.h>
+#include <openssl/evp.h>
 
 #include <map>
-#include <set>
+#include <span>
 
 using namespace libcdoc;
 
-static const std::string MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignments/media-types/application/zip";
-static const std::string MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
-static const std::string MIME_DDOC_OLD = "http://www.sk.ee/DigiDoc/1.3.0/digidoc.xsd";
+constexpr std::string_view MIME_ZLIB = "http://www.isi.edu/in-noes/iana/assignments/media-types/application/zip";
+constexpr std::string_view MIME_DDOC = "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd";
+constexpr std::string_view MIME_DDOC_OLD = "http://www.sk.ee/DigiDoc/1.3.0/digidoc.xsd";
 
 constexpr std::array SUPPORTED_METHODS {
     libcdoc::Crypto::AES128CBC_MTH, libcdoc::Crypto::AES192CBC_MTH, libcdoc::Crypto::AES256CBC_MTH,
@@ -54,9 +52,8 @@ constexpr std::array SUPPORTED_KWAES {
  * @brief CDoc1Reader is used for decrypt data.
  */
 
-class CDoc1Reader::Private
+struct CDoc1Reader::Private
 {
-public:
     libcdoc::DataSource *dsrc = nullptr;
     bool src_owned = false;
     std::string mime, method;
@@ -90,12 +87,12 @@ CDoc1Reader::getLockForCert(const std::vector<uint8_t>& cert)
             ll.encrypted_fmk.empty())
             continue;
         switch(cc.getAlgorithm()) {
-        case libcdoc::Certificate::RSA:
+        case libcdoc::Algorithm::RSA:
             if (ll.getString(Lock::Params::METHOD) == libcdoc::Crypto::RSA_MTH) {
                 return i;
             }
             break;
-        case libcdoc::Certificate::ECC:
+        case libcdoc::Algorithm::ECC:
             if(!ll.getBytes(Lock::Params::KEY_MATERIAL).empty() &&
                 std::find(SUPPORTED_KWAES.cbegin(), SUPPORTED_KWAES.cend(), ll.getString(Lock::Params::METHOD)) != SUPPORTED_KWAES.cend()) {
                 return i;
@@ -116,14 +113,57 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     if (lock_idx >= d->locks.size()) return libcdoc::WRONG_ARGUMENTS;
     const Lock &lock = d->locks.at(lock_idx);
     setLastError({});
+
+    // Determine the FMK length from the container's body cipher. The CDoc1
+    // body uses AES-128/192/256 in CBC or GCM mode, so the FMK is 16, 24
+    // or 32 bytes long. We pin this length up-front and pass it to the RSA
+    // decrypt path so that an attacker observing this function cannot
+    // distinguish between
+    //   (a) RSA padding failed
+    //   (b) RSA padding succeeded but the resulting length was wrong
+    //   (c) a wholly different recipient was used to derive a wrong key.
+    //
+    // All three cases must look the same: the function returns OK with a
+    // candidate FMK of the right length, and the eventual AES decrypt at
+    // the container body level either authenticates that FMK (success) or
+    // rejects it. CDoc1 has no header HMAC, so the AES-GCM tag is the
+    // only bit of authentication we can rely on. AES-CBC containers
+    // therefore retain a residual oracle (PKCS#7 stripping); using GCM
+    // when re-encrypting with libcdoc is strongly preferred.
+    size_t expected_fmk_len = 0;
+    if (const EVP_CIPHER *c = libcdoc::Crypto::cipher(d->method); c) {
+        expected_fmk_len = size_t(EVP_CIPHER_key_length(c));
+    }
+    if (expected_fmk_len != 16 && expected_fmk_len != 24 && expected_fmk_len != 32) {
+        // Method-level error - independent of key bits, so does NOT feed
+        // an oracle.
+        setLastError("Failed to derive FMK");
+        LOG_ERROR("Unsupported CDoc1 encryption method: {}", d->method);
+        return libcdoc::CRYPTO_ERROR;
+    }
+
+    // From this point on, every error path returns the SAME error code and
+    // SAME last-error string, so that the only bit of information leaking
+    // back to the caller is "this lock did/did not produce a usable FMK".
+    constexpr auto FAIL_MSG = "Failed to derive FMK";
+
     if (lock.isRSA()) {
+        // If OAEP = false and and fmk.size() != 0, the decryptRSA always
+        // returns OK with synthetic bytes on padding failure; only a
+        // fundamental error (e.g. ct size mismatch with modulus) yields a non-OK result.
+        fmk.resize(expected_fmk_len);
         int result = crypto->decryptRSA(fmk, lock.encrypted_fmk, false, lock_idx);
-		if (result < 0) {
-			setLastError(crypto->getLastErrorStr(result));
+        if (result != libcdoc::OK) {
+            libcdoc::cleanse(fmk);
+            fmk.clear();
+            setLastError(FAIL_MSG);
             LOG_ERROR("{}", last_error);
-			return libcdoc::CRYPTO_ERROR;
-		}
-	} else {
+            return libcdoc::CRYPTO_ERROR;
+        }
+        // Even on "OK" the contents may be synthetic - that is the point.
+        // The downstream AES decrypt at the body level is what tells
+        // success from failure.
+    } else {
         std::vector<uint8_t> key;
         int result = crypto->deriveConcatKDF(key,
             lock.getBytes(Lock::Params::KEY_MATERIAL),
@@ -132,45 +172,37 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             lock.getBytes(Lock::Params::PARTY_UINFO),
             lock.getBytes(Lock::Params::PARTY_VINFO),
             lock_idx);
-		if (result < 0) {
-			setLastError(crypto->getLastErrorStr(result));
+        if (result < 0) {
+            libcdoc::cleanse(key);
+            setLastError(FAIL_MSG);
             LOG_ERROR("{}", last_error);
-			return libcdoc::CRYPTO_ERROR;
-		}
+            return libcdoc::CRYPTO_ERROR;
+        }
         fmk = libcdoc::Crypto::AESWrap(key, lock.encrypted_fmk, false);
-	}
-	if (fmk.empty()) {
-		setLastError("Failed to decrypt/derive fmk");
+        libcdoc::cleanse(key);
+        // AESWrap returns {} on failure. Pad the candidate to expected
+        // length so the failure shape matches the RSA path; the bytes
+        // are arbitrary because the body decrypt is going to reject
+        // them anyway.
+        if (fmk.size() != expected_fmk_len) {
+            libcdoc::cleanse(fmk);
+            fmk.assign(expected_fmk_len, 0);
+        }
+    }
+
+    if (fmk.size() != expected_fmk_len) {
+        libcdoc::cleanse(fmk);
+        fmk.clear();
+        setLastError(FAIL_MSG);
         LOG_ERROR("{}", last_error);
-		return libcdoc::CRYPTO_ERROR;
-	}
-	setLastError({});
+        return libcdoc::CRYPTO_ERROR;
+    }
     return libcdoc::OK;
 }
 
 libcdoc::result_t
 CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
-#ifdef USE_PULL
-    int64_t result = beginDecryption(fmk);
-    if (result != libcdoc::OK) return result;
-    std::string name;
-    int64_t size;
-    result = nextFile(name, size);
-    while (result == libcdoc::OK) {
-        result = dst->open(name, size);
-        if (result != libcdoc::OK) return result;
-        std::vector<uint8_t> t(size);
-        result = readData(t.data(), size);
-        if (result < 0) return result;
-        result = dst->write(t);
-        if (result < 0) return result;
-        result = nextFile(name, size);
-    }
-    if (result != libcdoc::END_OF_STREAM) return result;
-    result = finishDecryption();
-    return result;
-#else
     return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
         if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
             LOG_DBG("Contains DDoc content {}", mime);
@@ -187,13 +219,11 @@ CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
             return rv;
         return dst->close();
     });
-#endif
 }
 
 libcdoc::result_t
 CDoc1Reader::beginDecryption(const std::vector<uint8_t>& fmk)
 {
-    setLastError({});
     return CDoc1Reader::decryptData(fmk, [&](DataSource &src, const std::string &mime) -> result_t {
         if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
             LOG_DBG("Contains DDoc content {}", mime);
@@ -263,35 +293,22 @@ CDoc1Reader::readData(uint8_t *dst, size_t size)
  * @param src A DataSource of container
  */
 CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
-	: CDocReader(1), d(new Private)
+    : CDocReader(1), d(new Private{.dsrc = src, .src_owned = delete_on_close})
 {
-    d->dsrc = src;
-    d->src_owned = delete_on_close;
-	auto hex2bin = [](const std::string &in) {
-		std::vector<uint8_t> out;
-        out.reserve(in.size() / 2);
-		char data[] = "00";
-		for(std::string::const_iterator i = in.cbegin(); distance(i, in.cend()) >= 2;)
-		{
-			data[0] = *(i++);
-			data[1] = *(i++);
-			out.push_back(static_cast<uint8_t>(strtoul(data, 0, 16)));
-		}
-		if(out[0] == 0x00)
-			out.erase(out.cbegin());
-		return out;
+    auto hex2bin = [](std::string_view in) {
+        return fromHex(in.starts_with("00") ? in.substr(2) : in);
 	};
 
     XMLReader reader(*d->dsrc);
-	while (reader.read()) {
-		if(reader.isEndElement())
+    while (reader.read()) {
+        if(reader.isEndElement())
 			continue;
 		// EncryptedData
         if(reader.isElement("EncryptedData"))
-			d->mime = reader.attribute("MimeType");
+            d->mime = reader.attribute("MimeType");
 		// EncryptedData/EncryptionMethod
-		else if(reader.isElement("EncryptionMethod"))
-			d->method = reader.attribute("Algorithm");
+        else if(reader.isElement("EncryptionMethod"))
+            d->method = reader.attribute("Algorithm");
 		// EncryptedData/EncryptionProperties/EncryptionProperty
         else if(reader.isElement("EncryptionProperty"))
         {
@@ -299,13 +316,13 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
             d->properties[std::move(name)] = reader.readText();
         }
         // EncryptedData/KeyInfo/EncryptedKey
-		else if(reader.isElement("EncryptedKey"))
+        else if(reader.isElement("EncryptedKey"))
 		{
             Lock &key = d->locks.emplace_back(Lock::Type::CDOC1);
             key.label = reader.attribute("Recipient");
-			while(reader.read())
+            while(reader.read())
 			{
-				if(reader.isElement("EncryptedKey") && reader.isEndElement())
+                if(reader.isElement("EncryptedKey") && reader.isEndElement())
 					break;
                 if(reader.isEndElement())
 					continue;
@@ -313,30 +330,36 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
                 if(reader.isElement("EncryptionMethod"))
                     key.setString(Lock::Params::METHOD, reader.attribute("Algorithm"));
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod/ConcatKDFParams
-				else if(reader.isElement("ConcatKDFParams"))
+                else if(reader.isElement("ConcatKDFParams"))
 				{
                     key.setBytes(Lock::Params::ALGORITHM_ID, hex2bin(reader.attribute("AlgorithmID")));
                     key.setBytes(Lock::Params::PARTY_UINFO, hex2bin(reader.attribute("PartyUInfo")));
                     key.setBytes(Lock::Params::PARTY_VINFO, hex2bin(reader.attribute("PartyVInfo")));
 				}
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/KeyDerivationMethod/ConcatKDFParams/DigestMethod
-				else if(reader.isElement("DigestMethod"))
+                else if(reader.isElement("DigestMethod"))
                     key.setString(Lock::Params::CONCAT_DIGEST, reader.attribute("Algorithm"));
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/AgreementMethod/OriginatorKeyInfo/KeyValue/ECKeyValue/PublicKey
-				else if(reader.isElement("PublicKey"))
+                else if(reader.isElement("PublicKey"))
                     key.setBytes(Lock::Params::KEY_MATERIAL, reader.readBase64());
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/X509Data/X509Certificate
-				else if(reader.isElement("X509Certificate"))
-                    key.setCertificate(reader.readBase64());
+                else if(reader.isElement("X509Certificate"))
+                {
+                    auto cert = reader.readBase64();
+                    Certificate ssl(cert);
+                    key.setBytes(Lock::CERT, std::move(cert));
+                    key.setBytes(Lock::RCPT_KEY, ssl.getPublicKey());
+                    key.pk_type = ssl.getAlgorithm();
+                }
 				// EncryptedData/KeyInfo/EncryptedKey/KeyInfo/CipherData/CipherValue
-				else if(reader.isElement("CipherValue"))
+                else if(reader.isElement("CipherValue"))
                     key.encrypted_fmk = reader.readBase64();
 			}
 		}
 	}
 }
 
-CDoc1Reader::~CDoc1Reader()
+CDoc1Reader::~CDoc1Reader() noexcept
 {
 	delete d;
 }
@@ -344,15 +367,24 @@ CDoc1Reader::~CDoc1Reader()
 bool
 CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 {
-    // todo: better check
     static constexpr std::string_view XML_TAG("<?xml");
-    std::array<uint8_t,XML_TAG.size()> buf;
-    if (src->read(buf.data(), XML_TAG.size()) != XML_TAG.size()) {
+    static constexpr std::array<uint8_t, 3> UTF8_BOM{0xEF, 0xBB, 0xBF};
+    std::array<uint8_t, UTF8_BOM.size() + XML_TAG.size()> buf;
+    auto n = src->read(buf.data(), buf.size());
+    if (n < 0)
+        return false;
+    size_t available = static_cast<size_t>(n);
+    const uint8_t *start = buf.data();
+    if (available >= UTF8_BOM.size() && std::equal(UTF8_BOM.begin(), UTF8_BOM.end(), start)) {
+        start += UTF8_BOM.size();
+        available -= UTF8_BOM.size();
+    }
+    if (available < XML_TAG.size()) {
         LOG_DBG("CDoc1Reader::isCDoc1File: Cannot read tag");
         return false;
     }
-    if (XML_TAG.compare(0, XML_TAG.size(), (const char *) buf.data(), buf.size())) {
-        LOG_DBG("CDoc1Reader::isCDoc1File: Invalid tag: {}", toHex(buf));
+    if (XML_TAG.compare(0, XML_TAG.size(), (const char *) start, XML_TAG.size())) {
+        LOG_DBG("CDoc1Reader::isCDoc1File: Invalid tag: {}", toHex(std::span{start, XML_TAG.size()}));
         LOG_DBG("CDoc1Reader::isCDoc1File: Should be  : {}", toHex(XML_TAG));
         return false;
     }
@@ -367,6 +399,7 @@ CDoc1Reader::isCDoc1File(libcdoc::DataSource *src)
 result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk,
     const std::function<libcdoc::result_t(libcdoc::DataSource &src, const std::string &mime)>& f)
 {
+    setLastError({});
     if (fmk.empty()) {
         setLastError("FMK is missing");
         return libcdoc::WRONG_ARGUMENTS;
@@ -408,20 +441,47 @@ result_t CDoc1Reader::decryptData(const std::vector<uint8_t>& fmk,
         setLastError("Failed to decode base64 data");
         return libcdoc::IO_ERROR;
     }
+
+    // Treat any post-FMK decrypt error - including AES-CBC PKCS#7 stripping
+    // failures and AES-GCM tag mismatches - as the same "container body
+    // decrypt failed" event. This is the single bit of information an
+    // attacker can extract per submission of a tampered CDoc1, and we
+    // rate-limit it. A per-process exponential backoff turns a remote
+    // Bleichenbacher campaign of 2^20+ queries into hours/days of
+    // wall-clock cost without penalising legitimate single-shot use.
+    constexpr auto THROTTLE_SCOPE = "cdoc1-rsa-decrypt";
+    auto report_failure = [&]{
+        libcdoc::Crypto::rsaOracleThrottleOnFailure(THROTTLE_SCOPE);
+    };
+
     VectorSource src(b64);
     libcdoc::DecryptionSource dec(src, d->method, fmk);
     if(dec.isError()) {
-        setLastError("Failed to decrypt data, verify if FMK is correct");
+        setLastError("Failed to decrypt data");
+        report_failure();
         return CRYPTO_ERROR;
     }
-    setLastError({});
-
+    libcdoc::result_t inner_rv = libcdoc::OK;
     if (d->mime == MIME_ZLIB) {
         libcdoc::ZSource zsrc(&dec);
-        if(auto rv = f(zsrc, d->properties["OriginalMimeType"]); rv < OK)
-            return rv;
+        inner_rv = f(zsrc, d->properties["OriginalMimeType"]);
+    } else {
+        inner_rv = f(dec, d->mime);
     }
-    else if(auto rv = f(dec, d->mime); rv < OK)
-        return rv;
-    return dec.close();
+    if (inner_rv < OK) {
+        // Body parse/decrypt failure. Could be a real I/O glitch, or a
+        // tampered container - we cannot tell, and on principle we treat
+        // both alike to deny the attacker a distinguisher.
+        setLastError("Failed to decrypt data");
+        report_failure();
+        return inner_rv;
+    }
+    libcdoc::result_t close_rv = dec.close();
+    if (close_rv != libcdoc::OK) {
+        setLastError("Failed to decrypt data");
+        report_failure();
+        return close_rv;
+    }
+    libcdoc::Crypto::rsaOracleThrottleOnSuccess(THROTTLE_SCOPE);
+    return libcdoc::OK;
 }

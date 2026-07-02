@@ -18,11 +18,10 @@
 
 #include "NetworkBackend.h"
 
+#include "Certificate.h"
 #include "Crypto.h"
 #include "CryptoBackend.h"
 #include "Utils.h"
-#include "utils/memory.h"
-#include "ILogger.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -41,6 +40,8 @@
 #include <Windows.h>
 #endif
 
+#define CDOC_SSL_TIMEOUT 30
+
 using namespace std::literals::chrono_literals;
 
 using EC_KEY_sign = int (*)(int type, const unsigned char *dgst, int dlen, unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey);
@@ -50,17 +51,17 @@ static ECDSA_SIG* ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const B
 static int rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *sigret, unsigned int *siglen, const ::RSA *rsa);
 
 struct Private {
-    libcdoc::unique_free_t<X509> x509{nullptr, X509_free};
+    libcdoc::Certificate x509;
     EVP_PKEY *pkey = nullptr;
 
     RSA_METHOD *rsamethod = nullptr;
     EC_KEY_METHOD *ecmethod = nullptr;
 
-    explicit Private(libcdoc::NetworkBackend *backend, std::vector<uint8_t> client_cert) {
-        if (client_cert.empty()) return;
-        x509 = libcdoc::Crypto::toX509(client_cert);
+    explicit Private(libcdoc::NetworkBackend *backend, const std::vector<uint8_t> &client_cert)
+        : x509(client_cert)
+    {
         if (!x509) return;
-        pkey = X509_get_pubkey(x509.get());
+        pkey = X509_get_pubkey(x509.handle());
         if (!pkey) return;
         int id = EVP_PKEY_get_id(pkey);
         if (id == EVP_PKEY_EC) {
@@ -93,6 +94,7 @@ struct Private {
     }
 };
 
+#ifdef HAS_KEYSHARES
 struct MIDSIDResultData {
     int code;
     std::string_view str;
@@ -137,6 +139,40 @@ getMIDSIDDescription(libcdoc::result_t code)
     return {};
 }
 
+// Map a CryptoBackend::HashAlgorithm to the algorithm name string the
+// SK Smart-ID / Mobile-ID JSON API expects ("SHA224", "SHA256",
+// "SHA384", "SHA512"). Returns an empty string_view when the algorithm
+// is not in the supported set; callers MUST treat that as a hard error
+// rather than indexing an array - foreign-language bindings (SWIG / Java
+// / C#) and any future addition to the HashAlgorithm enum can otherwise
+// drive the previous `algo_names[(int)algo]` lookup out of bounds.
+//
+// The function is constexpr so that the static_assert block below can
+// verify at compile time that every documented enumerator maps to a
+// non-empty string. Any new HashAlgorithm value added to CryptoBackend.h
+// will trigger -Wswitch (no default branch covers it) and the
+// static_asserts will catch it explicitly.
+static constexpr std::string_view
+hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm algo) noexcept
+{
+    switch (algo) {
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_224: return "SHA224";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_256: return "SHA256";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_384: return "SHA384";
+    case libcdoc::CryptoBackend::HashAlgorithm::SHA_512: return "SHA512";
+    }
+    return {};
+}
+
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_224) == "SHA224");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_256) == "SHA256");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_384) == "SHA384");
+static_assert(hashAlgorithmToSidMidName(libcdoc::CryptoBackend::HashAlgorithm::SHA_512) == "SHA512");
+// Out-of-range value (e.g. coming from a SWIG-generated foreign caller)
+// must produce an empty result rather than reading past the array.
+static_assert(hashAlgorithmToSidMidName(static_cast<libcdoc::CryptoBackend::HashAlgorithm>(99)).empty());
+#endif
+
 thread_local std::string error;
 
 std::string
@@ -151,19 +187,12 @@ libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
 	default:
 		break;
 	}
+#ifdef HAS_KEYSHARES
     std::string_view str = getMIDSIDDescription(code);
     if (!str.empty()) return std::string(str);
-    return libcdoc::getErrorStr(code);
-}
-
-#if LIBCDOC_TESTING
-int64_t
-libcdoc::NetworkBackend::test(std::vector<std::vector<uint8_t>> &dst)
-{
-    LOG_TRACE("NetworkBackend::test::Native superclass");
-    return OK;
-}
 #endif
+   return libcdoc::getErrorStr(code);
+}
 
 //
 // Set peer certificate(s) for given server url
@@ -184,16 +213,22 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
         X509_STORE *store = SSL_CTX_get_cert_store(ctx);
         X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
         for (const std::vector<uint8_t>& c : certs) {
-            auto x509 = libcdoc::Crypto::toX509(c);
+            libcdoc::Certificate x509(c);
             if (!x509) return libcdoc::CRYPTO_ERROR;
-            X509_STORE_add_cert(store, x509.get());
+            X509_STORE_add_cert(store, x509.handle());
         }
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
-    } else {
-        // TODO: Allow only if global parameter is set
+    }
+    else {
+#ifdef LIBCDOC_ALLOW_INSECURE_TLS
+        LOG_WARN("TLS certificate verification disabled (LIBCDOC_ALLOW_INSECURE_TLS)");
         cli.enable_server_certificate_verification(false);
         cli.enable_server_hostname_verification(false);
+#else
+        error = "No peer TLS certificates configured";
+        return libcdoc::CONFIGURATION_ERROR;
+#endif
     }
     return libcdoc::OK;
 }
@@ -218,6 +253,18 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
         return libcdoc::OK;
     default: return result;
     }
+}
+
+//
+// Set SSL timeouts
+//
+static libcdoc::result_t
+applySSLTimeout(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
+{
+    cli.set_connection_timeout(CDOC_SSL_TIMEOUT);
+    cli.set_read_timeout(CDOC_SSL_TIMEOUT);
+    cli.set_write_timeout(CDOC_SSL_TIMEOUT);
+    return libcdoc::OK;
 }
 
 //
@@ -284,6 +331,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     if (result != libcdoc::OK) return result;
 
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -304,9 +352,13 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
+    constexpr std::string_view prefix = "/key-capsules/";
+    if (location.compare(0, prefix.size(), prefix) != 0) {
+        error = FORMAT("Unexpected Location header value");
+        return NETWORK_ERROR;
+    }
     error = {};
-    /* Remove /key-capsules/ */
-    location.erase(0, 14);
+    location.erase(0, prefix.size());
     dst.transaction_id = std::move(location);
 
     std::string expiry_str = rsp.get_header_value("x-expiry-time");
@@ -322,6 +374,7 @@ libcdoc::NetworkBackend::sendKey (CapsuleInfo& dst, const std::string& url, cons
     return OK;
 }
 
+#ifdef HAS_KEYSHARES
 libcdoc::result_t
 libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string& url, const std::string& recipient, const std::vector<uint8_t>& share)
 {
@@ -341,6 +394,7 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
     if (result != libcdoc::OK) return result;
 
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -356,14 +410,19 @@ libcdoc::NetworkBackend::sendShare(std::vector<uint8_t>& dst, const std::string&
         error = FORMAT("No Location header in response");
         return NETWORK_ERROR;
     }
+    constexpr std::string_view prefix = "/key-shares/";
+    if (location.compare(0, prefix.size(), prefix) != 0) {
+        error = FORMAT("Unexpected Location header value");
+        return NETWORK_ERROR;
+    }
     error = {};
 
-    /* Remove /key-shares/ */
-    dst.assign(location.cbegin() + 12, location.cend());
+    dst.assign(location.cbegin() + prefix.size(), location.cend());
     LOG_DBG("Share: {}", std::string((const char *) dst.data(), dst.size()));
 
     return OK;
 }
+#endif
 
 libcdoc::result_t
 libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string& url, const std::string& transaction_id)
@@ -379,7 +438,8 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     std::unique_ptr<Private> d = std::make_unique<Private>(this, cert);
     if (!cert.empty() && (!d->x509 || !d->pkey)) return CRYPTO_ERROR;
 
-    httplib::SSLClient cli(host, port, d->x509.get(), d->pkey);
+    httplib::SSLClient cli(host, port, d->x509.handle(), d->pkey);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -397,12 +457,12 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     }
     error = {};
     std::string ks = v.get<std::string>();
-    std::vector<uint8_t> key_material = fromBase64(ks);
-    dst.assign(key_material.cbegin(), key_material.cend());
+    dst = fromBase64(ks);
 
     return libcdoc::OK;
 }
 
+#ifdef HAS_KEYSHARES
 libcdoc::result_t
 libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id)
 {
@@ -415,6 +475,7 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -427,14 +488,19 @@ libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string
 
     LOG_DBG("Response: {}", rsp.body);
     picojson::value rsp_json;
-    picojson::parse(rsp_json, rsp.body);
+    std::string parse_err = picojson::parse(rsp_json, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NETWORK_ERROR;
+    }
     picojson::value v = rsp_json.get("nonce");
     if (!v.is<std::string>()) {
         error = FORMAT("No 'nonce' in response");
         return NETWORK_ERROR;
     }
     std::string nonce_str = v.get<std::string>();
-    dst.assign(nonce_str.cbegin(), nonce_str.cend());
+    dst = toUint8Vector(nonce_str);
     return OK;
 }
 
@@ -450,6 +516,7 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
 
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
@@ -460,9 +527,6 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     httplib::Headers hdrs;
     hdrs.insert({"x-cdoc2-auth-ticket", ticket});
     hdrs.insert({"x-cdoc2-auth-x5c", std::string("-----BEGIN CERTIFICATE-----") + toBase64(cert) + "-----END CERTIFICATE-----"});
-    for (auto i = hdrs.cbegin(); i != hdrs.cend(); i++) {
-        std::cerr << i->first << ": " << i->second << std::endl;
-    }
     picojson::value rsp_json;
     result = get(cli, hdrs, full, rsp_json);
     if (result != libcdoc::OK) return result;
@@ -481,11 +545,15 @@ libcdoc::NetworkBackend::fetchShare(ShareInfo& share, const std::string& url, co
     }
     std::string recipient = v.get<std::string>();
     std::vector<uint8_t> shareval = fromBase64(share64);
-    shareval.resize(32);
+    if (shareval.size() != 32) {
+        error = FORMAT("Invalid share size: expected 32, got {}", shareval.size());
+        return NETWORK_ERROR;
+    }
     LOG_DBG("Share: {}", toHex(shareval));
     share = {std::move(shareval), std::move(recipient)};
     return OK;
 }
+#endif
 
 ECDSA_SIG *
 ecdsa_do_sign(const unsigned char *dgst, int dgst_len, const BIGNUM * /*inv*/, const BIGNUM * /*rp*/, EC_KEY *eckey)
@@ -538,6 +606,7 @@ rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *si
     return 1;
 }
 
+#ifdef HAS_KEYSHARES
 libcdoc::result_t
 libcdoc::NetworkBackend::showFeedback(SIDMIDFeedback& feedback)
 {
@@ -701,6 +770,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -718,7 +788,12 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Response: {}", rsp.body);
     picojson::value v;
-    picojson::parse(v, rsp.body);
+    std::string parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
@@ -741,8 +816,19 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     // Sign
     //
-    std::string algo_names[] = {"SHA224", "SHA256", "SHA384", "SHA512"};
-    std::string algo_name = algo_names[(int) algo];
+    std::string_view algo_name = hashAlgorithmToSidMidName(algo);
+    if (algo_name.empty()) {
+        error = "Unsupported hash algorithm for Smart-ID";
+        LOG_ERROR("Unsupported hash algorithm for Smart-ID: {}",
+                  static_cast<int>(algo));
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
+    if (digest.empty()) {
+        error = "Empty digest";
+        LOG_ERROR("Empty digest passed to signSID");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
 
     // Generate code
     uint8_t b[32];
@@ -763,7 +849,7 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
         {"relyingPartyUUID", picojson::value(rp_uuid)},
         {"relyingPartyName", picojson::value(rp_name)},
         {"hash", picojson::value(toBase64(digest))},
-        {"hashType", picojson::value(algo_name)},
+        {"hashType", picojson::value(std::string(algo_name))},
         {"allowedInteractionsOrder",
             picojson::value(aio)
         }
@@ -778,7 +864,12 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     result = post(cli, full, hdrs, query.serialize(), rsp);
     if (result != libcdoc::OK) return result;
     LOG_DBG("Response: {}", rsp.body);
-    picojson::parse(v, rsp.body);
+    parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid SmartID response";
         LOG_WARN("Invalid SmartID response");
@@ -810,6 +901,31 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     const std::string& url, const std::string& rp_uuid, const std::string& rp_name, const std::string& phone,
     const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo)
 {
+    // Validate rcpt_id BEFORE doing anything else (network setup, key
+    // material, etc.). The previous implementation called
+    // rcpt_id.substr(11, 11) which throws std::out_of_range when
+    // rcpt_id.size() < 11 and silently returns a too-short identifier
+    // when 11 <= size < 22 - both of which would propagate to the SK
+    // Mobile-ID service as garbage and (worse) leak partially-filled
+    // payloads to the network in the latter case.
+    libcdoc::EtsiRecipientId parsed = libcdoc::parseEtsiRecipientId(rcpt_id);
+    if (!parsed.valid()) {
+        error = "Invalid Mobile ID recipient identifier";
+        LOG_ERROR("Invalid Mobile ID recipient identifier: '{}'", rcpt_id);
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
+    // The SK Mobile-ID API expects `nationalIdentityNumber` to be the
+    // bare digits with no country prefix, so we use the parsed national
+    // identifier directly.
+    const std::string &id_num = parsed.national_id;
+
+    if (digest.empty()) {
+        error = "Empty digest";
+        LOG_ERROR("Empty digest passed to signMID");
+        return libcdoc::WRONG_ARGUMENTS;
+    }
+
     std::string certificateLevel = "QUALIFIED";
     std::string nonce = libcdoc::toBase64(Crypto::random(16));
 
@@ -824,6 +940,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     LOG_DBG("Starting client: {} {}", host, port);
     httplib::SSLClient cli(host, port);
+    if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
     if (result = setProxy(cli, this); result != OK) return result;
@@ -831,24 +948,27 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     //
     // Authenticate
     //
-    std::string algo_names[] = {"SHA224", "SHA256", "SHA384", "SHA512"};
-    std::string algo_name = algo_names[(int) algo];
+    std::string_view algo_name = hashAlgorithmToSidMidName(algo);
+    if (algo_name.empty()) {
+        error = "Unsupported hash algorithm for Mobile-ID";
+        LOG_ERROR("Unsupported hash algorithm for Mobile-ID: {}",
+                  static_cast<int>(algo));
+        return libcdoc::WRONG_ARGUMENTS;
+    }
 
-    // Generate code
+    // Generate verification code. digest is guaranteed non-empty above.
     SIDMIDFeedback fb;
     fb.code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
     result = showFeedback(fb);
     if (result != OK) return result;
 
-    // etsi/PNOEE-01234567890
-    std::string id_num = rcpt_id.substr(11, 11);
     picojson::object qobj = {
         {"relyingPartyUUID", picojson::value(rp_uuid)},
         {"relyingPartyName", picojson::value(rp_name)},
         {"phoneNumber", picojson::value(phone)},
         {"nationalIdentityNumber", picojson::value(id_num)},
         {"hash", picojson::value(toBase64(digest))},
-        {"hashType", picojson::value(algo_name)},
+        {"hashType", picojson::value(std::string(algo_name))},
         {"language", picojson::value("ENG")},
         {"displayText", picojson::value("Tahad dekryptida?")},
         {"displayTextFormat", picojson::value("GSM-7")}
@@ -867,15 +987,22 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("Response: {}", rsp.body);
 
     picojson::value v;
-    picojson::parse(v, rsp.body);
+    parse_err = picojson::parse(v, rsp.body);
+    if (!parse_err.empty()) {
+        error = FORMAT("JSON parse error: {}", parse_err);
+        LOG_ERROR("{}", error);
+        return NetworkBackend::NETWORK_ERROR;
+    }
     if (!v.is<picojson::object>()) {
         error = "Invalid Mobile ID response";
-        LOG_WARN("Invalid Monbile ID response");
+        LOG_WARN("Invalid Mobile ID response");
+        return NetworkBackend::NETWORK_ERROR;
     }
     picojson::value w = v.get("sessionID");
     if (!w.is<std::string>()) {
         error = "Invalid Mobile ID response";
-        LOG_WARN("Invalid Monbile ID response");
+        LOG_WARN("Invalid Mobile ID response");
+        return NetworkBackend::NETWORK_ERROR;
     }
     std::string sessionID  = w.get<std::string>();
     LOG_DBG("SessionID: {}", sessionID);
@@ -892,3 +1019,4 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
 
     return OK;
 }
+#endif

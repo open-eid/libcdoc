@@ -15,14 +15,13 @@ set(PUBLIC_HEADERS
     CryptoBackend.h
     NetworkBackend.h
     PKCS11Backend.h
-    ILogger.h
-    ConsoleLogger.h
+    Logger.h
 )
 
 add_library(cdoc_ver INTERFACE)
 target_compile_definitions(cdoc_ver INTERFACE
     VERSION_STR="${VERSION}"
-    $<$<PLATFORM_ID:Windows>:VERSION=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},${BUILD_NUMBER}>
+    $<$<PLATFORM_ID:Windows>:VERSION_NUMBER=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},${BUILD_NUMBER}>
     $<$<PLATFORM_ID:Windows>:TARGET_NAME="$<TARGET_PROPERTY:NAME>">
     $<$<PLATFORM_ID:Windows>:$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:APP>>
 )
@@ -38,7 +37,6 @@ add_library(cdoc
     CryptoBackend.cpp
     NetworkBackend.cpp
     PKCS11Backend.cpp
-    LogEngine.cpp
     $<$<PLATFORM_ID:Windows>:WinBackend.cpp>
     Certificate.cpp Certificate.h
     Crypto.cpp Crypto.h
@@ -52,7 +50,7 @@ add_library(cdoc
     CDoc2Writer.cpp CDoc2Writer.h
     DDocReader.cpp DDocReader.h
     DDocWriter.cpp DDocWriter.h
-    KeyShares.cpp KeyShares.h
+    # KeyShares.cpp KeyShares.h
     XmlReader.cpp XmlReader.h
     XmlWriter.cpp XmlWriter.h
     RcptInfo.h
@@ -60,6 +58,7 @@ add_library(cdoc
     CDoc2.h
     Wrapper.h
     utils/memory.h
+    CDocCipher.cpp CDocCipher.h
 )
 set_target_properties(cdoc PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -68,6 +67,8 @@ set_target_properties(cdoc PROPERTIES
     FRAMEWORK_VERSION 1
     FRAMEWORK "${FRAMEWORK}"
     MACOSX_FRAMEWORK_IDENTIFIER "ee.ria.cdoc"
+    MACOSX_FRAMEWORK_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_FRAMEWORK_BUNDLE_VERSION ${BUILD_NUMBER}
     MACOSX_RPATH YES
     POSITION_INDEPENDENT_CODE YES
 )
@@ -81,6 +82,14 @@ target_include_directories(cdoc PUBLIC
 if(NOT BUILD_SHARED_LIBS)
     target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
 endif()
+option(LIBCDOC_ALLOW_INSECURE_TLS "Allow disabling TLS certificate verification (for testing only)" OFF)
+if(LIBCDOC_ALLOW_INSECURE_TLS)
+    target_compile_definitions(cdoc PRIVATE LIBCDOC_ALLOW_INSECURE_TLS)
+endif()
+option(LIBCDOC_CRYPTO_TRACE "Enable logging of cryptographic key material (for debugging only)" OFF)
+if(LIBCDOC_CRYPTO_TRACE)
+    target_compile_definitions(cdoc PRIVATE LIBCDOC_CRYPTO_TRACE)
+endif()
 target_link_libraries(cdoc PRIVATE
     OpenSSL::SSL
     LibXml2::LibXml2
@@ -91,9 +100,12 @@ target_link_libraries(cdoc PRIVATE
 )
 
 if(BUILD_TOOLS)
-    add_executable(cdoc-tool cdoc-tool.cpp CDocCipher.cpp)
+    add_executable(cdoc-tool cdoc-tool.cpp)
     target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
     target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
+    target_link_options(cdoc-tool PRIVATE
+        $<$<PLATFORM_ID:Windows>: /MANIFEST:NO /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/cdoc-tool.manifest>
+    )
     set_target_properties(cdoc-tool PROPERTIES
         INSTALL_RPATH $<$<PLATFORM_ID:Darwin>:@executable_path/../lib>
     )
@@ -190,7 +202,7 @@ if(APPLE)
     list(TRANSFORM MODULE_LIST PREPEND "  header \"")
     list(TRANSFORM MODULE_LIST APPEND "\"")
     list(JOIN MODULE_LIST "\n" MODULE_LIST)
-    set(MODULE_MAP ${CMAKE_BINARY_DIR}/module.modulemap)
+    set(MODULE_MAP ${PROJECT_BINARY_DIR}/module.modulemap)
     file(WRITE ${MODULE_MAP} "framework module cdoc {
 ${MODULE_LIST}
   export *

@@ -21,7 +21,7 @@ To re-encrypt a file for a different recipient(s) or with a different encryption
 
 ### Options
 
-- `-v1` - generates CDOC ver. 1 format container instead of CDOC ver. 2 container. The option can be used only when encrypting with public-key certificate 
+- `--v1` - generates CDOC ver. 1 format container instead of CDOC ver. 2 container. The option can be used only when encrypting with public-key certificate 
 (see [Recipients](#Recipients)). In all other cases, CDOC ver. 2 format container is created. Tool gives an error if the option is used with any other encryption method.
 
 - `--genlabel` - causes machine-readable label generation for the lock instead of using label provided with `--rcpt` option. The machine-readable label follows the 
@@ -51,7 +51,7 @@ One or more recipients must be specified, each with its own encryption method.
 | `[label]:cert:CERTIFICATE_HEX` | Encryption public-key from certificate. The certificate must be provided as hex-encoded string |
 | `[label]:skey:SECRET_KEY_HEX` | Symmetric encryption with AES key. The key must be provided as hex-encoded string |
 | `[label]:pkey:SECRET_KEY_HEX` | Encryption with public-key. The key must be provided as hex-encoded string |
-| `[label]:pfkey:PUB_KEY_FILE` | Encryption with public-key where the key is provided via path to DER file with EC (**secp384r1** curve) public key |
+| `[label]:pfkey:PUB_KEY_FILE` | Encryption with public-key. The key (**secp384r1** or **secp256r1**) is read from the DER-encoded file. |
 | `[label]:pw:PASSWORD` | Encryption with derive key using PWBKDF |
 | `[label]:p11sk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL]` | Encryption with AES key from PKCS11 module |
 | `[label]:p11pk:SLOT:[PIN]:[PKCS11 ID]:[PKCS11 LABEL]` | Encryption with public key from PKCS11 module |
@@ -61,6 +61,7 @@ If the `label` is omitted then the `--genlabel` option must be specified at comm
 option are provided then depending on encryption method, the `label` may be ignored, but may be also used a part of machine-readable label, like in encrypting with 
 symmetric key and password case. Refer [Appendix D](https://open-eid.github.io/CDOC2/1.1/02_protocol_and_cryptography_spec/appendix_d_keylabel/) section of 
 *CDOC2 container format* specification for examples of machine-readable key-labels.
+If '?' is used in place of PIN or PASSWORD the tool asks for the value interactively.
 
 ### Examples
 
@@ -116,9 +117,9 @@ Following options are supported:
 - `--label LABEL` - CDOC container's lock label. Either the label or label's index must be provided.
 - `--label_idx INDEX` - CDOC container's lock 1-based label index. Either the label or label's index must be provided.
 - `--slot SLOT` - PKCS11 slot number. Usually 0.
-- `--password PASSWORD` - lock's password if the file was encrypted with password.
-- `--secret SECRET` - secret phrase (AES key) if the file was encrypted with symmetric key.
-- `--pin PIN` - PKCS11 (smart-card's) pin code.
+- `--password PASSWORD` - lock's password if the file was encrypted with password. Use '?' to ask for the password interactively.
+- `--secret SECRET` - secret phrase (AES key) if the file was encrypted with symmetric key. Use '?' to ask for the secret interactively.
+- `--pin PIN` - PKCS11 (smart-card's) pin code. Use '?' to ask for the pin interactively.
 - `--key-id` - PKCS11 key ID.
 - `--key-label` - PKCS11 key label.
 - `--library PKCS11_LIBRARY` - path to the PKCS11 library. Same as in encryption case.
@@ -150,6 +151,27 @@ then it is overwritten.
    ```bash
    ./cdoc-tool decrypt --library /opt/homebrew/lib/opensc-pkcs11.so --server 00000000-0000-0000-0000-000000000000 https://cdoc2.id.ee:8444 --accept keyserver-cert.der --label Test --slot 0 --pin 1234 --key-label Isikutuvastus abc.txt-ks.cdoc out
    ```
+
+---
+
+## Re-encryption
+
+Re-encrypting a file decrypts it and then encrypts again for new recipients on-the-fly. This avoids writing the decrypted data to the disk.
+
+The syntax for re-encrypting an encrypted file is the following:
+
+```bash
+cdoc-tool re-encrypt OPTIONS INPUT_FILE --out OUTPUTFILE
+```
+
+### Options
+
+Both decryption and encryption options are supported with the following constraints:
+
+- Output directory, if specified, is ignored.
+- Only single URL can be specified for server. Thus, if re-encrypting by using capsule server base lock to another capsule server recipient, the configuration json should be used.
+- Only single PKCS11 library can be specified. Thus it is not possible to re-encrypt from one harware token to another, unless they use the same PKCS11 library.
+- All original locks (recipients) will be removed from container and replaced with new ones.
 
 ---
 

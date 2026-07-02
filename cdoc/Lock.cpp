@@ -18,27 +18,35 @@
 
 #include "Lock.h"
 
-#include "Certificate.h"
+#include "CDoc2.h"
 #include "Utils.h"
-#include "ILogger.h"
+
+#include "json/base.h"
+
+#include <ranges>
 
 namespace libcdoc {
 
 std::string
 Lock::getString(Params key) const
 {
-	const std::vector<uint8_t>& bytes = params.at(key);
-	return std::string((const char *) bytes.data(), bytes.size());
+    if (params.contains(key)) {
+        const std::vector<uint8_t>& bytes = params.at(key);
+        return {(const char *) bytes.data(), bytes.size()};
+    }
+    return {};
 }
 
 int32_t
 Lock::getInt(Params key) const
 {
-	const std::vector<uint8_t>& bytes = params.at(key);
 	int32_t val = 0;
-	for (int i = 0; (i < bytes.size()) && (i < 4); i++) {
-		val = (val << 8) | bytes.at(i);
-	}
+    if (params.contains(key)) {
+        const std::vector<uint8_t>& bytes = params.at(key);
+        for (int i = 0; (i < bytes.size()) && (i < 4); i++) {
+            val = (val << 8) | bytes.at(i);
+        }
+    }
 	return val;
 }
 
@@ -53,42 +61,57 @@ Lock::setInt(Params key, int32_t val)
 	params[key] = std::move(bytes);
 }
 
-bool
-Lock::hasTheSameKey(const Lock& other) const
+std::map<std::string, std::string>
+Lock::parseLabel(const std::string& label)
 {
-	if (!isPKI()) return false;
-	if (!other.isPKI()) return false;
-	if (!params.contains(Params::RCPT_KEY)) return false;
-	if (!other.params.contains(Params::RCPT_KEY)) return false;
-	std::vector<uint8_t> pki = getBytes(Params::RCPT_KEY);
-	if (pki.empty()) return false;
-	std::vector<uint8_t> other_pki = other.getBytes(Params::RCPT_KEY);
-	if (other_pki.empty()) return false;
-	return pki == other_pki;
-}
+    std::map<std::string, std::string> parsed_label;
+    // Check if provided label starts with the machine generated label prefix.
+    if (!label.starts_with(CDoc2::LABELPREFIX)) {
+        return parsed_label;
+    }
 
-bool
-Lock::hasTheSameKey(const std::vector<uint8_t>& public_key) const
-{
-	if (!isPKI()) return false;
-	if (!params.contains(Params::RCPT_KEY)) return false;
-	if (public_key.empty()) return false;
-	std::vector<uint8_t> pki = getBytes(Params::RCPT_KEY);
-	LOG_DBG("Lock key: {}", toHex(pki));
-	if (pki.empty()) return false;
-	return pki == public_key;
-}
+    auto label_wo_prefix = std::string_view(label).substr(CDoc2::LABELPREFIX.size());
 
-void
-Lock::setCertificate(const std::vector<uint8_t> &_cert)
-{
-	setBytes(Params::CERT, _cert);
-	Certificate ssl(_cert);
-	std::vector<uint8_t> pkey = ssl.getPublicKey();
-	Certificate::Algorithm algo = ssl.getAlgorithm();
+    // Label to be processed
+    std::string decodedBase64; // Strong ref
+    std::string_view label_to_prcss;
 
-	setBytes(Params::RCPT_KEY, pkey);
-	pk_type = (algo == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
+    // We ignore mediatype part
+
+    // Check, if the label is Base64 encoded
+    if (auto base64IndPos = label_wo_prefix.find(CDoc2::LABELBASE64IND);
+        base64IndPos != std::string::npos)
+    {
+        std::string base64_label(label_wo_prefix.substr(base64IndPos + CDoc2::LABELBASE64IND.size()));
+        decodedBase64 = jwt::base::decode<jwt::alphabet::base64>(base64_label);
+        label_to_prcss = decodedBase64;
+    } else if (label_wo_prefix.starts_with(",")) {
+        label_to_prcss = label_wo_prefix.substr(1);
+    } else {
+        label_to_prcss = label_wo_prefix;
+    }
+
+    for (const auto &part : std::ranges::split_view(label_to_prcss, '&'))
+    {
+        auto label_data_parts = std::ranges::split_view(part, '=');
+        if (label_data_parts.empty()) {
+            LOG_ERROR("The label '{}' is invalid", label);
+            continue;
+        }
+        auto it = label_data_parts.begin();
+        std::string key = urlDecode(range_to_sv(*it));
+        std::ranges::transform(key, key.begin(), [](unsigned char c){ return std::tolower(c); });
+        ++it;
+        // Ubuntu 22 ranges behave wrongly
+        if (it == label_data_parts.end()) {
+            parsed_label[std::move(key)] = {};
+        } else {
+            std::string value = urlDecode(range_to_sv(*it));
+            parsed_label[std::move(key)] = std::move(value);
+        }
+    }
+
+    return parsed_label;
 }
 
 } // namespace libcdoc

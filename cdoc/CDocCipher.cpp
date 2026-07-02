@@ -19,7 +19,8 @@
 #include "CDocCipher.h"
 #include "CDocReader.h"
 #include "CDoc2.h"
-#include "ILogger.h"
+#include "Crypto.h"
+#include "Io.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "PKCS11Backend.h"
@@ -32,64 +33,92 @@
 
 #include <sstream>
 #include <map>
-#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/core_names.h>
 
 using namespace std;
 using namespace libcdoc;
 
-static string GenerateRandomSequence();
+struct CipherInfo {
+    enum Mode {
+        ENCRYPT,
+        DECRYPT
+    };
+    /* Current mode (encrypt/decrypt) */
+    Mode mode;
+    /* Encryption recipients */
+    const std::vector<libcdoc::RcptInfo>& enc_rcpts;
+    /* Decryption recipient */
+    const RcptInfo& dec_rcpt;
+
+    CipherInfo(Mode m, const std::vector<libcdoc::RcptInfo>& enc, const RcptInfo& dec) : mode(m), enc_rcpts(enc), dec_rcpt(dec) {}
+    const libcdoc::RcptInfo* getRcpt(unsigned int lock_idx) const {
+        if (mode == ENCRYPT) {
+            if (lock_idx >= enc_rcpts.size()) return nullptr;
+            if (enc_rcpts[lock_idx].lock_idx != lock_idx) return nullptr;
+            return &enc_rcpts[lock_idx];
+        } else {
+            if (dec_rcpt.lock_idx != lock_idx) return nullptr;
+            return &dec_rcpt;
+        }
+    }
+};
 
 struct ToolPKCS11 : public libcdoc::PKCS11Backend {
-    const std::map<unsigned int, libcdoc::RcptInfo>& rcpts;
+    /* Shared cipher info */
+    const CipherInfo& c_info;
 
-    ToolPKCS11(const std::string& library, const std::map<unsigned int, libcdoc::RcptInfo>& vec) : libcdoc::PKCS11Backend(library), rcpts(vec) {}
+    ToolPKCS11(const std::string& library, const CipherInfo& info) : PKCS11Backend(library), c_info(info) {}
 
     libcdoc::result_t connectToKey(int idx, bool priv) override final {
-        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        libcdoc::RcptInfo rcpt = rcpts.at(idx);
+       const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
         if (!priv) {
-            return useSecretKey(rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+            return useSecretKey(long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
         } else {
-            return usePrivateKey(rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+            return usePrivateKey(long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
         }
     }
 };
 
 #ifdef _WIN32
 struct ToolWin : public libcdoc::WinBackend {
-    const std::map<unsigned int, libcdoc::RcptInfo>& rcpts;
+    /* Shared cipher info */
+    const CipherInfo& c_info;
 
-    ToolWin(const std::string& provider, const std::map<unsigned int, libcdoc::RcptInfo>& vec) : libcdoc::WinBackend(provider), rcpts(vec) {}
+    ToolWin(const std::string& provider, const CipherInfo& info) : libcdoc::WinBackend(provider), c_info(info) {}
 
     result_t connectToKey(int idx, bool priv) {
-        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
-        return useKey(rcpt.p11.key_label, std::string(rcpt.secret.cbegin(), rcpt.secret.cend()));
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        return useKey(rcpt->p11.key_label, std::string(rcpt->secret.cbegin(), rcpt->secret.cend()));
     }
 };
 #endif
 
 struct ToolCrypto : public libcdoc::CryptoBackend {
-    const std::map<unsigned int, libcdoc::RcptInfo>& rcpts;
+    /* Shared cipher info */
+    const CipherInfo& c_info;
+
+    /* Link to PKCS11 backend if needed */
     std::unique_ptr<libcdoc::PKCS11Backend> p11;
 #ifdef _WIN32
+    /* Link to NCRYPT backend if needed */
     std::unique_ptr<libcdoc::WinBackend> ncrypt;
 #endif
 
-    ToolCrypto(const std::map<unsigned int, libcdoc::RcptInfo>& recipients) : rcpts(recipients) {
-    }
+    ToolCrypto(const CipherInfo& info) : c_info(info) {}
 
     bool connectLibrary(const std::string& library) {
-        p11 = std::make_unique<ToolPKCS11>(library, rcpts);
+        p11 = std::make_unique<ToolPKCS11>(library, c_info);
         return true;
     }
 
     bool connectNCrypt() {
 #ifdef _WIN32
-        ncrypt = std::make_unique<ToolWin>("", rcpts);
+        ncrypt = std::make_unique<ToolWin>("", c_info);
         return true;
 #else
         return false;
@@ -97,45 +126,79 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
     }
 
     libcdoc::result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final {
-        if (p11) return p11->decryptRSA(dst, data, oaep, idx);
-        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
-        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
-        const uint8_t *p = rcpt.secret.data();
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (rcpt->isPKCS11()) {
+            if (!p11) return libcdoc::CRYPTO_ERROR;
+            return p11->decryptRSA(dst, data, oaep, idx);
+        }
+        if (rcpt->secret.empty()) return libcdoc::CRYPTO_ERROR;
+        const uint8_t *p = rcpt->secret.data();
 
-        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt.secret.size()));
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt->secret.size()));
         if (!key) return libcdoc::CRYPTO_ERROR;
+
+        // Note: EVP_PKEY_* functions return 1 on success, 0 on a (possibly
+        // recoverable) failure such as RSA padding mismatch, and a negative
+        // value on fatal errors. Anything other than 1 must be treated as
+        // failure - returning 0 as success would leak partial/garbage
+        // plaintext and create a Bleichenbacher-style padding oracle for
+        // PKCS#1 v1.5 (CDoc1) decryption.
+
+        if (!oaep) {
+            // If oaep is false, dst must be pre-allocated to the expected length.
+            // This is required to apply the implicit-rejection countermeasure on padding failure.
+            if (dst.empty()) {
+                LOG_ERROR("ToolCrypto::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+                return libcdoc::CRYPTO_ERROR;
+            }
+            // Implicit-rejection-aware decrypt. Returns OK on padding success
+            // AND on padding failure (with synthetic output). Only fatal errors
+            // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.
+            return libcdoc::Crypto::decryptRSAv15_implicitReject(dst, key.get(), data, dst.size());
+        }
 
         auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
         if (!ctx) return libcdoc::CRYPTO_ERROR;
 
-        int result = EVP_PKEY_decrypt_init(ctx.get());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt_init(ctx.get()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         if (oaep) {
-            if ((EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) < 0))
+            if (EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) != 1 ||
+                EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) != 1 ||
+                EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) != 1) {
                 return libcdoc::CRYPTO_ERROR;
+            }
         }
 
-        size_t outlen;
-        result = EVP_PKEY_decrypt(ctx.get(), NULL, &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        // First call queries the maximum output size.
+        size_t outlen = 0;
+        if (EVP_PKEY_decrypt(ctx.get(), nullptr, &outlen, data.data(), data.size()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         dst.resize(outlen);
-        result = EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size()) != 1) {
+            // Wipe any partial plaintext that may have been written before
+            // padding verification failed; it could otherwise be observed by
+            // callers and used to mount a padding-oracle attack.
+            libcdoc::cleanse(dst);
+            dst.clear();
+            return libcdoc::CRYPTO_ERROR;
+        }
         dst.resize(outlen);
 
         return libcdoc::OK;
     }
 
     libcdoc::result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) override final {
-        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
-        if (rcpt.secret.empty()) return libcdoc::CRYPTO_ERROR;
-        const uint8_t *p = rcpt.secret.data();
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        /* This only happens in decryption mode */
+        if (rcpt->secret.empty()) return libcdoc::CRYPTO_ERROR;
+        const uint8_t *p = rcpt->secret.data();
 
-        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_EC, nullptr, &p, rcpt.secret.size()));
+        auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_EC, nullptr, &p, rcpt->secret.size()));
         if (!key) return libcdoc::CRYPTO_ERROR;
 
         auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
@@ -143,7 +206,6 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
         EVP_PKEY *params = nullptr;
         if ((EVP_PKEY_paramgen_init(ctx.get()) < 0) ||
-            (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), NID_secp384r1) < 0) ||
             (EVP_PKEY_CTX_set_ec_param_enc(ctx.get(), OPENSSL_EC_NAMED_CURVE) < 0) ||
             (EVP_PKEY_paramgen(ctx.get(), &params) < 0))
             return libcdoc::CRYPTO_ERROR;
@@ -168,29 +230,49 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 
     libcdoc::result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
                         const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx) override final {
-        if (p11) return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (rcpt->isPKCS11()) {
+            if (!p11) return libcdoc::CRYPTO_ERROR;
+            return p11->deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
+        }
         return libcdoc::CryptoBackend::deriveConcatKDF(dst, publicKey, digest, algorithmID, partyUInfo, partyVInfo, idx);
     }
 
     libcdoc::result_t deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final {
-        if (p11) return p11->deriveHMACExtract(dst, publicKey, salt, idx);
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (rcpt->isPKCS11()) {
+            if (!p11) return libcdoc::CRYPTO_ERROR;
+            return p11->deriveHMACExtract(dst, publicKey, salt, idx);
+        }
         return libcdoc::CryptoBackend::deriveHMACExtract(dst, publicKey, salt, idx);
     }
 
     libcdoc::result_t extractHKDF(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt, int32_t kdf_iter, unsigned int idx) override {
-        if (p11) return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (rcpt->isPKCS11()) {
+            if (!p11) return libcdoc::CRYPTO_ERROR;
+            return p11->extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
+        }
         return libcdoc::CryptoBackend::extractHKDF(kek, salt, pw_salt, kdf_iter, idx);
     }
 
     libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final {
-        if (!rcpts.contains(idx)) return libcdoc::CRYPTO_ERROR;
-        const libcdoc::RcptInfo &rcpt = rcpts.at(idx);
-        secret = rcpt.secret;
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        secret = rcpt->secret;
         return secret.empty() ? INVALID_PARAMS : libcdoc::OK;
     }
 
     libcdoc::result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, int idx) {
-        if (p11) return p11->sign(dst, algorithm, digest, idx);
+        const libcdoc::RcptInfo *rcpt = c_info.getRcpt(idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (rcpt->isPKCS11()) {
+            if (!p11) return libcdoc::CRYPTO_ERROR;
+            return p11->sign(dst, algorithm, digest, idx);
+        }
         return libcdoc::NOT_IMPLEMENTED;
     }
 };
@@ -206,10 +288,9 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
-        if (!crypto->rcpts.contains(rcpt_idx)) return libcdoc::CRYPTO_ERROR;
-        const RcptInfo& rcpt = crypto->rcpts.at(rcpt_idx);
-        bool rsa = false;
-        return crypto->p11->getCertificate(dst, rsa, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+        const RcptInfo *rcpt = crypto->c_info.getRcpt(rcpt_idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        return crypto->p11->getCertificate(dst, long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
     }
 
     libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
@@ -218,7 +299,8 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     }
 
     libcdoc::result_t signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
-        if (!crypto->rcpts.contains(rcpt_idx)) return libcdoc::CRYPTO_ERROR;
+        const RcptInfo *rcpt = crypto->c_info.getRcpt(rcpt_idx);
+        if (!rcpt) return libcdoc::INTERNAL_ERROR;
         return crypto->p11->sign(dst, algorithm, digest, rcpt_idx);
     }
 
@@ -259,66 +341,62 @@ int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, 
 #define PUSH true
 
 static bool
-fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, std::map<unsigned int, libcdoc::RcptInfo>& crypto_rcpts, const std::vector<libcdoc::RcptInfo>& recipients)
+fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<libcdoc::Recipient>& rcpts, std::vector<libcdoc::RcptInfo>& recipients)
 {
-    int idx = 0;
-    for (const auto& rcpt : recipients) {
+    for (auto idx = 0; idx < recipients.size(); idx++) {
+        auto& rcpt = recipients[idx];
+        rcpt.lock_idx = int(idx);
         // Generate the labels if needed
         string label;
         if (!conf.gen_label) label = rcpt.label;
 
-        crypto_rcpts[idx++] = rcpt;
-
         Recipient key;
         if (rcpt.type == RcptInfo::Type::CERT) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.cert, conf.servers[0].ID);
+                key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makeCertificate(label, rcpt.cert);
+                key = libcdoc::Recipient::makeCertificate(std::move(label), rcpt.cert);
             }
         } else if (rcpt.type == RcptInfo::Type::SKEY) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
+            if (conf.gen_label)
+                key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
             LOG_DBG("Creating symmetric key:");
         } else if (rcpt.type == RcptInfo::Type::PKEY) {
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, rcpt.secret, libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret, conf.servers[0].ID);
             } else {
-                const uint8_t *der = rcpt.secret.data();
-                EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, rcpt.secret.size());
-                int id = EVP_PKEY_get_id(pkey);
-                std::vector<uint8_t> d(i2d_PublicKey(pkey, nullptr), 0);
-                uint8_t *p = d.data();
-                i2d_PublicKey(pkey, &p);
-                if (id == EVP_PKEY_EC) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::ECC);
-                } else if (id == EVP_PKEY_RSA) {
-                    key = libcdoc::Recipient::makePublicKey(label, rcpt.secret, libcdoc::Recipient::PKType::RSA);
-                }
+                key = libcdoc::Recipient::makePublicKey(std::move(label), rcpt.secret);
             }
             LOG_DBG("Creating public key:");
         } else if (rcpt.type == RcptInfo::Type::P11_SYMMETRIC) {
-            key = libcdoc::Recipient::makeSymmetric(label, 0);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 0);
+            if (conf.gen_label)
+                key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
         } else if (rcpt.type == RcptInfo::Type::P11_PKI) {
             std::vector<uint8_t> val;
-            bool rsa;
             ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-            int result = p11->getPublicKey(val, rsa, rcpt.p11.slot, rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
+            int result = p11->getPublicKey(val, long(rcpt.p11.slot), rcpt.secret, rcpt.p11.key_id, rcpt.p11.key_label);
             if (result != libcdoc::OK) {
                 LOG_ERROR("No such public key: {}", rcpt.p11.key_label);
                 continue;
             }
-            LOG_DBG("Public key ({}): {}", rsa ? "rsa" : "ecc", toHex(val));
+            LOG_DBG("Public key: {}", toHex(val));
             if (!conf.servers.empty()) {
-                key = libcdoc::Recipient::makeServer(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC, conf.servers[0].ID);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), val, conf.servers[0].ID);
             } else {
-                key = libcdoc::Recipient::makePublicKey(label, val, rsa ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC);
+                key = libcdoc::Recipient::makePublicKey(std::move(label), val);
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
-            key = libcdoc::Recipient::makeSymmetric(label, 65535);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 600000);
+            if (conf.gen_label)
+                key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
+#ifdef HAS_KEYSHARES
         } else if (rcpt.type == RcptInfo::Type::SHARE) {
             LOG_DBG("Creating keyshare recipient:");
-            key = libcdoc::Recipient::makeShare(label, conf.servers[0].ID, "PNOEE-" + rcpt.id);
+            key = libcdoc::Recipient::makeShare(std::move(label), conf.servers[0].ID, "PNOEE-" + rcpt.id);
+#endif
         }
 
         rcpts.push_back(std::move(key));
@@ -328,8 +406,9 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
 
 int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipients)
 {
-    std::map<unsigned int, libcdoc::RcptInfo> crypto_rcpts;
-    ToolCrypto crypto(crypto_rcpts);
+    CipherInfo cipher(CipherInfo::ENCRYPT, recipients, {});
+
+    ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
     network.certs = std::move(conf.accept_certs);
 
@@ -343,7 +422,7 @@ int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipien
     }
 
     vector<libcdoc::Recipient> rcpts;
-    fill_recipients_from_rcpt_info(conf, crypto, rcpts, crypto_rcpts, recipients);
+    fill_recipients_from_rcpt_info(conf, crypto, rcpts, recipients);
 
     if (rcpts.empty()) {
         LOG_ERROR("No key for encryption was found");
@@ -369,10 +448,11 @@ int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipien
     return result;
 }
 
-int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
+int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
 {
-    std::map<unsigned int, libcdoc::RcptInfo> rcpts;
-    ToolCrypto crypto(rcpts);
+    CipherInfo cipher(CipherInfo::DECRYPT, {}, recipient);
+
+    ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
     network.certs = std::move(conf.accept_certs);
 
@@ -386,7 +466,6 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
     }
     LOG_DBG("Reader created");
 
-    // Find lock by label/index/certificate
     int lock_idx = -1;
     const vector<Lock>& locks = rdr->getLocks();
     if (!recipient.label.empty()) {
@@ -398,16 +477,15 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
             }
         }
     } else if (recipient.lock_idx >= 0) {
-        if (recipient.lock_idx >= locks.size()) {
+        if (recipient.lock_idx >= (int)locks.size()) {
             LOG_ERROR("Label index is out of range");
             return 1;
         }
         lock_idx = recipient.lock_idx;
     } else if (crypto.p11) {
-        bool isRsa;
         vector<uint8_t> cert_bytes;
         ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
-        int64_t result = p11->getCertificate(cert_bytes, isRsa, (int) recipient.p11.slot, recipient.secret, recipient.p11.key_id, recipient.p11.key_label);
+        int64_t result = p11->getCertificate(cert_bytes, long(recipient.p11.slot), recipient.secret, recipient.p11.key_id, recipient.p11.key_label);
         if (result != libcdoc::OK) {
             LOG_ERROR("Certificate reading from SC card failed. Key label: {}", recipient.p11.key_label);
             return 1;
@@ -425,9 +503,9 @@ int CDocCipher::Decrypt(ToolConf& conf, const RcptInfo& recipient)
         return 1;
     }
     LOG_INFO("Found matching lock: {}", recipient.label);
-    rcpts[lock_idx] = recipient;
-
+    recipient.lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
+
     return Decrypt(rdr, lock_idx, conf.out);
 }
 
@@ -454,16 +532,41 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
     result = rdr->nextFile(name, size);
     while (result == libcdoc::OK) {
         LOG_DBG("Got file: {} {}", name, size);
-        filesystem::path fpath(name);
-        if (fpath.is_absolute()) {
-            LOG_WARN("File has absolute path, stripping");
-            fpath = fpath.filename();
-        } else if (fpath.has_parent_path()) {
-            LOG_WARN("File has parent path, stripping");
-            fpath = fpath.filename();
+
+        // Sanitise the attacker-controlled file name before composing the
+        // extraction path. See libcdoc::sanitiseExtractedFilename for the
+        // exact set of rejections (path separators, "..", drive letters,
+        // NUL bytes, reserved Windows device names, etc.).
+        std::string safeName = libcdoc::sanitiseExtractedFilename(name);
+        if (safeName.empty()) {
+            LOG_ERROR("Refusing unsafe entry name '{}'", name);
+            return 1;
         }
-        fpath = base_path / fpath;
-        std::ofstream ofs(fpath.string(), std::ios_base::binary);
+        filesystem::path fpath = base_path / filesystem::path(libcdoc::encodeName(safeName));
+
+        // Defence in depth: ensure the lexically-resolved target stays
+        // under base_path, even if a previously-extracted entry placed a
+        // symlink there.
+        std::error_code ec;
+        filesystem::path canonicalBase = filesystem::weakly_canonical(base_path, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise base path {}: {}",
+                      base_path.string(), ec.message());
+            return 1;
+        }
+        filesystem::path canonicalTarget = filesystem::weakly_canonical(fpath, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise target path {}: {}",
+                      fpath.string(), ec.message());
+            return 1;
+        }
+        if (canonicalTarget.parent_path() != canonicalBase) {
+            LOG_ERROR("Refusing entry '{}': target {} escapes base {}",
+                      name, canonicalTarget.string(), canonicalBase.string());
+            return 1;
+        }
+
+        std::ofstream ofs(fpath, std::ios_base::binary);
         if (ofs.bad()) {
             LOG_ERROR("Cannot open file {} for writing", fpath.string());
             return 1;
@@ -514,13 +617,14 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
 }
 
 int
-CDocCipher::ReEncrypt(ToolConf& conf, const RcptInfo& lock_info, std::vector<libcdoc::RcptInfo>& recipients)
+CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::RcptInfo>& enc_info)
 {
-    // Decryption part
-    std::map<unsigned int, libcdoc::RcptInfo> dec_info;
-    ToolCrypto crypto(dec_info);
+    /* First we decrypt FMK, then write recipients */
+    CipherInfo cipher(CipherInfo::DECRYPT, enc_info, dec_info);
+
+    ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
-    network.certs = std::move(conf.accept_certs);
+    network.certs = conf.accept_certs;
 
     if (!conf.library.empty()) {
         crypto.connectLibrary(conf.library);
@@ -536,58 +640,55 @@ CDocCipher::ReEncrypt(ToolConf& conf, const RcptInfo& lock_info, std::vector<lib
     const vector<Lock>& locks = rdr->getLocks();
 
     int lock_idx = -1;
-    if (!lock_info.label.empty()) {
+    if (!dec_info.label.empty()) {
         for (unsigned int i = 0; i < locks.size(); i++) {
-            if (locks[i].label == lock_info.label) {
+            if (locks[i].label == dec_info.label) {
                 lock_idx = i;
                 break;
             }
         }
-    } else if (lock_info.lock_idx >= 0) {
-        if (lock_info.lock_idx >= locks.size()) {
+    } else if (dec_info.lock_idx >= 0) {
+        if (dec_info.lock_idx >= locks.size()) {
             LOG_ERROR("Label index is out of range");
             return 1;
         }
-        lock_idx = lock_info.lock_idx;
+        lock_idx = dec_info.lock_idx;
+    } else if (crypto.p11) {
+        vector<uint8_t> cert_bytes;
+        ToolPKCS11* p11 = dynamic_cast<ToolPKCS11*>(crypto.p11.get());
+        int64_t result = p11->getCertificate(cert_bytes, long(dec_info.p11.slot), dec_info.secret, dec_info.p11.key_id, dec_info.p11.key_label);
+        if (result != libcdoc::OK) {
+            LOG_ERROR("Certificate reading from SC card failed. Key label: {}", dec_info.p11.key_label);
+            return 1;
+        }
+        LOG_DBG("Got certificate from P11 module");
+        result = rdr->getLockForCert(cert_bytes);
+        if (result < 0) {
+            LOG_ERROR("No lock for certificate {}", dec_info.p11.key_label);
+            return 1;
+        }
+        lock_idx = (int) result;
     }
     if (lock_idx < 0) {
-        LOG_ERROR("Lock not found: {}", lock_info.label);
+        LOG_ERROR("Lock not found: {}", dec_info.label);
         return 1;
     }
-
-    dec_info[lock_idx] = lock_info;
-
+    dec_info.lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
 
-    // Encryption part
-    std::map<unsigned int, libcdoc::RcptInfo> crypto_rcpts;
-    ToolCrypto enc_crypto(crypto_rcpts);
-    ToolNetwork enc_network(&enc_crypto);
-    enc_network.certs = std::move(conf.accept_certs);
-
-    if (!conf.library.empty()) {
-        enc_crypto.connectLibrary(conf.library);
-    }
-    for (const auto& rcpt : recipients) {
-        if (rcpt.type == RcptInfo::NCRYPT) {
-            enc_crypto.connectNCrypt();
-            break;
-        }
-    }
-
     vector<libcdoc::Recipient> rcpts;
-    fill_recipients_from_rcpt_info(conf, enc_crypto, rcpts, crypto_rcpts, recipients);
+    fill_recipients_from_rcpt_info(conf, crypto, rcpts, enc_info);
 
     if (rcpts.empty()) {
         LOG_ERROR("No key for encryption was found");
         return 1;
     }
 
-    unique_ptr<CDocWriter> wrtr(CDocWriter::createWriter(conf.cdocVersion, conf.out, &conf, &enc_crypto, &enc_network));
+    unique_ptr<CDocWriter> wrtr(CDocWriter::createWriter(conf.cdocVersion, conf.out, &conf, &crypto, &network));
 
     // Begin
     vector<uint8_t> fmk;
-    LOG_DBG("Fetching FMK, idx=", lock_idx);
+    LOG_DBG("Fetching FMK, idx={}", lock_idx);
     int64_t result = rdr->getFMK(fmk, lock_idx);
     LOG_DBG("Got FMK");
     if (result != libcdoc::OK) {
@@ -607,6 +708,10 @@ CDocCipher::ReEncrypt(ToolConf& conf, const RcptInfo& lock_info, std::vector<lib
         LOG_ERROR("Error while decrypting files: {} {}", result, rdr->getLastErrorStr());
         return 1;
     }
+
+    /* Now switch to encryption */
+    cipher.mode = CipherInfo::ENCRYPT;
+
     result = wrtr->beginEncryption();
     if (result != libcdoc::OK) {
         LOG_ERROR("Error starting encryption: {} {}", result, wrtr->getLastErrorStr());
@@ -664,7 +769,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, const RcptInfo& lock_info, std::vector<lib
     return 0;
 }
 
-void CDocCipher::Locks(const char* file) const
+void CDocCipher::Locks(const char* file)
 {
     unique_ptr<CDocReader> rdr(CDocReader::createReader(file, nullptr, nullptr, nullptr));
     if (!rdr) {
@@ -672,9 +777,10 @@ void CDocCipher::Locks(const char* file) const
         return;
     }
 
+    restoreFlags rf(cout);
     int lock_id = 1;
     for (const Lock& lock : rdr->getLocks()) {
-        map<string, string> parsed_label(Recipient::parseLabel(lock.label));
+        map<string, string> parsed_label(Lock::parseLabel(lock.label));
         if (parsed_label.empty()) {
             // Human-readable label
             cout << lock_id << ": " << lock.label << endl;
@@ -699,36 +805,4 @@ void CDocCipher::Locks(const char* file) const
 
         lock_id++;
     }
-}
-
-static string GenerateRandomSequence()
-{
-    constexpr uint32_t upperbound = 'z' - '0' + 1;
-    constexpr int MaxSequenceLength = 11;
-
-    uint32_t rnd;
-    uint8_t rndByte;
-    ostringstream sequence;
-    for (int cnt = 0; cnt < MaxSequenceLength;)
-    {
-        if (RAND_bytes(&rndByte, 1) < 1)
-        {
-            rnd = rand() % upperbound + '0';
-        }
-        else
-        {
-            rnd = rndByte % upperbound + '0';
-        }
-
-        // arc4random_uniform tends to be not available on all platforms.
-        // rnd = arc4random_uniform(upperbound) + '0';
-
-        if (isalnum(rnd))
-        {
-            sequence << static_cast<char>(rnd);
-            cnt++;
-        }
-    }
-
-    return sequence.str();
 }

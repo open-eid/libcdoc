@@ -20,7 +20,6 @@
 
 #include "Configuration.h"
 
-#include "ILogger.h"
 #include "Utils.h"
 
 #include "json/picojson/picojson.h"
@@ -98,7 +97,7 @@ JSONConfiguration::parse(std::istream& ifs)
 bool
 JSONConfiguration::parse(const std::string& file)
 {
-    std::ifstream ifs(file, std::ios::binary);
+    std::ifstream ifs(std::filesystem::path(encodeName(file)), std::ios::binary);
     if (ifs.bad()) {
         LOG_ERROR("Cannot open {}", file);
         return false;

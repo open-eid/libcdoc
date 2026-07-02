@@ -23,13 +23,14 @@
 
 namespace libcdoc {
 
-Certificate::Certificate(const std::vector<uint8_t>& cert)
-    : cert(Crypto::toX509(cert))
+Certificate::Certificate(const std::vector<uint8_t>& data)
+    : cert(d2i<d2i_X509,X509_free>(data, nullptr))
 {
+    if(!data.empty() && !cert)
+        LOG_SSL_ERROR("d2i_X509");
 }
 
-static std::string
-getName(const unique_free_t<X509>& cert, int NID)
+std::string Certificate::getName(int NID) const
 {
     std::string cn;
     if(!cert)
@@ -44,8 +45,8 @@ getName(const unique_free_t<X509>& cert, int NID)
     if(!e)
         return cn;
     char *data = nullptr;
-    int size = ASN1_STRING_to_UTF8((uint8_t**)&data, X509_NAME_ENTRY_get_data(e));
-    cn.assign(data, size_t(size));
+    if(int size = ASN1_STRING_to_UTF8((uint8_t**)&data, X509_NAME_ENTRY_get_data(e)); size > 0)
+        cn.assign(data, size_t(size));
     OPENSSL_free(data);
     return cn;
 }
@@ -53,25 +54,25 @@ getName(const unique_free_t<X509>& cert, int NID)
 std::string
 Certificate::getCommonName() const
 {
-	return getName(cert, NID_commonName);
+    return getName(NID_commonName);
 }
 
 std::string
 Certificate::getGivenName() const
 {
-	return getName(cert, NID_givenName);
+    return getName(NID_givenName);
 }
 
 std::string
 Certificate::getSurname() const
 {
-	return getName(cert, NID_surname);
+    return getName(NID_surname);
 }
 
 std::string
 Certificate::getSerialNumber() const
 {
-	return getName(cert, NID_serialNumber);
+    return getName(NID_serialNumber);
 }
 
 time_t
@@ -120,14 +121,17 @@ Certificate::getEIDType() const
         }
 
         if (policy.starts_with("1.3.6.1.4.1.51361.1.1.4") ||
-            policy.starts_with("1.3.6.1.4.1.51361.1.2.4")) {
+            policy.starts_with("1.3.6.1.4.1.51361.1.2.4") ||
+            policy.starts_with("1.3.6.1.4.1.51361.2.1.6")) {
             return DigiID_EResident;
         }
 
         if (policy.starts_with("1.3.6.1.4.1.51361.1.1") ||
-            policy.starts_with("1.3.6.1.4.1.51455.1.1") ||
             policy.starts_with("1.3.6.1.4.1.51361.1.2") ||
-            policy.starts_with("1.3.6.1.4.1.51455.1.2")) {
+            policy.starts_with("1.3.6.1.4.1.51361.2.1") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.1") ||
+            policy.starts_with("1.3.6.1.4.1.51455.1.2") ||
+            policy.starts_with("1.3.6.1.4.1.51455.2.1")) {
             return IDCard;
         }
     }
@@ -144,7 +148,7 @@ Certificate::getPublicKey() const
     return {};
 }
 
-Certificate::Algorithm
+Algorithm
 Certificate::getAlgorithm() const
 {
     if(!cert)
@@ -153,7 +157,7 @@ Certificate::getAlgorithm() const
     EVP_PKEY *pkey = X509_get0_pubkey(cert.get());
 	int alg = EVP_PKEY_get_base_id(pkey);
 
-	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : Algorithm::ECC;
+	return (alg == EVP_PKEY_RSA) ? Algorithm::RSA : (alg == EVP_PKEY_EC) ? Algorithm::ECC : Algorithm::UNKNOWN_ALGORITHM;
 }
 
 std::vector<uint8_t> Certificate::getDigest() const

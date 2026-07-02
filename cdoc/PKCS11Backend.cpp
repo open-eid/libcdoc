@@ -19,7 +19,6 @@
 #include "PKCS11Backend.h"
 #include "Certificate.h"
 #include "Crypto.h"
-#include "ILogger.h"
 #include "Utils.h"
 
 #include "pkcs11.h"
@@ -57,7 +56,7 @@ public:
 	bool load(const std::string &driver)
 	{
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-		return (h = LoadLibraryW(std::filesystem::u8path(driver).c_str())) != 0;
+        return (h = LoadLibraryW(std::filesystem::path(encodeName(driver)).c_str())) != 0;
 #else
 		return false;
 #endif
@@ -114,7 +113,7 @@ libcdoc::PKCS11Backend::Private::login(int slot, const std::vector<uint8_t>& pin
             LOG_DBG("PKCS11:C_Login CANCELED");
 			break;
 		default:
-      LOG_DBG("PKCS11:C_Login {}", result);
+            LOG_DBG("PKCS11:C_Login {}", result);
 			f->C_CloseSession(session);
 			session = CK_INVALID_HANDLE;
 			return PKCS11_ERROR;
@@ -297,7 +296,10 @@ libcdoc::PKCS11Backend::useSecretKey(int slot, const std::vector<uint8_t>& pin, 
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_SECRET_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: useSecretKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     d->key = handles[0];
     LOG_DBG("PKCS11: useSecretKey Using key {}", d->key);
     return OK;
@@ -313,14 +315,17 @@ libcdoc::PKCS11Backend::usePrivateKey(int slot, const std::vector<uint8_t>& pin,
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PRIVATE_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePrivateKey id={}; label={}; found {} keys", toHex(id), label, handles.size());
-    if (handles.size() != 1) return CRYPTO_ERROR;
+    if (handles.size() != 1) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     d->key = handles[0];
     LOG_DBG("PKCS11: usePrivateKey Using key {}", d->key);
     return OK;
 }
 
 libcdoc::result_t
-libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
     if(!d) return CRYPTO_ERROR;
     if (!d->session) {
@@ -329,18 +334,23 @@ libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_CERTIFICATE, id, label, nullptr);
     LOG_DBG("PKCS11: getCertificate id={}; label={}; found {} certificates", toHex(id), label, handles.size());
-    if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+    if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
     CK_OBJECT_HANDLE handle = handles[0];
     val = d->attribute(d->session, handle, CKA_VALUE);
     if (val.empty()) {
         LOG_DBG("PKCS11: getCertificate CKA_VALUE error");
+    	d->logout();
         return CRYPTO_ERROR;
     }
+	d->logout();
     return OK;
 }
 
 libcdoc::result_t
-libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
+libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label)
 {
 	if(!d) return CRYPTO_ERROR;
     if (!d->session) {
@@ -349,68 +359,171 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int s
     }
     std::vector<CK_OBJECT_HANDLE> handles = d->findObjects(d->session, CKO_PUBLIC_KEY, id, label, nullptr);
     LOG_DBG("PKCS11: usePublicKey id={}; label={}; found {} objects", toHex(id), label, handles.size());
-	if (handles.empty() || (handles.size() != 1)) return CRYPTO_ERROR;
+	if (handles.empty() || (handles.size() != 1)) {
+    	d->logout();
+        return CRYPTO_ERROR;
+    }
 	CK_OBJECT_HANDLE handle = handles[0];
 	std::vector<uint8_t> v = d->attribute(d->session, handle, CKA_KEY_TYPE);
 	if (v.empty()) {
         LOG_DBG("PKCS11: getValue CKA_KEY_TYPE error");
+    	d->logout();
 		return CRYPTO_ERROR;
 	}
-	rsa = (*((CK_KEY_TYPE *) v.data()) == CKK_RSA);
-    if (rsa) return libcdoc::NOT_IMPLEMENTED;
+	if (*((CK_KEY_TYPE *) v.data()) != CKK_EC)
+        return libcdoc::NOT_IMPLEMENTED;
     v = d->attribute(d->session, handle, CKA_EC_PARAMS);
 	if (v.empty()) {
         LOG_DBG("PKCS11: getValue CKA_EC_PARAMS error");
+    	d->logout();
 		return CRYPTO_ERROR;
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
-    if (w.empty()) {
-        LOG_DBG("PKCS11: getValue CKA_EC_POINT error");
+    if (w.size() < 2) {
+        LOG_DBG("PKCS11: getValue CKA_EC_POINT too short");
+        d->logout();
         return CRYPTO_ERROR;
     }
     const uint8_t *p = v.data();
     EC_GROUP *group = d2i_ECPKParameters(nullptr, &p, v.size());
     if (!group) {
         LOG_DBG("PKCS11: getValue d2i_ECPKParameters error");
+    	d->logout();
         return CRYPTO_ERROR;
     }
     EC_POINT *pub_key_point = EC_POINT_new(group);
-    int result =  EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL);
+    if (!pub_key_point) {
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
+    if (EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL) != 1) {
+        LOG_DBG("PKCS11: EC_POINT_oct2point error");
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     // Associate the Point with an EC_KEY: Finally, set up an EC_KEY structure and assign the point as the public key.
     EC_KEY *key = EC_KEY_new();
+    if (!key) {
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EC_KEY_set_group(key, group);
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    if (!evp_pkey) {
+        EC_KEY_free(key);
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
-    val = Crypto::toPublicKeyDer(evp_pkey);
+    val = Crypto::toPublicKeyDerLong(evp_pkey);
     EVP_PKEY_free(evp_pkey);
     EC_POINT_free(pub_key_point);
     EC_GROUP_free(group);
+	d->logout();
     return OK;
 }
 
 libcdoc::result_t
 libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
-	if(!d) return CRYPTO_ERROR;
+    if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(idx, true);
     if (result != OK) return result;
 
-	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
-	auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
-	if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	CK_ULONG size = 0;
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	dst.resize(size);
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) return CRYPTO_ERROR;
-	d->logout();
+    if (!oaep) {
+        // If oaep is false, dst must be pre-allocated to the expected length.
+        // This is required to apply the implicit-rejection countermeasure on padding failure.
+        if (dst.empty()) {
+            LOG_ERROR("PKCS11Backend::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+            return CRYPTO_ERROR;
+        }
+        // Use raw RSA (CKM_RSA_X_509) so libcdoc can apply RFC 8017 implicit
+        // rejection in user space. CKM_RSA_PKCS lets the token strip the
+        // padding, but most PKCS#11 tokens leak the success/failure bit
+        // through CKR_ENCRYPTED_DATA_INVALID vs CKR_OK and through the time
+        // taken; the only portable mitigation is to never let the token see
+        // the padding decision. CKM_RSA_X_509 is a baseline mechanism
+        // supported by every PKCS#11 token that supports RSA.
+        CK_MECHANISM mech { CKM_RSA_X_509, nullptr, 0 };
+        if (d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+
+        CK_ULONG em_size = 0;
+        if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), nullptr, &em_size) != CKR_OK) {
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+        std::vector<uint8_t> em(size_t(em_size), 0);
+        if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), em.data(), &em_size) != CKR_OK) {
+            libcdoc::cleanse(em);
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+        em.resize(size_t(em_size));
+        d->logout();
+
+        // Build a synthetic seed that does not require access to the private
+        // key (which never leaves the token). HMAC the ciphertext with a
+        // public-but-token-bound value (CKA_ID concatenated with the modulus)
+        // so the seed is stable per (token-key, ct) pair while still being
+        // unpredictable to attackers.
+        std::vector<uint8_t> seed_key;
+        {
+            std::vector<uint8_t> id_attr = d->attribute(d->session, d->key, CKA_ID);
+            std::vector<uint8_t> mod_attr = d->attribute(d->session, d->key, CKA_MODULUS);
+            seed_key.reserve(id_attr.size() + mod_attr.size() + 16);
+            const std::string_view tag{"cdoc1-rsa-implicit-reject-pkcs11"};
+            seed_key.insert(seed_key.end(), tag.begin(), tag.end());
+            seed_key.insert(seed_key.end(), id_attr.begin(), id_attr.end());
+            seed_key.insert(seed_key.end(), mod_attr.begin(), mod_attr.end());
+        }
+        std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
+        libcdoc::cleanse(seed_key);
+        std::vector<uint8_t> synth = libcdoc::Crypto::expand(
+            prk, "cdoc1-rsa-implicit-reject", int(dst.size()));
+        libcdoc::cleanse(prk);
+        if (synth.size() != dst.size()) {
+            // Last-resort fallback: fixed zero seed. Worse than ideal but still
+            // length-uniform with the real-success path.
+            synth.assign(dst.size(), 0);
+        }
+
+        int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
+        libcdoc::cleanse(em);
+        libcdoc::cleanse(synth);
+        return rv;
+    }
+
+    CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
+    auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
+    if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    CK_ULONG size = 0;
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) {
+        // Always logout - failing to do so would leak the open session and
+        // (worse) reveal whether the second C_Decrypt failed for "padding"
+        // vs another reason via observable side-effects on the next call.
+        libcdoc::cleanse(dst);
+        dst.clear();
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    d->logout();
     return OK;
 }
 
@@ -545,15 +658,19 @@ libcdoc::PKCS11Backend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm,
     data.insert(data.end(), digest.begin(), digest.end());
 
     if(d->f->C_SignInit(d->session, &mech, d->key) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
     CK_ULONG size = 0;
     if(d->f->C_Sign(d->session, CK_BYTE_PTR(data.data()), CK_ULONG(data.size()), nullptr, &size) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
     dst.resize(int(size));
     if(d->f->C_Sign(d->session, CK_BYTE_PTR(data.data()), CK_ULONG(data.size()), CK_BYTE_PTR(dst.data()), &size) != CKR_OK) {
+    	d->logout();
         return PKCS11_ERROR;
     }
+    d->logout();
     return OK;
 }

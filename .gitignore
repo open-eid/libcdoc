@@ -11,3 +11,5 @@ obj-x86_64-linux-gnu/
 test/data/tmp/
 vcpkg/
 vcpkg_installed/
+examples/java/.gradle
+examples/java/bin

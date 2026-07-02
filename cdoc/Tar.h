@@ -29,16 +29,16 @@ struct TarConsumer final : public MultiDataConsumer
 {
 public:
 	TarConsumer(DataConsumer *dst, bool take_ownership);
-	~TarConsumer();
+    ~TarConsumer() final;
 
-    libcdoc::result_t write(const uint8_t *src, size_t size) final;
-    libcdoc::result_t close() final;
-    bool isError() final;
+    libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final;
+    libcdoc::result_t close() noexcept final;
+    bool isError() noexcept final;
     libcdoc::result_t open(const std::string& name, int64_t size) final;
 private:
-    result_t writeHeader(const Header &h);
-    result_t writeHeader(Header &h, int64_t size);
-    result_t writePadding(int64_t size);
+    result_t writeHeader(const Header &h) noexcept;
+    result_t writeHeader(const std::string& name, int64_t size, char typeflag = '0') noexcept;
+    result_t writePadding(int64_t size) noexcept;
 
 	DataConsumer *_dst;
 	bool _owned;
@@ -46,24 +46,26 @@ private:
 	int64_t _current_written = 0;
 };
 
-struct TarSource : public MultiDataSource
+struct TarSource final : public MultiDataSource
 {
 public:
 	TarSource(DataSource *src, bool take_ownership);
-	~TarSource();
-    libcdoc::result_t read(uint8_t *dst, size_t size) override final;
-	bool isError() override final;
-	bool isEof() override final;
-    libcdoc::result_t getNumComponents() override final { return NOT_IMPLEMENTED; };
-    libcdoc::result_t next(std::string& name, int64_t& size) override final;
+    ~TarSource() final;
+    libcdoc::result_t read(uint8_t *dst, size_t size) noexcept final;
+    bool isError() noexcept final;
+    bool isEof() noexcept final;
+    libcdoc::result_t getNumComponents() final { return NOT_IMPLEMENTED; };
+    libcdoc::result_t next(std::string& name, int64_t& size) final;
 private:
 	DataSource *_src;
 	bool _owned;
-	bool _eof;
-	int _error;
-	size_t _block_size;
-	size_t _data_size;
-	size_t _pos;
+    bool _eof = false;
+    int _error = OK;
+    size_t _block_size = 0;
+    size_t _data_size = 0;
+    size_t _pos = 0;
+
+	libcdoc::result_t readPaxHeader(const Header& hdr, std::string& name, int64_t& size);
 };
 
 } // namespace libcdoc

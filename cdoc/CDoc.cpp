@@ -21,9 +21,13 @@
 #include "CDoc2Writer.h"
 #include "CDoc2Reader.h"
 #include "Configuration.h"
-#include "ILogger.h"
 #include "Io.h"
 #include "NetworkBackend.h"
+#include "Utils.h"
+#include "Logger.h"
+
+#include <iostream>
+#include <filesystem>
 
 namespace libcdoc {
 
@@ -52,6 +56,7 @@ static constexpr Result results[] = {
     {HASH_MISMATCH, "Hash mismatch"},
     {CONFIGURATION_ERROR, "Configuration error"},
     {NOT_FOUND, "Object not found"},
+    {INTERNAL_ERROR, "Internal error"},
     {UNSPECIFIED_ERROR, "Unspecified error"},
     };
 
@@ -69,6 +74,58 @@ std::string
 getVersion()
 {
     return VERSION_STR;
+}
+
+/**
+ * @brief Console logger
+ *
+ * An ILogger subclass that logs text to console.
+ *
+ * Info messages are logged to cout, all others to cerr.
+ */
+
+class ConsoleLogger : public Logger
+{
+public:
+    void logMessage(LogLevel level, std::string_view file, int line, std::string_view message) override
+    {
+        // We ignore by default the file name and line number, and call LogMessage with the level and message.
+        std::ostream& ofs = (level == LEVEL_INFO) ? std::cout : std::cerr;
+        if (!file.empty()) {
+            ofs << std::filesystem::path(encodeName(file)).filename().string() << ':' << line << " " << message << '\n';
+        } else {
+            ofs << message << '\n';
+        }
+    }
+};
+
+static Logger *
+getDefaultLogger()
+{
+    static ConsoleLogger clogger;
+    return &clogger;
+}
+
+static Logger *sys_logger = nullptr;
+
+void
+setLogger(Logger *logger)
+{
+    sys_logger = logger;
+}
+
+void
+setLogLevel(LogLevel level)
+{
+    Logger *logger = (sys_logger) ? sys_logger : getDefaultLogger();
+    logger->setMinLogLevel(level);
+}
+
+void
+log(LogLevel level, std::string_view file, int line, std::string_view msg)
+{
+    Logger *logger = (sys_logger) ? sys_logger : getDefaultLogger();
+    logger->log(level, file, line, msg);
 }
 
 int
@@ -103,7 +160,7 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
     int version = getCDocFileVersion(src);
     LOG_DBG("CDocReader::createReader: version {}", version);
     if (src->seek(0) != libcdoc::OK) return nullptr;
-    CDocReader *reader;
+    CDocReader *reader = nullptr;
 	if (version == 1) {
         reader = new CDoc1Reader(src, take_ownership);
 	} else if (version == 2) {
@@ -111,12 +168,16 @@ libcdoc::CDocReader::createReader(DataSource *src, bool take_ownership, Configur
     } else {
         if(take_ownership)
             delete src;
-		return nullptr;
-	}
-	reader->conf = conf;
-	reader->crypto = crypto;
+        return nullptr;
+    }
+    if (!reader->getLastErrorStr().empty()) {
+        delete reader;
+        return nullptr;
+    }
+    reader->conf = conf;
+    reader->crypto = crypto;
     reader->network = network;
-	return reader;
+    return reader;
 }
 
 libcdoc::CDocReader *
@@ -125,76 +186,22 @@ libcdoc::CDocReader::createReader(const std::string& path, Configuration *conf, 
     if(path.empty())
         return nullptr;
     auto isrc = make_unique<IStreamSource>(path);
-    int version = getCDocFileVersion(isrc.get());
-    LOG_DBG("CDocReader::createReader: version {}", version);
-    if (isrc->seek(0) != libcdoc::OK)
-        return nullptr;
-    CDocReader *reader;
-    if (version == 1) {
-        reader = new CDoc1Reader(isrc.release(), true);
-    } else if (version == 2) {
-        reader = new CDoc2Reader(isrc.release(), true);
-    } else {
-        return nullptr;
-    }
-    reader->conf = conf;
-    reader->crypto = crypto;
-    reader->network = network;
-    return reader;
+    return createReader(isrc.release(), true, conf, crypto, network);
 }
 
 libcdoc::CDocReader *
 libcdoc::CDocReader::createReader(std::istream& ifs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network)
 {
-    libcdoc::IStreamSource *isrc = new libcdoc::IStreamSource(&ifs, false);
-    int version = getCDocFileVersion(isrc);
-    LOG_DBG("CDocReader::createReader: version {}", version);
-    CDocReader *reader;
-    if (version == 1) {
-        reader = new CDoc1Reader(isrc, true);
-    } else if (version == 2) {
-        reader = new CDoc2Reader(isrc, true);
-    } else {
-        delete isrc;
-        return nullptr;
-    }
-    reader->conf = conf;
-    reader->crypto = crypto;
-    reader->network = network;
-    return reader;
+    auto isrc = make_unique<IStreamSource>(&ifs, false);
+    return createReader(isrc.release(), true, conf, crypto, network);
 }
-
-#if LIBCDOC_TESTING
-int64_t
-libcdoc::CDocReader::testConfig(std::vector<uint8_t>& dst)
-{
-    LOG_TRACE("CDocReader::testConfig::Native superclass");
-    if (conf) {
-        LOG_DBG("CDocReader::testConfig this={} conf={}", reinterpret_cast<void*>(this), reinterpret_cast<void*>(conf));
-    }
-    LOG_ERROR("CDocReader::testConfig::conf is null");
-    return WORKFLOW_ERROR;
-}
-
-int64_t
-libcdoc::CDocReader::testNetwork(std::vector<std::vector<uint8_t>>& dst)
-{
-    LOG_TRACE("CDocReader::testNetwork::Native superclass");
-    if (network) {
-        LOG_DBG("CDocReader::testNetwork this={} network={}", reinterpret_cast<void*>(this), reinterpret_cast<void*>(network));
-        return network->test(dst);
-    }
-    LOG_ERROR("CDocReader::testNetwork::network is null");
-    return WORKFLOW_ERROR;
-}
-#endif
 
 libcdoc::CDocWriter::CDocWriter(int _version, DataConsumer *_dst, bool take_ownership)
 	: version(_version), dst(_dst), owned(take_ownership)
 {
 };
 
-libcdoc::CDocWriter::~CDocWriter()
+libcdoc::CDocWriter::~CDocWriter() noexcept
 {
 	if (owned) delete(dst);
 }

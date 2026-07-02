@@ -20,9 +20,9 @@
 
 #include "Certificate.h"
 #include "Configuration.h"
+#include "Crypto.h"
 #include "CryptoBackend.h"
 #include "CDoc2.h"
-#include "ILogger.h"
 #include "KeyShares.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
@@ -32,12 +32,11 @@
 
 #include "header_generated.h"
 
+// TODO: Port to new OpenSSL
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/evp.h>
 #include <openssl/x509.h>
-
-#include <fstream>
 
 // fixme: Placeholder
 #define t_(t) t
@@ -87,11 +86,25 @@ struct CDoc2Reader::Private {
     std::unique_ptr<libcdoc::DecryptionSource> dec;
     std::unique_ptr<libcdoc::ZSource> zsrc;
     std::unique_ptr<libcdoc::TarSource> tar;
+
+    result_t decryptAllAndClose() {
+        std::array<uint8_t, 1024> buf;
+        result_t rv = dec->read(buf.data(), buf.size());
+        while (rv == buf.size()) {
+            rv = dec->read(buf.data(), buf.size());
+        }
+        if (rv < 0) return rv;
+        zsrc.reset();
+        tar.reset();
+        rv = dec->close();
+        dec.reset();
+        return rv;
+    }
+
+    static void buildLock(Lock& lock, const cdoc20::header::RecipientRecord& recipient);
 };
 
-CDoc2Reader::~CDoc2Reader()
-{
-}
+CDoc2Reader::~CDoc2Reader() = default;
 
 const std::vector<Lock>&
 CDoc2Reader::getLocks()
@@ -101,15 +114,17 @@ CDoc2Reader::getLocks()
 
 libcdoc::result_t
 CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
-    libcdoc::Certificate cc(cert);
-    std::vector<uint8_t> other_key = cc.getPublicKey();
+    std::vector<uint8_t> other_key = libcdoc::Certificate(cert).getPublicKey();
+    if (other_key.empty())
+         return libcdoc::NOT_FOUND;
     LOG_DBG("Cert public key: {}", toHex(other_key));
-    for (int lock_idx = 0; lock_idx < priv->locks.size(); lock_idx++) {
-        const Lock &ll = priv->locks.at(lock_idx);
+    int lock_idx = 0;
+    for (const Lock &ll : priv->locks) {
         LOG_DBG("Lock {} type {}", lock_idx, (int) ll.type);
-        if (ll.hasTheSameKey(other_key)) {
+        if (ll.isPKI() && ll.getBytes(libcdoc::Lock::RCPT_KEY) == other_key) {
             return lock_idx;
         }
+        ++lock_idx;
     }
     setLastError("No lock found with certificate key");
     return libcdoc::NOT_FOUND;
@@ -118,38 +133,60 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
 libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
+    if (lock_idx >= priv->locks.size()) {
+        setLastError(t_("Invalid lock index"));
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WRONG_ARGUMENTS;
+    }
     LOG_DBG("CDoc2Reader::getFMK: {}", lock_idx);
     LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
     const Lock& lock = priv->locks.at(lock_idx);
+    LOG_DBG("Label: {}", lock.label);
+
+    // RAII-cleanse `kek` on every exit from this function (including
+    // exceptions). All early returns below previously had to remember to
+    // call libcdoc::cleanse(kek) - which several of them did not. With the
+    // guard the wipe is unconditional.
     std::vector<uint8_t> kek;
+    libcdoc::Cleanser kek_guard(kek);
+
     if (lock.type == Lock::Type::PASSWORD) {
         // Password
         LOG_DBG("password");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
+        LOG_DBG("info: {}", toHex(info_str));
         std::vector<uint8_t> kek_pm;
-        crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx);
-        LOG_DBG("password2");
+        libcdoc::Cleanser kek_pm_guard(kek_pm);
+        if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx); rv != libcdoc::OK) {
+            setLastError(crypto->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
+        LOG_TRACE_KEY("salt: {}", lock.getBytes(Lock::SALT));
+        LOG_TRACE_KEY("kek_pm: {}", kek_pm);
         kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
-        if (kek.empty()) return libcdoc::CRYPTO_ERROR;
-        LOG_DBG("password3");
     } else if (lock.type == Lock::Type::SYMMETRIC_KEY) {
         // Symmetric key
         LOG_DBG("symmetric");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
-        std::vector<uint8_t> kek_pm;
-        crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx);
-        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
-
-        LOG_DBG("Label: {}", lock.label);
         LOG_DBG("info: {}", toHex(info_str));
+        std::vector<uint8_t> kek_pm;
+        libcdoc::Cleanser kek_pm_guard(kek_pm);
+        if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx); rv != libcdoc::OK) {
+            setLastError(crypto->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
         LOG_TRACE_KEY("salt: {}", lock.getBytes(Lock::SALT));
         LOG_TRACE_KEY("kek_pm: {}", kek_pm);
-        LOG_TRACE_KEY("kek: {}", kek);
-
-        if (kek.empty()) return libcdoc::CRYPTO_ERROR;
+        kek = libcdoc::Crypto::expand(kek_pm, info_str, 32);
     } else if ((lock.type == Lock::Type::PUBLIC_KEY) || (lock.type == Lock::Type::SERVER)) {
         // Public/private key
         std::vector<uint8_t> key_material;
+        // SERVER path fetches key_material over the network; PUBLIC_KEY
+        // takes it from the lock. Either way it gets fed into ECDH or RSA
+        // and is sensitive enough to wipe in-scope.
+        libcdoc::Cleanser key_material_guard(key_material);
         if(lock.type == Lock::Type::SERVER) {
             if(!conf) {
                 setLastError("Configuration is missing");
@@ -178,8 +215,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             key_material = lock.getBytes(Lock::Params::KEY_MATERIAL);
         }
 
-        LOG_DBG("Public key: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
-        LOG_DBG("Key material: {}", toHex(key_material));
+        LOG_TRACE_KEY("Public key: {}", lock.getBytes(Lock::Params::RCPT_KEY));
+        LOG_TRACE_KEY("Key material: {}", key_material);
 
         if (lock.isRSA()) {
             int result = crypto->decryptRSA(kek, key_material, true, lock_idx);
@@ -190,21 +227,19 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             }
         } else {
             std::vector<uint8_t> kek_pm;
-            int result = crypto->deriveHMACExtract(kek_pm, key_material, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()), lock_idx);
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
+            int result = crypto->deriveHMACExtract(kek_pm, key_material, toUint8Vector(libcdoc::CDoc2::KEKPREMASTER), lock_idx);
             if (result < 0) {
                 setLastError(crypto->getLastErrorStr(result));
                 LOG_ERROR("{}", last_error);
                 return result;
             }
-
             LOG_TRACE_KEY("Key kekPm: {}", kek_pm);
-
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, lock.getBytes(Lock::Params::RCPT_KEY));
-
             LOG_DBG("info: {}", toHex(info_str));
-
             kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
         }
+#ifdef HAS_KEYSHARES
     } else  if (lock.type == Lock::Type::SHARE_SERVER) {
         /* SALT */
         std::vector<uint8_t> salt = lock.getBytes(Lock::SALT);
@@ -297,13 +332,18 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                 LOG_ERROR("Cannot fetch share {}", i);
                 return result;
             }
-            if (Crypto::xor_data(kek, kek, share.share) != libcdoc::OK) {
+            // Each individual share is itself sensitive: combined with the
+            // remaining shares it reconstructs the KEK. Wipe it after
+            // XOR-ing it into kek so it does not linger on the heap.
+            libcdoc::Cleanser share_guard(share.share);
+            if (auto err = libcdoc::Crypto::xor_data(kek, kek, share.share); err != libcdoc::OK) {
                 setLastError("Failed to derive kek");
                 LOG_ERROR("Failed to derive kek");
-                return libcdoc::CRYPTO_ERROR;
+                return err;
             }
         }
         LOG_INFO("Fetched all shares");
+#endif
     } else {
         setLastError(t_("Unknown lock type"));
         LOG_ERROR("Unknown lock type: %d", (int) lock.type);
@@ -312,27 +352,35 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 
     LOG_TRACE_KEY("KEK: {}", kek);
 
-
     if(kek.empty()) {
         setLastError(t_("Failed to derive KEK"));
         LOG_ERROR("{}", last_error);
         return CRYPTO_ERROR;
     }
-    if (libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek) != libcdoc::OK) {
+    if (auto err = libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek); err != libcdoc::OK) {
         setLastError(t_("Failed to decrypt/derive fmk"));
         LOG_ERROR("{}", last_error);
-        return libcdoc::CRYPTO_ERROR;
+        // Wipe any partial XOR result before surfacing the error.
+        libcdoc::cleanse(fmk);
+        fmk.clear();
+        return err;
     }
     std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
+    libcdoc::Cleanser hhk_guard(hhk);
 
     LOG_TRACE_KEY("xor: {}", lock.encrypted_fmk);
     LOG_TRACE_KEY("fmk: {}", fmk);
     LOG_TRACE_KEY("hhk: {}", hhk);
     LOG_TRACE_KEY("hmac: {}", priv->headerHMAC);
 
-    if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
+    if(!libcdoc::constant_time_compare(libcdoc::Crypto::sign_hmac(hhk, priv->header_data), priv->headerHMAC)) {
         setLastError(t_("Wrong decryption key (user key)"));
         LOG_ERROR("{}", last_error);
+        // Authentication failed: the FMK we computed is for the wrong
+        // recipient. Wipe it before returning so the caller cannot leak
+        // it (e.g. via a logging hook that sees "fmk" in scope).
+        libcdoc::cleanse(fmk);
+        fmk.clear();
         return libcdoc::WRONG_KEY;
     }
     setLastError({});
@@ -363,7 +411,6 @@ CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer
         result = nextFile(name, size);
     }
     if (result != libcdoc::END_OF_STREAM) {
-        setLastError(priv->tar->getLastErrorStr(result));
         LOG_ERROR("{}", last_error);
         return result;
     }
@@ -379,7 +426,7 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
         return libcdoc::WRONG_ARGUMENTS;
     }
     if (!priv->_at_nonce) {
-        int result = priv->_src->seek(priv->_nonce_pos);
+        result_t result = priv->_src->seek(priv->_nonce_pos);
         if (result != libcdoc::OK) {
             setLastError(priv->_src->getLastErrorStr(result));
             LOG_ERROR("{}", last_error);
@@ -391,13 +438,12 @@ CDoc2Reader::beginDecryption(const std::vector<uint8_t>& fmk)
     LOG_TRACE_KEY("cek: {}", cek);
 
     priv->dec = std::make_unique<libcdoc::DecryptionSource>(*priv->_src, EVP_chacha20_poly1305(), cek, libcdoc::CDoc2::NONCE_LEN);
-    std::vector<uint8_t> aad(libcdoc::CDoc2::PAYLOAD.cbegin(), libcdoc::CDoc2::PAYLOAD.cend());
-    aad.insert(aad.end(), priv->header_data.cbegin(), priv->header_data.cend());
-    aad.insert(aad.end(), priv->headerHMAC.cbegin(), priv->headerHMAC.cend());
-    if(priv->dec->updateAAD(aad) != OK) {
-        setLastError("Wrong decryption key (FMK)");
-        LOG_ERROR("{}", last_error);
-        return libcdoc::WRONG_KEY;
+    for(const auto &aad: {libcdoc::CDoc2::PAYLOAD, priv->header_data, priv->headerHMAC}) {
+        if(auto rv = priv->dec->updateAAD(aad); rv != OK) {
+            setLastError(priv->dec->getLastErrorStr(rv));
+            LOG_ERROR("{}", last_error);
+            return rv;
+        }
     }
 
     priv->zsrc = std::make_unique<libcdoc::ZSource>(priv->dec.get(), false);
@@ -414,8 +460,13 @@ CDoc2Reader::nextFile(std::string& name, int64_t& size)
         LOG_ERROR("{}", last_error);
             return libcdoc::WORKFLOW_ERROR;
         }
-        result_t result = priv->tar->next(name, size);
-    if (result != OK) {
+    result_t result = priv->tar->next(name, size);
+    if (result < 0) {
+        result_t sr = priv->decryptAllAndClose();
+        if (sr != OK) {
+            setLastError("Crypto payload integrity check failed");
+            return sr;
+        }
         setLastError(priv->tar->getLastErrorStr(result));
     }
     return result;
@@ -430,7 +481,12 @@ CDoc2Reader::readData(uint8_t *dst, size_t size)
         return libcdoc::WORKFLOW_ERROR;
     }
     result_t result = priv->tar->read(dst, size);
-    if (result != OK) {
+    if (result < 0) {
+        result_t sr = priv->decryptAllAndClose();
+        if (sr != OK) {
+            setLastError("Crypto payload integrity check failed");
+            return sr;
+        }
         setLastError(priv->tar->getLastErrorStr(result));
     }
     return result;
@@ -439,11 +495,15 @@ CDoc2Reader::readData(uint8_t *dst, size_t size)
 libcdoc::result_t
 CDoc2Reader::finishDecryption()
 {
+    if (!priv->tar) {
+        setLastError("finishDecryption() called before beginDecryption()");
+        LOG_ERROR("{}", last_error);
+        return libcdoc::WORKFLOW_ERROR;
+    }
     if (!priv->zsrc->isEof()) {
         setLastError(t_("CDoc contains additional payload data that is not part of content"));
         LOG_WARN("{}", last_error);
     }
-
     setLastError({});
     priv->zsrc.reset();
     priv->tar.reset();
@@ -455,17 +515,152 @@ CDoc2Reader::finishDecryption()
     return rv;
 }
 
+void
+CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecord& recipient)
+{
+    using namespace cdoc20::recipients;
+    using namespace cdoc20::header;
+
+    lock.label = recipient.key_label()->str();
+    lock.encrypted_fmk = toUint8Vector(recipient.encrypted_fmk());
+
+    if(recipient.fmk_encryption_method() != cdoc20::header::FMKEncryptionMethod::XOR)
+    {
+        LOG_WARN("Unsupported FMK encryption method");
+        return;
+    }
+    switch(recipient.capsule_type())
+    {
+    case Capsule::recipients_ECCPublicKeyCapsule:
+        if(const auto *capsule = recipient.capsule_as_recipients_ECCPublicKeyCapsule()) {
+            lock.type = Lock::Type::PUBLIC_KEY;
+            lock.pk_type = Algorithm::ECC;
+            if(capsule->curve() == EllipticCurve::secp384r1) {
+                lock.ec_type = Curve::SECP_384_R1;
+            } else if (capsule->curve() == EllipticCurve::secp256r1) {
+                lock.ec_type = Curve::SECP_256_R1;
+            } else if (capsule->curve() == EllipticCurve::secp521r1) {
+                lock.ec_type = Curve::SECP_521_R1;
+            } else {
+                LOG_WARN("Unknown ECC curve: {}", (int) capsule->curve());
+                lock.ec_type = Curve::UNKNOWN_CURVE;
+            }
+            lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(capsule->recipient_public_key()));
+            lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(capsule->sender_public_key()));
+            LOG_DBG("Load PK: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
+        }
+        return;
+    case Capsule::recipients_RSAPublicKeyCapsule:
+        if(const auto *key = recipient.capsule_as_recipients_RSAPublicKeyCapsule())
+        {
+            lock.type = Lock::Type::PUBLIC_KEY;
+            lock.pk_type = Algorithm::RSA;
+            lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(key->recipient_public_key()));
+            lock.setBytes(Lock::Params::KEY_MATERIAL, toUint8Vector(key->encrypted_kek()));
+        }
+        return;
+    case Capsule::recipients_KeyServerCapsule:
+        if (const KeyServerCapsule *capsule = recipient.capsule_as_recipients_KeyServerCapsule()) {
+            KeyDetailsUnion details = capsule->recipient_key_details_type();
+            switch (details) {
+            case KeyDetailsUnion::EccKeyDetails:
+                if(const EccKeyDetails *eccDetails = capsule->recipient_key_details_as_EccKeyDetails()) {
+                    lock.pk_type = Algorithm::ECC;
+                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(eccDetails->recipient_public_key()));
+                    if(eccDetails->curve() == EllipticCurve::secp384r1) {
+                        lock.ec_type = Curve::SECP_384_R1;
+                    } else if (eccDetails->curve() == EllipticCurve::secp256r1) {
+                        lock.ec_type = Curve::SECP_256_R1;
+                    } else if (eccDetails->curve() == EllipticCurve::secp521r1) {
+                        lock.ec_type = Curve::SECP_521_R1;
+                    } else {
+                        LOG_WARN("Unknown ECC curve: {}", (int) eccDetails->curve());
+                        lock.ec_type = Curve::UNKNOWN_CURVE;
+                    }
+                }
+                break;
+            case KeyDetailsUnion::RsaKeyDetails:
+                if(const RsaKeyDetails *rsaDetails = capsule->recipient_key_details_as_RsaKeyDetails()) {
+                    lock.pk_type = Algorithm::RSA;
+                    lock.setBytes(Lock::Params::RCPT_KEY, toUint8Vector(rsaDetails->recipient_public_key()));
+                }
+                break;
+            default:
+                LOG_ERROR("Unsupported Key Server Details");
+                return;
+            }
+            lock.type = Lock::Type::SERVER;
+            lock.setString(Lock::Params::KEYSERVER_ID, capsule->keyserver_id()->str());
+            lock.setString(Lock::Params::TRANSACTION_ID, capsule->transaction_id()->str());
+        }
+        return;
+    case Capsule::recipients_SymmetricKeyCapsule:
+        if(const auto *capsule = recipient.capsule_as_recipients_SymmetricKeyCapsule())
+        {
+            lock.type = Lock::SYMMETRIC_KEY;
+            lock.setBytes(Lock::SALT, toUint8Vector(capsule->salt()));
+        }
+        return;
+    case Capsule::recipients_PBKDF2Capsule:
+        if(const auto *capsule = recipient.capsule_as_recipients_PBKDF2Capsule()) {
+            KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
+            if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
+                LOG_ERROR("Unsupported KDF algorithm: skipping");
+                return;
+            }
+            lock.type = Lock::PASSWORD;
+            lock.setBytes(Lock::SALT, toUint8Vector(capsule->salt()));
+            lock.setBytes(Lock::PW_SALT, toUint8Vector(capsule->password_salt()));
+            lock.setInt(Lock::KDF_ITER, capsule->kdf_iterations());
+        }
+        return;
+#ifdef HAS_KEYSHARES
+    case Capsule::recipients_KeySharesCapsule:
+        if (const auto *capsule = recipient.capsule_as_recipients_KeySharesCapsule()) {
+            if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
+                LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
+                return;
+            }
+            if (capsule->shares_scheme() != cdoc20::recipients::SharesScheme::N_OF_N) {
+                LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
+                return;
+            }
+            /* url,share_id;url,share_id... */
+            std::vector<std::string> strs;
+            for (auto cshare : *capsule->shares()) {
+                std::string id = cshare->share_id()->str();
+                std::string url = cshare->server_base_url()->str();
+                std::string str = url + ',' + id;
+                LOG_DBG("Keyshare: {}", str);
+                strs.push_back(std::move(str));
+            }
+            std::string urls = join(strs, ";");
+            LOG_DBG("Keyshare urls: {}", urls);
+            std::vector<uint8_t> salt = toUint8Vector(capsule->salt());
+            LOG_TRACE_KEY("Keyshare salt: {}", salt);
+            std::string recipient_id = capsule->recipient_id()->str();
+            LOG_DBG("Keyshare recipient id: {}", recipient_id);
+            lock.type = Lock::SHARE_SERVER;
+            lock.setString(Lock::SHARE_URLS, urls);
+            lock.setBytes(Lock::SALT, salt);
+            lock.setString(Lock::RECIPIENT_ID, recipient_id);
+        }
+        return;
+#endif
+    default:
+        LOG_ERROR("Unsupported capsule type");
+    }
+}
+
 CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     : CDocReader(2), priv(std::make_unique<Private>(src, take_ownership))
 {
-
-    using namespace cdoc20::recipients;
     using namespace cdoc20::header;
 
     setLastError(t_("Invalid CDoc 2.0 header"));
 
     uint8_t in[libcdoc::CDoc2::LABEL.size()];
-    if (priv->_src->read(in, libcdoc::CDoc2::LABEL.size()) != libcdoc::CDoc2::LABEL.size()) {
+    if (std::cmp_not_equal(priv->_src->read(in, libcdoc::CDoc2::LABEL.size()) , libcdoc::CDoc2::LABEL.size())) {
         LOG_ERROR("{}", last_error);
         return;
     }
@@ -473,15 +668,14 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
         LOG_ERROR("{}", last_error);
         return;
     }
-    //if (libcdoc::CDoc2::LABEL.compare(0, libcdoc::CDoc2::LABEL.size(), (const char *) in)) return;
 
     // Read 32-bit header length in big endian order
-    uint8_t c[4];
-    if (priv->_src->read(c, 4) != 4) {
+    std::array<uint8_t, 4> c{};
+    if (std::cmp_not_equal(priv->_src->read(c.data(), c.size()) , c.size())) {
         LOG_ERROR("{}", last_error);
         return;
     }
-    uint32_t header_len = (c[0] << 24) | (c[1] << 16) | c[2] << 8 | c[3];
+    uint32_t header_len = (uint32_t(c[0]) << 24) | (uint32_t(c[1]) << 16) | uint32_t(c[2]) << 8 | c[3];
     if (constexpr uint32_t MAX_LEN = (1 << 20); header_len > MAX_LEN) {
         LOG_ERROR("{}", last_error);
         return;
@@ -523,140 +717,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
     setLastError({});
 
     for(const auto *recipient: *recipients){
-        if(recipient->fmk_encryption_method() != FMKEncryptionMethod::XOR)
-        {
-            LOG_WARN("Unsupported FMK encryption method: skipping");
-            continue;
-        }
-        auto fillRecipientPK = [&recipient,&locks = priv->locks] (Lock::PKType pk_type, auto key) -> Lock& {
-            Lock &k = locks.emplace_back(Lock::Type::PUBLIC_KEY);
-            k.pk_type = pk_type;
-            k.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(key->recipient_public_key()->cbegin(), key->recipient_public_key()->cend()));
-            k.label = recipient->key_label()->str();
-            k.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-            return k;
-        };
-        switch(recipient->capsule_type())
-        {
-        case Capsule::recipients_ECCPublicKeyCapsule:
-            if(const auto *key = recipient->capsule_as_recipients_ECCPublicKeyCapsule()) {
-                if(key->curve() != EllipticCurve::secp384r1) {
-                    LOG_ERROR("Unsupported ECC curve: skipping");
-                    continue;
-                }
-                Lock &k = fillRecipientPK(Lock::PKType::ECC, key);
-                k.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->sender_public_key()->cbegin(), key->sender_public_key()->cend()));
-                LOG_DBG("Load PK: {}", toHex(k.getBytes(Lock::Params::RCPT_KEY)));
-            }
-            break;
-        case Capsule::recipients_RSAPublicKeyCapsule:
-            if(const auto *key = recipient->capsule_as_recipients_RSAPublicKeyCapsule())
-            {
-                Lock &k = fillRecipientPK(Lock::PKType::RSA, key);
-                k.setBytes(Lock::Params::KEY_MATERIAL, std::vector<uint8_t>(key->encrypted_kek()->cbegin(), key->encrypted_kek()->cend()));
-            }
-            break;
-        case Capsule::recipients_KeyServerCapsule:
-            if (const KeyServerCapsule *server = recipient->capsule_as_recipients_KeyServerCapsule()) {
-                KeyDetailsUnion details = server->recipient_key_details_type();
-                Lock ckey;
-                switch (details) {
-                case KeyDetailsUnion::EccKeyDetails:
-                    if(const EccKeyDetails *eccDetails = server->recipient_key_details_as_EccKeyDetails()) {
-                        if(eccDetails->curve() == EllipticCurve::secp384r1) {
-                            ckey.type = Lock::Type::SERVER;
-                            ckey.pk_type = Lock::PKType::ECC;
-                            ckey.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(eccDetails->recipient_public_key()->cbegin(), eccDetails->recipient_public_key()->cend()));
-                        } else {
-                            LOG_ERROR("Unsupported elliptic curve key type");
-                        }
-                    } else {
-                        LOG_ERROR("Invalid file format");
-                    }
-                    break;
-                case KeyDetailsUnion::RsaKeyDetails:
-                    if(const RsaKeyDetails *rsaDetails = server->recipient_key_details_as_RsaKeyDetails()) {
-                        ckey.type = Lock::Type::SERVER;
-                        ckey.pk_type = Lock::PKType::RSA;
-                        ckey.setBytes(Lock::Params::RCPT_KEY, std::vector<uint8_t>(rsaDetails->recipient_public_key()->cbegin(), rsaDetails->recipient_public_key()->cend()));
-                    } else {
-                        LOG_ERROR("Invalid file format");
-                    }
-                    break;
-                default:
-                    LOG_ERROR("Unsupported Key Server Details: skipping");
-                }
-                if (ckey.type != Lock::Type::INVALID) {
-                    ckey.label = recipient->key_label()->c_str();
-                    ckey.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                    ckey.setString(Lock::Params::KEYSERVER_ID, server->keyserver_id()->str());
-                    ckey.setString(Lock::Params::TRANSACTION_ID, server->transaction_id()->str());
-                    priv->locks.push_back(std::move(ckey));
-                }
-            } else {
-                LOG_ERROR("Invalid file format");
-            }
-            break;
-        case Capsule::recipients_SymmetricKeyCapsule:
-            if(const auto *capsule = recipient->capsule_as_recipients_SymmetricKeyCapsule())
-            {
-                Lock &key = priv->locks.emplace_back(Lock::SYMMETRIC_KEY);
-                key.label = recipient->key_label()->str();
-                key.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                key.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
-            }
-            break;
-        case Capsule::recipients_PBKDF2Capsule:
-            if(const auto *capsule = recipient->capsule_as_recipients_PBKDF2Capsule()) {
-                KDFAlgorithmIdentifier kdf_id = capsule->kdf_algorithm_identifier();
-                if (kdf_id != KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256) {
-                    LOG_ERROR("Unsupported KDF algorithm: skipping");
-                    continue;
-                }
-                Lock &key = priv->locks.emplace_back(Lock::PASSWORD);
-                key.label = recipient->key_label()->str();
-                key.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                key.setBytes(Lock::SALT, std::vector<uint8_t>(capsule->salt()->cbegin(), capsule->salt()->cend()));
-                key.setBytes(Lock::PW_SALT, std::vector<uint8_t>(capsule->password_salt()->cbegin(), capsule->password_salt()->cend()));
-                key.setInt(Lock::KDF_ITER, capsule->kdf_iterations());
-            }
-            break;
-        case Capsule::recipients_KeySharesCapsule:
-            if (const auto *capsule = recipient->capsule_as_recipients_KeySharesCapsule()) {
-                if (capsule->recipient_type() != cdoc20::recipients::KeyShareRecipientType::SID_MID) {
-                    LOG_ERROR("Invalid keyshare recipient type: {}", (int) capsule->recipient_type());
-                    continue;
-                }
-                if (capsule->shares_scheme() != cdoc20::recipients::SharesScheme::N_OF_N) {
-                    LOG_ERROR("Invalid keyshare scheme type: {}", (int) capsule->shares_scheme());
-                    continue;
-                }
-                /* url,share_id;url,share_id... */
-                std::vector<std::string> strs;
-                for (auto cshare = capsule->shares()->cbegin(); cshare != capsule->shares()->cend(); ++cshare) {
-                    std::string id = cshare->share_id()->str();
-                    std::string url = cshare->server_base_url()->str();
-                    std::string str = url + "," + id;
-                    LOG_DBG("Keyshare: {}", str);
-                    strs.push_back(std::move(str));
-                }
-                std::string urls = join(strs, ";");
-                LOG_DBG("Keyshare urls: {}", urls);
-                std::vector<uint8_t> salt(capsule->salt()->cbegin(), capsule->salt()->cend());
-                LOG_DBG("Keyshare salt: {}", toHex(salt));
-                std::string recipient_id = capsule->recipient_id()->str();
-                LOG_DBG("Keyshare recipient id: {}", recipient_id);
-                Lock &lock = priv->locks.emplace_back(Lock::SHARE_SERVER);
-                lock.label = recipient->key_label()->str();
-                lock.encrypted_fmk.assign(recipient->encrypted_fmk()->cbegin(), recipient->encrypted_fmk()->cend());
-                lock.setString(Lock::SHARE_URLS, urls);
-                lock.setBytes(Lock::SALT, salt);
-                lock.setString(Lock::RECIPIENT_ID, recipient_id);
-            }
-            break;
-        default:
-            LOG_ERROR("Unsupported Key Details: skipping");
-        }
+        Private::buildLock(priv->locks.emplace_back(), *recipient);
     }
 }
 
@@ -664,7 +725,7 @@ bool
 CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
 {
     std::array<uint8_t,libcdoc::CDoc2::LABEL.size()> in {};
-    if (src->read(in.data(), in.size()) != in.size()) {
+    if (std::cmp_not_equal(src->read(in.data(), in.size()) , in.size())) {
         LOG_DBG("CDoc2Reader::isCDoc2File: Cannot read tag");
         return false;
     }
@@ -672,16 +733,5 @@ CDoc2Reader::isCDoc2File(libcdoc::DataSource *src)
         LOG_DBG("CDoc2Reader::isCDoc2File: Invalid tag: {}", toHex(in));
         return false;
     }
-    return true;
-}
-
-bool
-CDoc2Reader::isCDoc2File(const std::string& path)
-{
-    std::ifstream fb(path, std::ios_base::in | std::ios_base::binary);
-    char in[libcdoc::CDoc2::LABEL.size()];
-    constexpr size_t len = libcdoc::CDoc2::LABEL.size();
-    if (!fb.read(&in[0], len) || (fb.gcount() != len)) return false;
-    if (libcdoc::CDoc2::LABEL.compare(0, len, &in[0], len)) return false;
     return true;
 }

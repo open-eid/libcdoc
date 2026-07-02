@@ -25,7 +25,7 @@
 #include "Configuration.h"
 #include "CDocWriter.h"
 #include "CDocReader.h"
-#include "ConsoleLogger.h"
+#include "Logger.h"
 #include "Lock.h"
 #include "NetworkBackend.h"
 #include "PKCS11Backend.h"
@@ -38,20 +38,20 @@
 // Handle standard C++ types
 %include "std_string.i"
 %include "std_vector.i"
-//%include "std_map.i"
 
 %include "typemaps.i"
 
 %ignore libcdoc::MultiDataSource;
 %ignore libcdoc::MultiDataConsumer;
-%ignore libcdoc::ChainedConsumer;
-%ignore libcdoc::ChainedSource;
 %ignore libcdoc::IStreamSource;
 %ignore libcdoc::OStreamConsumer;
 %ignore libcdoc::VectorConsumer;
 %ignore libcdoc::VectorSource;
 %ignore libcdoc::FileListConsumer;
 %ignore libcdoc::FileListSource;
+
+// Ignore until there is straightfoward string_view translation
+%ignore libcdoc::CDoc2;
 
 %ignore libcdoc::CDocWriter::createWriter(int version, DataConsumer *dst, bool take_ownership, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 %ignore libcdoc::CDocWriter::createWriter(int version, std::ostream& ofs, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
@@ -81,17 +81,238 @@
 %ignore libcdoc::PKCS11Backend::getCertificate(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 %ignore libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, bool& rsa, int slot, const std::vector<uint8_t>& pin, const std::vector<uint8_t>& id, const std::string& label);
 
-#ifdef SWIGJAVA
-%include "arrays_java.i"
-%include "enums.swg"
-%javaconst(1);
-
+// Map C++ integer types for all language bindings
 %apply long long { libcdoc::result_t }
 %apply long long { int64_t }
 %apply long long { uint64_t }
 %apply int { uint16_t }
 %apply int { int32_t }
 %apply int { unsigned int }
+
+//
+// CDocWriter
+//
+
+%extend libcdoc::CDocWriter {
+    int64_t writeData(const uint8_t *src, size_t pos, size_t size) {
+        return $self->writeData(src + pos, size);
+    }
+};
+
+//
+// CDocReader
+//
+
+// Custom wrapper to do away with const qualifiers
+%extend libcdoc::CDocReader {
+    std::vector<libcdoc::Lock> getLocks() {
+        const std::vector<libcdoc::Lock> &locks = $self->getLocks();
+        std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
+        return std::move(p);
+    }
+    std::vector<uint8_t> getFMK(unsigned int lock_idx) {
+        std::vector<uint8_t> fmk;
+        $self->getFMK(fmk, lock_idx);
+        return fmk;
+    }
+};
+%ignore libcdoc::CDocReader::getLocks();
+
+//
+// DataBuffer
+//
+
+%ignore libcdoc::DataBuffer::data;
+%ignore libcdoc::DataBuffer::DataBuffer(std::vector<uint8_t> *_data);
+%ignore libcdoc::DataBuffer::reset();
+
+//
+// DataConsumer
+//
+
+%ignore libcdoc::DataConsumer::write(const std::vector<uint8_t>& src);
+
+//
+// CertificateList
+//
+
+%ignore libcdoc::CertificateList::data;
+%ignore libcdoc::CertificateList::CertificateList(std::vector<std::vector<uint8_t>> *_data);
+%ignore libcdoc::CertificateList::reset();
+%ignore libcdoc::CertificateList::setData(const std::vector<std::vector<uint8_t>>& _data);
+%ignore libcdoc::CertificateList::getData();
+
+//
+// Recipient
+//
+
+%ignore libcdoc::Recipient::rcpt_key;
+%ignore libcdoc::Recipient::cert;
+%ignore libcdoc::Recipient::getLabel;
+%extend libcdoc::Recipient {
+    std::vector<uint8_t> getRcptKey() {
+        return $self->rcpt_key;
+    }
+    void setRcptKey(const std::vector<uint8_t>& key) {
+        $self->rcpt_key = key;
+    }
+    std::vector<uint8_t> getCert() {
+        return $self->cert;
+    }
+    void setCert(const std::vector<uint8_t>& value) {
+        $self->cert = value;
+    }
+};
+
+//
+// Lock
+//
+
+%ignore libcdoc::Lock::Lock;
+%ignore libcdoc::Lock::type;
+%ignore libcdoc::Lock::pk_type;
+%ignore libcdoc::Lock::label;
+%ignore libcdoc::Lock::encrypted_fmk;
+%ignore libcdoc::Lock::setBytes;
+%ignore libcdoc::Lock::setString;
+%ignore libcdoc::Lock::setInt;
+%extend libcdoc::Lock {
+    Type getType() {
+        return $self->type;
+    }
+    Algorithm getAlgorithm() {
+        return $self->pk_type;
+    }
+    Curve getCurve() {
+        return $self->ec_type;
+    }
+    std::string getLabel() {
+        return $self->label;
+    }
+    std::vector<uint8_t> getEncryptedFMK() {
+        return $self->encrypted_fmk;
+    }
+}
+
+//
+// Configuration
+//
+
+%ignore libcdoc::JSONConfiguration::JSONConfiguration(std::istream& ifs);
+%ignore libcdoc::JSONConfiguration::parse(std::istream& ifs);
+
+//
+// NetworkBackend
+//
+
+%ignore libcdoc::NetworkBackend::ShareInfo::share;
+%extend libcdoc::NetworkBackend::ShareInfo {
+    std::vector<uint8_t> getShare() {
+        return $self->share;
+    }
+    void setShare(const std::vector<uint8_t>& share) {
+        $self->share = share;
+    }
+};
+
+// Enable director support for classes with virtual methods
+%feature("director") libcdoc::DataSource;
+%feature("director") libcdoc::CryptoBackend;
+%feature("director") libcdoc::PKCS11Backend;
+%feature("director") libcdoc::NetworkBackend;
+%feature("director") libcdoc::Configuration;
+%feature("director") libcdoc::Logger;
+
+#ifdef SWIGPYTHON
+%include <exception.i>
+%include <stdint.i>
+
+// Director typemaps for result_t return values from Python
+%typemap(directorout) libcdoc::result_t {
+    $result = (libcdoc::result_t)PyLong_AsLongLong($input);
+}
+%typemap(directorin) libcdoc::result_t {
+    $input = PyLong_FromLongLong($1);
+}
+
+// Typemap: (const uint8_t *src, size_t size) <- bytes/bytearray (used by writeData)
+%typemap(in) (const uint8_t *src, size_t size) {
+    if (PyBytes_Check($input)) {
+        $1 = (uint8_t *)PyBytes_AsString($input);
+        $2 = PyBytes_Size($input);
+    } else if (PyByteArray_Check($input)) {
+        $1 = (uint8_t *)PyByteArray_AsString($input);
+        $2 = PyByteArray_Size($input);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytes or bytearray");
+    }
+}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) (const uint8_t *src, size_t size) {
+    $1 = PyBytes_Check($input) || PyByteArray_Check($input);
+}
+
+// Typemap: (uint8_t *dst, size_t size) <- bytearray (used by readData)
+%typemap(in) (uint8_t *dst, size_t size) {
+    if (PyByteArray_Check($input)) {
+        $1 = (uint8_t *)PyByteArray_AsString($input);
+        $2 = PyByteArray_Size($input);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytearray");
+    }
+}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) (uint8_t *dst, size_t size) {
+    $1 = PyByteArray_Check($input);
+}
+
+// Typemap: std::vector<uint8_t> <-> Python bytes
+%typemap(in) std::vector<uint8_t> {
+    if (PyBytes_Check($input)) {
+        const char* data = PyBytes_AsString($input);
+        Py_ssize_t size = PyBytes_Size($input);
+        $1 = std::vector<uint8_t>(data, data + size);
+    } else if (PyByteArray_Check($input)) {
+        const char* data = PyByteArray_AsString($input);
+        Py_ssize_t size = PyByteArray_Size($input);
+        $1 = std::vector<uint8_t>(data, data + size);
+    } else {
+        SWIG_exception(SWIG_TypeError, "Expected bytes or bytearray");
+    }
+}
+%typemap(out) std::vector<uint8_t> {
+    $result = PyBytes_FromStringAndSize(
+        reinterpret_cast<const char*>($1.data()), $1.size());
+}
+
+// Output parameter: std::vector<uint8_t>& -> second return value
+%typemap(in, numinputs=0) std::vector<uint8_t>& (std::vector<uint8_t> temp) {
+    $1 = &temp;
+}
+%typemap(argout) std::vector<uint8_t>& {
+    PyObject* bytes = PyBytes_FromStringAndSize(
+        reinterpret_cast<const char*>($1->data()), $1->size());
+    $result = SWIG_Python_AppendOutput($result, bytes, 0);
+}
+
+// Exception handling: C++ exceptions -> Python RuntimeError
+%exception {
+    try {
+        $action
+    } catch (const std::exception& e) {
+        SWIG_exception(SWIG_RuntimeError, e.what());
+    }
+}
+
+// Template instantiations for Python
+%template(ByteVector) std::vector<uint8_t>;
+%template(ByteVectorVector) std::vector<std::vector<uint8_t>>;
+%template(StringVector) std::vector<std::string>;
+#endif
+
+#ifdef SWIGJAVA
+%include "arrays_java.i"
+%include "std_string_view.i"
+%include "enums.swg"
+%javaconst(1);
 
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{
 {
@@ -373,39 +594,14 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %typemap(javadirectorin) std::string_view "$jniinput"
 // No return of std::string_view so no javadirectorout
 
-//
-// CDocWriter
-//
-
-%extend libcdoc::CDocWriter {
-    int64_t writeData(const uint8_t *src, size_t pos, size_t size) {
-        return $self->writeData(src + pos, size);
-    }
-};
-
-//
 // CDocReader
-//
-
-// Use LockVector object to encapsulate the vector of locks
-%template(LockVector) std::vector<libcdoc::Lock>;
-
-// Custom wrapper do away with const qualifiers
-%extend libcdoc::CDocReader {
-    std::vector<libcdoc::Lock> getLocks() {
-        const std::vector<libcdoc::Lock> &locks = $self->getLocks();
-        std::vector<libcdoc::Lock> p(locks.cbegin(), locks.cend());
-        return std::move(p);
-    }
-    std::vector<uint8_t> getFMK(unsigned int lock_idx) {
-        std::vector<uint8_t> fmk;
-        $self->getFMK(fmk, lock_idx);
-        return fmk;
-    }
-};
-%ignore libcdoc::CDocReader::getLocks();
 
 %typemap(javacode) libcdoc::CDocReader %{
+    // Keep Java references to prevent GC deleting these prematurely
+    private Configuration config;
+    private CryptoBackend crypto;
+    private NetworkBackend network;
+
     public void readFile(java.io.OutputStream ofs) throws CDocException, java.io.IOException {
         byte[] buf = new byte[1024];
         long result = readData(buf);
@@ -416,86 +612,36 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
     }
 %}
 
-//
-// DataBuffer
-//
-
-%ignore libcdoc::DataBuffer::data;
-%ignore libcdoc::DataBuffer::DataBuffer(std::vector<uint8_t> *_data);
-%ignore libcdoc::DataBuffer::reset();
-
-//
-// DataConsumer
-//
-
-%ignore libcdoc::DataConsumer::write(const std::vector<uint8_t>& src);
-
-//
-// CertificateList
-//
-
-%ignore libcdoc::CertificateList::data;
-%ignore libcdoc::CertificateList::CertificateList(std::vector<std::vector<uint8_t>> *_data);
-%ignore libcdoc::CertificateList::reset();
-%ignore libcdoc::CertificateList::setData(const std::vector<std::vector<uint8_t>>& _data);
-%ignore libcdoc::CertificateList::getData();
-
-//
-// Recipient
-//
-
-%ignore libcdoc::Recipient::rcpt_key;
-%ignore libcdoc::Recipient::cert;
-%ignore libcdoc::Recipient::getLabel; 
-%extend libcdoc::Recipient {
-    std::vector<uint8_t> getRcptKey() {
-        return $self->rcpt_key;
-    }
-    void setRcptKey(const std::vector<uint8_t>& key) {
-        $self->rcpt_key = key;
-    }
-    std::vector<uint8_t> getCert() {
-        return $self->cert;
-    }
-    void setCert(const std::vector<uint8_t>& value) {
-        $self->cert = value;
-    }
-};
-
-//
-// Lock
-//
-
-%ignore libcdoc::Lock::Lock;
-%ignore libcdoc::Lock::type;
-%ignore libcdoc::Lock::pk_type;
-%ignore libcdoc::Lock::label;
-%ignore libcdoc::Lock::encrypted_fmk;
-%ignore libcdoc::Lock::setBytes;
-%ignore libcdoc::Lock::setString;
-%ignore libcdoc::Lock::setInt;
-%ignore libcdoc::Lock::setCertificate;
-%extend libcdoc::Lock {
-    Type getType() {
-        return $self->type;
-    }
-    PKType getPKType() {
-        return $self->pk_type;
-    }
-    std::string getLabel() {
-        return $self->label;
-    }
-    std::vector<uint8_t> getEncryptedFMK() {
-        return $self->encrypted_fmk;
-    }
+%typemap(javaout) libcdoc::CDocReader * libcdoc::CDocReader::createReader {
+    long cPtr = $jnicall;
+    if (cPtr == 0) return null;
+    CDocReader rdr = new CDocReader(cPtr, true);
+    // Set Java references
+    rdr.config = conf;
+    rdr.crypto = crypto;
+    rdr.network = network;
+    return rdr;
 }
 
-//
-// Configuration
-//
+// CDocWriter
 
-%ignore libcdoc::JSONConfiguration::JSONConfiguration(std::istream& ifs);
-%ignore libcdoc::JSONConfiguration::parse(std::istream& ifs);
+%typemap(javacode) libcdoc::CDocWriter %{
+    // Keep Java references to prevent GC deleting these prematurely
+    private Configuration config;
+    private CryptoBackend crypto;
+    private NetworkBackend network;
+%}
+
+%typemap(javaout) libcdoc::CDocWriter * libcdoc::CDocWriter::createWriter {
+    long cPtr = $jnicall;
+    if (cPtr == 0) return null;
+    CDocWriter wrtr = new CDocWriter(cPtr, true);
+    // Set Java references
+    wrtr.config = conf;
+    wrtr.crypto = crypto;
+    wrtr.network = network;
+    return wrtr;
+}
 
 %typemap(javacode) libcdoc::Configuration %{
     public static final String KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
@@ -510,24 +656,6 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
     public static final String PHONE_NUMBER = "PHONE_NUMBER";
 %}
 
-//
-// CryptoBackend
-//
-
-//
-// NetworkBackend
-//
-
-%ignore libcdoc::NetworkBackend::ShareInfo::share;
-%extend libcdoc::NetworkBackend::ShareInfo {
-    std::vector<uint8_t> getShare() {
-        return $self->share;
-    }
-    void setShare(const std::vector<uint8_t>& share) {
-        $self->share = share;
-    }
-};
-
 %typemap(javaimports) ArrayList<byte[]> %{
     import java.util.ArrayList;
 %}
@@ -538,19 +666,10 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %typemap(javaimports) libcdoc::NetworkBackend %{
     import java.util.ArrayList;
 %}
-
-%feature("director") libcdoc::DataSource;
-%feature("director") libcdoc::CryptoBackend;
-%feature("director") libcdoc::PKCS11Backend;
-%feature("director") libcdoc::NetworkBackend;
-%feature("director") libcdoc::Configuration;
-%feature("director") libcdoc::ILogger;
 #endif
 
 // Swig does not like visibility/declspec attributes
 #define CDOC_EXPORT
-// fixme: Remove this in production
-#define LIBCDOC_TESTING 1
 #define CDOC_DISABLE_MOVE(X)
 
 %include "CDoc.h"
@@ -562,8 +681,11 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %include "CryptoBackend.h"
 %include "NetworkBackend.h"
 %include "PKCS11Backend.h"
-%include "ILogger.h"
-%include "ConsoleLogger.h"
+%include "Logger.h"
+
+// LockVector template must come after Lock.h is included so that
+// SWIG knows about the libcdoc::Lock class definition.
+%template(LockVector) std::vector<libcdoc::Lock>;
 
 #ifdef SWIGJAVA
 %typemap(javaout, throws="CDocException") libcdoc::result_t %{
@@ -577,6 +699,3 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 %include "CDocReader.h"
 %include "CDocWriter.h"
-
-#ifdef SWIGJAVA
-#endif

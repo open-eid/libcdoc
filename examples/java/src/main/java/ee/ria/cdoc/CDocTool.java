@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Collection;
@@ -32,12 +33,13 @@ public class CDocTool {
         return args[arg_idx];
     }
 
-    // Make logger static to ensure that it is not garbage-collected as long as it is atached to library
-    private static JavaLogger logger;
+    // Make logger static to ensure that it is not garbage-collected as long as it is attached to library
+    private static Logger logger;
     
     public static void main(String[] args) {
         System.out.println("Starting app...");
 
+        LogLevel log_level = LogLevel.LEVEL_INFO;
         String library = "../../build/macos/cdoc/libcdoc_javad.jnilib";
         Action action = Action.INVALID;
         ArrayList<String> files = new ArrayList<>();
@@ -119,6 +121,13 @@ public class CDocTool {
                     System.exit(1);
                 }
                 servers = args[i].split(",");
+            } else if (args[i].equals("--log-level")) {
+                i += 1;
+                if (i >= args.length) {
+                    System.err.println("Invalid arguments");
+                    System.exit(1);
+                }
+                log_level = LogLevel.valueOf(args[i]);
             } else if (!args[i].startsWith("--")) {
                 files.add(args[i]);
             }
@@ -129,10 +138,9 @@ public class CDocTool {
         System.out.println("Library loaded");
 
         logger =  new JavaLogger();
-        //ConsoleLogger logger = new ConsoleLogger();
-        logger.SetMinLogLevel(ILogger.LogLevel.LEVEL_TRACE);
-        ILogger.addLogger(logger);
-        ILogger.getLogger().LogMessage(ILogger.LogLevel.LEVEL_DEBUG, "FILENAME", 0, "Starting CDocTool.java");
+        logger.setMinLogLevel(log_level);
+        CDoc.setLogger(logger);
+        CDoc.log(LogLevel.LEVEL_DEBUG, "FILENAME", 0, "Starting CDocTool.java");
 
         switch (action) {
             case ENCRYPT:
@@ -205,9 +213,6 @@ public class CDocTool {
 
             CDocReader rdr = CDocReader.createReader(src, false, conf, crypto, null);
             System.out.format("Reader created (version %d)\n", rdr.getVersion());
-
-            //rdr.testConfig(buf);
-            System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
 
             LockVector locks = rdr.getLocks();
             for (int idx = 0; idx < locks.size(); idx++) {
@@ -296,7 +301,7 @@ public class CDocTool {
         try {
             long result = wrtr.beginEncryption();
             System.out.format("beginEncryption: %d\n", result);
-            Recipient rcpt = Recipient.makeSymmetric(label, 65535);
+            Recipient rcpt = Recipient.makeSymmetric(label, 600000);
             result = wrtr.addRecipient(rcpt);
             System.out.format("addRecipient: %d\n", result);
             for (String name : files) {
@@ -363,9 +368,8 @@ public class CDocTool {
 
     static void test() {
         System.err.println("Testing label generation");
-        String label = Recipient.buildLabel(new String[] {"Alpha", "1", "Beta", "2", "Gamma", "3", "Delta"});
-        System.err.format("Label: %s\n", label);
-        java.util.Map<String,String> map = Recipient.parseLabel(label);
+        String label = "data:v=1&type=ID-card&serial_number=PNOEE-38001085718&cn=J%C3%95EORG%2CJAAK-KRISTJAN%2C38001085718";
+        java.util.Map<String,String> map = ee.ria.cdoc.Lock.parseLabel(label);
         for (String key : map.keySet()) {
             System.err.format("  %s:%s\n", key, map.get(key));
         }
@@ -374,31 +378,91 @@ public class CDocTool {
 
         System.err.println("Creating ToolConf...");
         ToolConf conf = new ToolConf();
+
+        System.err.println("Creating ToolCrypto");
+        ToolCrypto crypto = new ToolCrypto();
+
+        System.err.println("Creating ToolNetwork");
+        ToolNetwork network = new ToolNetwork();
+
         System.err.println("Creating DataBuffer...");
         DataBuffer buf = new DataBuffer();
         byte[] bytes = {1, 2, 3};
         buf.setData(bytes);
         System.err.format("Buffer: %s\n", hex.formatHex(buf.getData()));
 
-        System.err.println("Creating ToolNetwork");
-        ToolNetwork network = new ToolNetwork();
-
         System.err.println("Creating reader: " + path);
         CDocReader rdr = CDocReader.createReader(path, conf, null, network);
         System.err.format("Reader created (version %d)\n", rdr.getVersion());
 
-        rdr.testConfig(buf);
-        System.err.format("Buffer out: %s\n", hex.formatHex(buf.getData()));
+        testRW(conf, crypto);
+    
         System.err.println("Success");
+    }
 
-        CertificateList certs = new CertificateList();
-        rdr.testNetwork(certs);
-        System.err.format("Num certs: %s\n", certs.size());
-        for (int i = 0; i < certs.size(); i++) {
-            byte[] cert = certs.getCertificate(i);
-            System.err.format("  %s\n", hex.formatHex(cert));
+    static void testRW(ToolConf conf, ToolCrypto crypto) {
+        try {
+            final String container = "testfile.cdoc";
+            final String password = "TereTalv!";
+            final String label = "Jaanus Jõhvikas";
+
+            crypto.setPassword(password);
+            DataBuffer rnd = new DataBuffer();
+            crypto.random(rnd, 57);
+            System.gc();
+            final byte[] datain = rnd.getData();
+            System.out.format("Data IN: %s\n", hex.formatHex(datain));
+
+            CDocWriter wrtr = CDocWriter.createWriter(2, container, conf, crypto, null);
+            System.gc();
+            Recipient rcpt = Recipient.makeSymmetric(label, 600000);
+            long result = wrtr.addRecipient(rcpt);
+            System.gc();
+            System.out.format("addRecipient: %d\n", result);
+            result = wrtr.beginEncryption();
+            System.gc();
+            System.out.format("beginEncryption: %d\n", result);
+            final String name = "kala";
+            System.out.format("Adding file %s\n", name);
+            result = wrtr.addFile(name, datain.length);
+            System.gc();
+            System.out.format("addFile: %d\n", result);
+            result = wrtr.writeData(datain);
+            System.gc();
+            System.out.format("writeData: %d\n", result);
+            result = wrtr.finishEncryption();
+            System.gc();
+            System.out.format("finishEncryption: %d\n", result);
+
+            CDocReader rdr = CDocReader.createReader(container, conf, crypto, null);
+            System.gc();
+            System.out.format("Reader created (version %d)\n", rdr.getVersion());
+            LockVector locks = rdr.getLocks();
+            System.gc();
+            ee.ria.cdoc.Lock lock = locks.get(0);
+            System.out.format("Lock: %s\n", lock.getLabel());
+            byte[] fmk = rdr.getFMK(0);
+            System.gc();
+            System.out.format("FMK is: %s\n", hex.formatHex(fmk));
+            rdr.beginDecryption(fmk);
+            System.gc();
+            FileInfo fi = new FileInfo();
+            result = rdr.nextFile(fi);
+            System.gc();
+            System.out.format("nextFile result: %d\n", result);
+            while (result == CDoc.OK) {
+                System.out.format("File %s length %d\n", fi.getName(), fi.getSize());
+                byte[] dataout = new byte[(int) fi.getSize()];
+                rdr.readData(dataout);
+            System.gc();
+                System.out.format("Data OUT: %s\n", hex.formatHex(dataout));
+                result = rdr.nextFile(fi);
+            }
+            rdr.finishDecryption();
+            System.gc();
+        } catch (CDocException exc) {
+                System.err.format("CDoc Exception %d: %s\n", exc.code, exc.getMessage());
         }
-        System.err.println("Success");
     }
 
     private static class ToolConf extends Configuration  {
@@ -459,6 +523,15 @@ public class CDocTool {
         }
     
         @Override
+        public long random(DataBuffer dst, int size) throws CDocException {
+            SecureRandom random = new SecureRandom();
+            byte bytes[] = new byte[size];
+            random.nextBytes(bytes);
+            dst.setData(bytes);
+            return CDoc.OK;
+        }
+
+        @Override
         public long getSecret(DataBuffer dst, int idx) {
             dst.setData(secret);
             return CDoc.OK;
@@ -490,20 +563,11 @@ public class CDocTool {
             System.err.println("ToolNetwork.getPeerTLSCertificates: " + dst);
             return CDoc.OK;
         }
-
-        @Override
-        public long test(CertificateList dst) {
-            System.err.println("ToolNetwork.test: Java subclass implementation");
-            System.err.format("dst: %s\n", dst);
-            dst.addCertificate(new byte[] {1, 2, 3});
-            dst.addCertificate(new byte[] {4, 5, 6, 7, 8});
-            return CDoc.OK;
-        }
     }
 
-    private static class JavaLogger extends ILogger {
+    private static class JavaLogger extends Logger {
         @Override
-        public void LogMessage(ILogger.LogLevel level, String file, int line, String message) {
+        public void logMessage(LogLevel level, String file, int line, String message) {
             System.out.format("%s:%s %s %s\n", file, line, level, message);
         }
     }
