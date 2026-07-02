@@ -95,7 +95,9 @@ struct Disclosure {
 
 Disclosure::Disclosure(const std::string name, const std::string& val)
 {
-    salt64 = toBase64URL(libcdoc::Crypto::random(16));
+    auto rand_bytes = libcdoc::Crypto::random(16);
+    if (rand_bytes.empty()) return;
+    salt64 = toBase64URL(rand_bytes);
     //
     // [SALT, HASH]
     // [SALT, NAME, HASH]
@@ -118,7 +120,9 @@ Disclosure::Disclosure(const std::string name, const std::string& val)
 
 Disclosure::Disclosure(const std::string name, std::vector<Disclosure>& val)
 {
-    salt64 = toBase64URL(libcdoc::Crypto::random(16));
+    auto rand_bytes = libcdoc::Crypto::random(16);
+    if (rand_bytes.empty()) return;
+    salt64 = toBase64URL(rand_bytes);
     //
     // [SALT, [{..., HASH}, {..., HASH}...]
     // [SALT, NAME, [{..., HASH}, {..., HASH}...]

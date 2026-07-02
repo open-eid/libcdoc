@@ -639,6 +639,34 @@ void unpadPKCS1v15CT(const std::vector<uint8_t> &em,
 
 } // anonymous namespace
 
+std::vector<uint8_t> Crypto::syntheticPlaintextFromEM(const std::vector<uint8_t>& em,
+                                                      const std::vector<uint8_t>& ct,
+                                                      size_t out_len)
+{
+    if (em.empty() || ct.empty() || out_len == 0)
+        return std::vector<uint8_t>(out_len, 0);
+
+    std::vector<uint8_t> seed_key;
+    {
+        const std::string_view tag{"cdoc1-rsa-implicit-reject"};
+        seed_key.reserve(tag.size() + em.size());
+        seed_key.insert(seed_key.end(), tag.begin(), tag.end());
+        seed_key.insert(seed_key.end(), em.begin(), em.end());
+    }
+    std::vector<uint8_t> prk = Crypto::sign_hmac(seed_key, ct);
+    libcdoc::cleanse(seed_key);
+    if (prk.empty())
+        return std::vector<uint8_t>(out_len, 0);
+
+    auto synth = Crypto::expand(prk, "cdoc1-rsa-implicit-reject", int(out_len));
+    libcdoc::cleanse(prk);
+    if (synth.size() != out_len) {
+        libcdoc::cleanse(synth);
+        return std::vector<uint8_t>(out_len, 0);
+    }
+    return synth;
+}
+
 int Crypto::rsaImplicitRejectFromEM(std::vector<uint8_t>& dst,
                                     const std::vector<uint8_t>& em,
                                     const std::vector<uint8_t>& /*ct*/,
@@ -646,11 +674,11 @@ int Crypto::rsaImplicitRejectFromEM(std::vector<uint8_t>& dst,
                                     size_t expected_len)
 {
     // The caller passes a key-derived synthetic seed already sized to
-    // `expected_len`. We don't recompute it here so that PKCS#11 / CNG
-    // callers who only have access to a public key (the private key never
-    // leaves the token) can still produce a stable synthetic output by
-    // seeding from any private-key-derived material they have - typically
-    // the certificate fingerprint plus the ciphertext.
+    // `expected_len`. For token backends (PKCS#11, CNG) the seed is
+    // produced by syntheticPlaintextFromEM(); for the software path by
+    // syntheticPlaintext() to be consistent with OpenSSL implementation.
+    // Both derive from private-key-dependent
+    // material that the caller has access to.
     if (synth_seed.size() != expected_len)
         return CRYPTO_ERROR;
 

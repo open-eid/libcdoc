@@ -748,7 +748,10 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     const std::string& rcpt_id, const std::vector<uint8_t>& digest, CryptoBackend::HashAlgorithm algo)
 {
     std::string certificateLevel = "QUALIFIED";
-    std::string nonce = libcdoc::toBase64(Crypto::random(16));
+    auto nonce_bytes = Crypto::random(16);
+    if (nonce_bytes.empty())
+        return libcdoc::CRYPTO_ERROR;
+    std::string nonce = libcdoc::toBase64(nonce_bytes);
 
     picojson::object obj = {
         {"relyingPartyUUID", picojson::value(rp_uuid)},
@@ -926,7 +929,10 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     }
 
     std::string certificateLevel = "QUALIFIED";
-    std::string nonce = libcdoc::toBase64(Crypto::random(16));
+    auto nonce_bytes = Crypto::random(16);
+    if (nonce_bytes.empty())
+        return libcdoc::CRYPTO_ERROR;
+    std::string nonce = libcdoc::toBase64(nonce_bytes);
 
     std::string host, path;
     int port;

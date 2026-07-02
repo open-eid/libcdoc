@@ -469,31 +469,10 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
         em.resize(size_t(em_size));
         d->logout();
 
-        // Build a synthetic seed that does not require access to the private
-        // key (which never leaves the token). HMAC the ciphertext with a
-        // public-but-token-bound value (CKA_ID concatenated with the modulus)
-        // so the seed is stable per (token-key, ct) pair while still being
-        // unpredictable to attackers.
-        std::vector<uint8_t> seed_key;
-        {
-            std::vector<uint8_t> id_attr = d->attribute(d->session, d->key, CKA_ID);
-            std::vector<uint8_t> mod_attr = d->attribute(d->session, d->key, CKA_MODULUS);
-            seed_key.reserve(id_attr.size() + mod_attr.size() + 16);
-            const std::string_view tag{"cdoc1-rsa-implicit-reject-pkcs11"};
-            seed_key.insert(seed_key.end(), tag.begin(), tag.end());
-            seed_key.insert(seed_key.end(), id_attr.begin(), id_attr.end());
-            seed_key.insert(seed_key.end(), mod_attr.begin(), mod_attr.end());
-        }
-        std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
-        libcdoc::cleanse(seed_key);
-        std::vector<uint8_t> synth = libcdoc::Crypto::expand(
-            prk, "cdoc1-rsa-implicit-reject", int(dst.size()));
-        libcdoc::cleanse(prk);
-        if (synth.size() != dst.size()) {
-            // Last-resort fallback: fixed zero seed. Worse than ideal but still
-            // length-uniform with the real-success path.
-            synth.assign(dst.size(), 0);
-        }
+        // Derive a per-(key, ct) synthetic plaintext from the raw RSA
+        // output (EM). EM is private-key-dependent and unpredictable to
+        // attackers who do not know the private key.
+        std::vector<uint8_t> synth = libcdoc::Crypto::syntheticPlaintextFromEM(em, data, dst.size());
 
         int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
         libcdoc::cleanse(em);
