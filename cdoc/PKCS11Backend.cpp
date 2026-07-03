@@ -29,6 +29,7 @@
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
+#include <openssl/asn1.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
@@ -379,8 +380,8 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 		return CRYPTO_ERROR;
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
-    if (w.size() < 2) {
-        LOG_DBG("PKCS11: getValue CKA_EC_POINT too short");
+    if (w.empty()) {
+        LOG_DBG("PKCS11: getValue CKA_EC_POINT empty");
         d->logout();
         return CRYPTO_ERROR;
     }
@@ -396,7 +397,33 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
         EC_GROUP_free(group);
         return CRYPTO_ERROR;
     }
-    if (EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL) != 1) {
+    // CKA_EC_POINT is DER-encoded per PKCS#11: an OCTET STRING TLV wrapping
+    // the ANSI X9.62 point. Parse the TLV with ASN1_get_object to extract the
+    // payload rather than blindly skipping 2 bytes (wrong for lengths >= 128,
+    // and wrong for tokens that omit the TLV and return raw point bytes).
+    const uint8_t *point_buf = nullptr;
+    long point_len = 0;
+    bool parsed = false;
+    {
+        const unsigned char *pp = w.data();
+        long plen = long(w.size());
+        int ptag = 0, pclass = 0;
+        long payload_len = 0;
+        int ret = ASN1_get_object(&pp, &payload_len, &ptag, &pclass, plen);
+        if (ret >= 0 && ptag == V_ASN1_OCTET_STRING && pclass == V_ASN1_UNIVERSAL
+                && payload_len > 0 && (pp + payload_len) <= (w.data() + plen)) {
+            point_buf = pp;
+            point_len = payload_len;
+            parsed = true;
+        }
+    }
+    if (!parsed) {
+        // Fallback: some tokens return raw point bytes (0x04 || x || y)
+        // without DER OCTET STRING wrapping.
+        point_buf = w.data();
+        point_len = long(w.size());
+    }
+    if (EC_POINT_oct2point(group, pub_key_point, point_buf, size_t(point_len), NULL) != 1) {
         LOG_DBG("PKCS11: EC_POINT_oct2point error");
         EC_POINT_free(pub_key_point);
         EC_GROUP_free(group);
