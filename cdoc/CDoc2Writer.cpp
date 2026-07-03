@@ -470,6 +470,14 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
         if(!rcpt.validate())
             FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
         break;
+#ifdef HAS_KEYSHARES
+    case Recipient::KEYSHARE:
+        if (!network)
+            FAIL("KeyShares require NetworkBackend", libcdoc::WORKFLOW_ERROR);
+        if (!rcpt.validate())
+            FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
+        break;
+#endif
     default:
         FAIL("Invalid recipient type", WRONG_ARGUMENTS);
     }

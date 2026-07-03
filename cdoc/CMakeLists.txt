@@ -106,6 +106,10 @@ target_link_libraries(cdoc PRIVATE
 if(BUILD_TOOLS)
     add_executable(cdoc-tool cdoc-tool.cpp)
     target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
+
+    # Enable SID/MID
+    target_compile_definitions(cdoc-tool PRIVATE HAS_KEYSHARES)
+
     target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
     target_link_options(cdoc-tool PRIVATE
         $<$<PLATFORM_ID:Windows>: /MANIFEST:NO /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/cdoc-tool.manifest>

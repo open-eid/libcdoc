@@ -237,6 +237,11 @@ Recipient::validate() const
         case PUBLIC_KEY:
             // Public key should not be empty
             return !rcpt_key.empty();
+#ifdef HAS_KEYSHARES
+        case KEYSHARE:
+            // Server ID and recipient ID should not be empty
+            return !server_id.empty() && !id.empty();
+#endif
         default:
             return false;
     }
