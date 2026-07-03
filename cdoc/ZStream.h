@@ -24,6 +24,7 @@
 #include <zlib.h>
 
 #include <array>
+#include <limits>
 
 namespace libcdoc {
 
@@ -45,24 +46,29 @@ struct ZConsumer : public DataConsumer {
 
     libcdoc::result_t write(const uint8_t *src, size_t size) noexcept final {
 		if (_fail) return OUTPUT_ERROR;
-		_s.next_in = (z_const Bytef *) src;
-		_s.avail_in = uInt(size);
+		size_t total_written = 0;
 		std::array<uint8_t,CHUNK> out{};
-		while(true) {
-			_s.next_out = (Bytef *)out.data();
-			_s.avail_out = out.size();
-			int res = deflate(&_s, flush);
-			if(res == Z_STREAM_ERROR)
-				return OUTPUT_ERROR;
-			auto o_size = out.size() - _s.avail_out;
-			if(o_size > 0) {
-				int64_t result = _dst->write(out.data(), o_size);
-				if (result != o_size) return result;
+		do {
+			size_t chunk = std::min<size_t>(size - total_written, std::numeric_limits<uInt>::max());
+			_s.next_in = (z_const Bytef *) (src ? src + total_written : nullptr);
+			_s.avail_in = uInt(chunk);
+			while(true) {
+				_s.next_out = (Bytef *)out.data();
+				_s.avail_out = out.size();
+				int res = deflate(&_s, flush);
+				if(res == Z_STREAM_ERROR)
+					return OUTPUT_ERROR;
+				auto o_size = out.size() - _s.avail_out;
+				if(o_size > 0) {
+					int64_t result = _dst->write(out.data(), o_size);
+					if (result != o_size) return result;
+				}
+				if(res == Z_STREAM_END) break;
+				if(flush == Z_FINISH) continue;
+				if(_s.avail_in == 0) break;
 			}
-			if(res == Z_STREAM_END) break;
-			if(flush == Z_FINISH) continue;
-			if(_s.avail_in == 0) break;
-		}
+			total_written += chunk;
+		} while (total_written < size);
 		return size;
 	}
 
@@ -72,8 +78,8 @@ struct ZConsumer : public DataConsumer {
 
     libcdoc::result_t close() noexcept final {
 		flush = Z_FINISH;
-		write (nullptr, 0);
-		deflateEnd(&_s);
+		libcdoc::result_t rv = write(nullptr, 0);
+		if (rv < 0) return rv;
         return _owned ? _dst->close() : OK;
 	}
 };
@@ -99,34 +105,42 @@ struct ZSource : public DataSource {
 
     libcdoc::result_t read(uint8_t *dst, size_t size) noexcept final try {
 		if (_error) return _error;
-		_s.next_out = (Bytef *) dst;
-		_s.avail_out = uInt (size);
+		size_t total_produced = 0;
         std::array<uint8_t,CHUNK> in{};
-		int res = Z_OK;
-		while((_s.avail_out > 0) && (res == Z_OK)) {
-            int64_t n_read = _src->read(in.data(), in.size());
-			if (n_read > 0) {
-                buf.insert(buf.end(), in.begin(), in.begin() + n_read);
-			} else if (n_read != 0) {
-				_error = n_read;
-				return _error;
+		while (total_produced < size) {
+			size_t chunk = std::min<size_t>(size - total_produced, std::numeric_limits<uInt>::max());
+			_s.next_out = (Bytef *) (dst + total_produced);
+			_s.avail_out = uInt(chunk);
+			int res = Z_OK;
+			while((_s.avail_out > 0) && (res == Z_OK)) {
+				int64_t n_read = _src->read(in.data(), in.size());
+				if (n_read > 0) {
+					buf.insert(buf.end(), in.begin(), in.begin() + n_read);
+				} else if (n_read != 0) {
+					_error = n_read;
+					return _error;
+				}
+				size_t buf_chunk = std::min<size_t>(buf.size(), std::numeric_limits<uInt>::max());
+				_s.next_in = (z_const Bytef *) buf.data();
+				_s.avail_in = uInt(buf_chunk);
+				res = inflate(&_s, flush);
+				switch(res) {
+				case Z_OK:
+					buf.erase(buf.begin(), buf.begin() + (buf_chunk - _s.avail_in));
+					break;
+				case Z_STREAM_END:
+					buf.clear();
+					break;
+				default:
+					_error = ZLIB_ERROR;
+					return _error;
+				}
 			}
-			_s.next_in = (z_const Bytef *) buf.data();
-			_s.avail_in = uInt(buf.size());
-			res = inflate(&_s, flush);
-			switch(res) {
-			case Z_OK:
-				buf.erase(buf.begin(), buf.end() - _s.avail_in);
-				break;
-			case Z_STREAM_END:
-				buf.clear();
-				break;
-			default:
-				_error = ZLIB_ERROR;
-				return _error;
-			}
+			size_t produced = chunk - _s.avail_out;
+			total_produced += produced;
+			if (produced == 0) break; // no progress (EOF or stream end)
 		}
-		return size - _s.avail_out;
+		return total_produced;
     } catch(...) {
         return INPUT_STREAM_ERROR;
     }

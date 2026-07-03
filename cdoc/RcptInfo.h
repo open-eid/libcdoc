@@ -19,6 +19,8 @@
 #ifndef RCPTINFO_H
 #define RCPTINFO_H
 
+#include "utils/memory.h"
+
 #include <vector>
 
 namespace libcdoc {
@@ -60,7 +62,7 @@ struct RcptInfo {
     // Certificate for encryption
     std::vector<uint8_t> cert;
     // Pin or password
-    std::vector<uint8_t> secret;
+    SecureBytes secret;
     // PKCS11-specific info
     PKCS11Info p11;
 

@@ -38,7 +38,6 @@
 // Handle standard C++ types
 %include "std_string.i"
 %include "std_vector.i"
-//%include "std_map.i"
 
 %include "typemaps.i"
 
@@ -311,6 +310,7 @@
 
 #ifdef SWIGJAVA
 %include "arrays_java.i"
+%include "std_string_view.i"
 %include "enums.swg"
 %javaconst(1);
 

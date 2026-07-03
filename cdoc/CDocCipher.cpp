@@ -138,24 +138,54 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
         auto key = make_unique_ptr<EVP_PKEY_free>(d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &p, rcpt->secret.size()));
         if (!key) return libcdoc::CRYPTO_ERROR;
 
+        // Note: EVP_PKEY_* functions return 1 on success, 0 on a (possibly
+        // recoverable) failure such as RSA padding mismatch, and a negative
+        // value on fatal errors. Anything other than 1 must be treated as
+        // failure - returning 0 as success would leak partial/garbage
+        // plaintext and create a Bleichenbacher-style padding oracle for
+        // PKCS#1 v1.5 (CDoc1) decryption.
+
+        if (!oaep) {
+            // If oaep is false, dst must be pre-allocated to the expected length.
+            // This is required to apply the implicit-rejection countermeasure on padding failure.
+            if (dst.empty()) {
+                LOG_ERROR("ToolCrypto::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+                return libcdoc::CRYPTO_ERROR;
+            }
+            // Implicit-rejection-aware decrypt. Returns OK on padding success
+            // AND on padding failure (with synthetic output). Only fatal errors
+            // (e.g. ct size mismatch with modulus) are surfaced as CRYPTO_ERROR.
+            return libcdoc::Crypto::decryptRSAv15_implicitReject(dst, key.get(), data, dst.size());
+        }
+
         auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(key.get(), nullptr));
         if (!ctx) return libcdoc::CRYPTO_ERROR;
 
-        int result = EVP_PKEY_decrypt_init(ctx.get());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt_init(ctx.get()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         if (oaep) {
-            if ((EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) < 0) ||
-                (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) < 0))
+            if (EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_OAEP_PADDING) != 1 ||
+                EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()) != 1 ||
+                EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()) != 1) {
                 return libcdoc::CRYPTO_ERROR;
+            }
         }
 
-        size_t outlen;
-        result = EVP_PKEY_decrypt(ctx.get(), NULL, &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        // First call queries the maximum output size.
+        size_t outlen = 0;
+        if (EVP_PKEY_decrypt(ctx.get(), nullptr, &outlen, data.data(), data.size()) != 1)
+            return libcdoc::CRYPTO_ERROR;
+
         dst.resize(outlen);
-        result = EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size());
-        if (result < 0) return libcdoc::CRYPTO_ERROR;
+        if (EVP_PKEY_decrypt(ctx.get(), dst.data(), &outlen, data.data(), data.size()) != 1) {
+            // Wipe any partial plaintext that may have been written before
+            // padding verification failed; it could otherwise be observed by
+            // callers and used to mount a padding-oracle attack.
+            libcdoc::cleanse(dst);
+            dst.clear();
+            return libcdoc::CRYPTO_ERROR;
+        }
         dst.resize(outlen);
 
         return libcdoc::OK;
@@ -359,7 +389,7 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
             }
         } else if (rcpt.type == RcptInfo::Type::PASSWORD) {
             LOG_DBG("Creating password key:");
-            key = libcdoc::Recipient::makeSymmetric(std::move(label), 65535);
+            key = libcdoc::Recipient::makeSymmetric(std::move(label), 600000);
             if (conf.gen_label)
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
 #ifdef HAS_KEYSHARES
@@ -436,7 +466,6 @@ int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
     }
     LOG_DBG("Reader created");
 
-    // Find lock by label/index/certificate
     int lock_idx = -1;
     const vector<Lock>& locks = rdr->getLocks();
     if (!recipient.label.empty()) {
@@ -448,8 +477,8 @@ int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
             }
         }
     } else if (recipient.lock_idx >= 0) {
-        if (recipient.lock_idx >= locks.size()) {
-            LOG_ERROR("Lock index is out of range");
+        if (recipient.lock_idx >= (int)locks.size()) {
+            LOG_ERROR("Label index is out of range");
             return 1;
         }
         lock_idx = recipient.lock_idx;
@@ -503,15 +532,40 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
     result = rdr->nextFile(name, size);
     while (result == libcdoc::OK) {
         LOG_DBG("Got file: {} {}", name, size);
-        filesystem::path fpath(name);
-        if (fpath.is_absolute()) {
-            LOG_WARN("File has absolute path, stripping");
-            fpath = fpath.filename();
-        } else if (fpath.has_parent_path()) {
-            LOG_WARN("File has parent path, stripping");
-            fpath = fpath.filename();
+
+        // Sanitise the attacker-controlled file name before composing the
+        // extraction path. See libcdoc::sanitiseExtractedFilename for the
+        // exact set of rejections (path separators, "..", drive letters,
+        // NUL bytes, reserved Windows device names, etc.).
+        std::string safeName = libcdoc::sanitiseExtractedFilename(name);
+        if (safeName.empty()) {
+            LOG_ERROR("Refusing unsafe entry name '{}'", name);
+            return 1;
         }
-        fpath = base_path / fpath;
+        filesystem::path fpath = base_path / filesystem::path(libcdoc::encodeName(safeName));
+
+        // Defence in depth: ensure the lexically-resolved target stays
+        // under base_path, even if a previously-extracted entry placed a
+        // symlink there.
+        std::error_code ec;
+        filesystem::path canonicalBase = filesystem::weakly_canonical(base_path, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise base path {}: {}",
+                      base_path.string(), ec.message());
+            return 1;
+        }
+        filesystem::path canonicalTarget = filesystem::weakly_canonical(fpath, ec);
+        if (ec) {
+            LOG_ERROR("Cannot canonicalise target path {}: {}",
+                      fpath.string(), ec.message());
+            return 1;
+        }
+        if (canonicalTarget.parent_path() != canonicalBase) {
+            LOG_ERROR("Refusing entry '{}': target {} escapes base {}",
+                      name, canonicalTarget.string(), canonicalBase.string());
+            return 1;
+        }
+
         std::ofstream ofs(fpath, std::ios_base::binary);
         if (ofs.bad()) {
             LOG_ERROR("Cannot open file {} for writing", fpath.string());

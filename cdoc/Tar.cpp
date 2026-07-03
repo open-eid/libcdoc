@@ -28,15 +28,27 @@ using namespace libcdoc;
 
 constexpr unsigned int BLOCKSIZE = 512;
 
+constexpr int64_t CDOC2_MAX_FILE_SIZE = 8LL * 1024 * 1024 * 1024;
+
+// Cap on the declared size of an "auxiliary" tar header - i.e. extended
+// PAX header ('x') or global PAX header ('g'). The PAX standard places no
+// formal upper bound on these, but realistic records produced by tar(1)
+// are O(KB) (one entry per path/size override). A malicious archive could
+// otherwise declare an 8 GiB PAX header and force the decryption pipeline
+// to either allocate that much memory (readPaxHeader) or spin through it
+// in skip() (next()). 64 KiB is well above anything legitimate while
+// keeping per-entry memory and stream-skip work bounded.
+constexpr int64_t MAX_AUX_HEADER_SIZE = 64 * 1024;
+
 template<class T = int>
-[[nodiscard]] static constexpr auto svtoi(std::string_view data) noexcept
+[[nodiscard]] static constexpr bool svtoi(std::string_view data, T& result) noexcept
 {
-    T result {};
     if (data.empty())
-        return result;
-    auto p = &*data.begin();
-    std::from_chars(p, p + std::ranges::distance(data), result);
-    return result;
+        return false;
+    const auto *p = data.data();
+    const auto *end = p + data.size();
+    auto [ptr, ec] = std::from_chars(p, end, result);
+    return ec == std::errc{} && ptr == end;
 }
 
 template<std::size_t SIZE>
@@ -47,6 +59,8 @@ static constexpr int64_t fromOctal(const std::array<char,SIZE> &data) noexcept
 	{
 		if(c < '0' || c > '7')
 			continue;
+		if (i > (INT64_MAX >> 3))
+			return INT64_MAX;
 		i <<= 3;
 		i += c - '0';
 	}
@@ -114,7 +128,10 @@ struct libcdoc::Header {
 	}
 
     constexpr int64_t getSize() const noexcept {
-		return fromOctal(size);
+		int64_t s = fromOctal(size);
+		if (s < 0 || s > CDOC2_MAX_FILE_SIZE)
+			return -1;
+		return s;
 	}
 
     constexpr bool operator==(const Header&) const noexcept = default;
@@ -309,6 +326,15 @@ libcdoc::result_t
 libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t& size)
 {
 	int64_t h_size = hdr.getSize();
+	// Validate the declared size BEFORE allocating the buffer. getSize()
+	// already returns -1 for malformed octal or sizes above
+	// CDOC2_MAX_FILE_SIZE, but that 8 GiB ceiling is meant for payload
+	// files; PAX headers themselves must be much smaller. See the
+	// MAX_AUX_HEADER_SIZE comment near the top of this file.
+	if (h_size < 0 || h_size > MAX_AUX_HEADER_SIZE) {
+		_error = DATA_FORMAT_ERROR;
+		return _error;
+	}
 	std::string paxData(h_size, 0);
 	result_t result = _src->read((uint8_t *) paxData.data(), paxData.size());
 	if (result != h_size) {
@@ -329,15 +355,22 @@ libcdoc::TarSource::readPaxHeader(const Header& hdr, std::string& name, int64_t&
         auto keyWord = range_to_sv(std::next(sp), eq);
         auto headerValue = range_to_sv(std::next(eq), line.end());
 
-        if (std::ranges::distance(line) + 1 != svtoi(lenStr)) {
+        int parsedLen;
+        if (!svtoi(lenStr, parsedLen) || std::ranges::distance(line) + 1 != parsedLen) {
             _error = DATA_FORMAT_ERROR;
             return _error;
         }
         LOG_DBG("PAX {} : {}", keyWord, headerValue);
         if (keyWord == "path")
             name = headerValue;
-        if (keyWord == "size")
-            size = svtoi<int64_t>(headerValue);
+        if (keyWord == "size") {
+            int64_t parsedSize;
+            if (!svtoi(headerValue, parsedSize) || parsedSize < 0 || parsedSize > CDOC2_MAX_FILE_SIZE) {
+                _error = DATA_FORMAT_ERROR;
+                return _error;
+            }
+            size = parsedSize;
+        }
     }
     return OK;
 }
@@ -414,8 +447,16 @@ libcdoc::TarSource::next(std::string& name, int64_t& size)
 			_eof = false;
             return OK;
         }
-        // Skip other header types ('g')
+        // Skip other header types ('g' = global PAX header, plus any tar
+        // type we don't recognise as data). Cap the declared size at the
+        // same ceiling we use for 'x' headers so an attacker cannot force
+        // the upstream decryption pipeline to spin through gigabytes of
+        // payload bytes per malicious header.
         h_size = h.getSize();
+        if (h_size < 0 || h_size > MAX_AUX_HEADER_SIZE) {
+            _error = DATA_FORMAT_ERROR;
+            return _error;
+        }
         _src->skip(h_size + padding(h_size));
 	}
 	return END_OF_STREAM;

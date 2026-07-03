@@ -80,14 +80,22 @@ struct CDOC_EXPORT CryptoBackend {
 	 */
     virtual result_t deriveECDH1(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, unsigned int idx) { return NOT_IMPLEMENTED; }
 	/**
-	 * @brief decryptRSA
-	 * @param dst the destination container for decrypted data
-	 * @param data encrypted data
+	 * @brief decrypt RSA ciphertext
+     * 
+     * If @c oaep == false the implementations MUST apply the implicit-rejection countermeasure (RFC 8017 section 7.2.2 / OpenSSL 3.2's
+     * @c EVP_PKEY_CTX_set_rsa_implicit_rejection): on padding failure they MUST return @c OK with @c dst filled with deterministic synthetic
+     * plaintext derived from the private key, and otherwise the recovered plaintext, both indistinguishable to an attacker who does not know the
+     * private key. The downstream AES decrypt acts as the authentication step that distinguishes a real key from a
+     * synthetic one. The @c dst has to be pre-allocated to the expected plaintext length by caller.
+     * 
+	 * @param dst the destination container for decrypted data (has to be pre-allocated if @c oaep == false)
+	 * @param data RSA ciphertext (wrapped FMK)
      * @param oaep use OAEP padding
      * @param idx lock index (0-based) in container
 	 * @return error code or OK
 	 */
     virtual result_t decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t>& data, bool oaep, unsigned int idx) { return NOT_IMPLEMENTED; };
+
 	/**
 	 * @brief Derive key by ConcatKDF algorithm
 	 *

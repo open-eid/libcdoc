@@ -1,6 +1,7 @@
 add_executable(unittests
     libcdoc_boost.cpp
     ../cdoc/Crypto.cpp
+    ../cdoc/Tar.cpp
 )
 
 target_link_libraries(unittests

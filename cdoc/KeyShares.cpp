@@ -95,7 +95,9 @@ struct Disclosure {
 
 Disclosure::Disclosure(const std::string name, const std::string& val)
 {
-    salt64 = toBase64URL(libcdoc::Crypto::random(16));
+    auto rand_bytes = libcdoc::Crypto::random(16);
+    if (rand_bytes.empty()) return;
+    salt64 = toBase64URL(rand_bytes);
     //
     // [SALT, HASH]
     // [SALT, NAME, HASH]
@@ -118,7 +120,9 @@ Disclosure::Disclosure(const std::string name, const std::string& val)
 
 Disclosure::Disclosure(const std::string name, std::vector<Disclosure>& val)
 {
-    salt64 = toBase64URL(libcdoc::Crypto::random(16));
+    auto rand_bytes = libcdoc::Crypto::random(16);
+    if (rand_bytes.empty()) return;
+    salt64 = toBase64URL(rand_bytes);
     //
     // [SALT, [{..., HASH}, {..., HASH}...]
     // [SALT, NAME, [{..., HASH}, {..., HASH}...]
@@ -204,7 +208,7 @@ Signer::generateTickets(std::vector<std::string>& dst, std::vector<ShareData>& s
 result_t
 SIDSigner::signDigest(std::vector<uint8_t>& dst, const std::vector<uint8_t>& digest)
 {
-    LOG_DBG("SID signing: {}", toHex(digest));
+    LOG_TRACE_KEY("SID signing: {}", digest);
 
     result_t result = network->signSID(dst, cert, url, rp_uuid, rp_name, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
     if (result != OK) {
@@ -222,7 +226,7 @@ result_t
 libcdoc::MIDSigner::signDigest(std::vector<uint8_t>& dst, const std::vector<uint8_t>& digest)
 {
 
-    LOG_DBG("MID signing: {}", toHex(digest));
+    LOG_TRACE_KEY("MID signing: {}", digest);
 
     result_t result = network->signMID(dst, cert, url, rp_uuid, rp_name, phone, rcpt_id, digest, libcdoc::CryptoBackend::SHA_256);
     if (result != OK) {

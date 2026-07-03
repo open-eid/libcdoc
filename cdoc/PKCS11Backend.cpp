@@ -29,6 +29,7 @@
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
+#include <openssl/asn1.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
@@ -380,8 +381,8 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
     if (w.empty()) {
-        LOG_DBG("PKCS11: getValue CKA_EC_POINT error");
-    	d->logout();
+        LOG_DBG("PKCS11: getValue CKA_EC_POINT empty");
+        d->logout();
         return CRYPTO_ERROR;
     }
     const uint8_t *p = v.data();
@@ -392,12 +393,58 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
         return CRYPTO_ERROR;
     }
     EC_POINT *pub_key_point = EC_POINT_new(group);
-    int result =  EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL);
+    if (!pub_key_point) {
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
+    // CKA_EC_POINT is DER-encoded per PKCS#11: an OCTET STRING TLV wrapping
+    // the ANSI X9.62 point. Parse the TLV with ASN1_get_object to extract the
+    // payload rather than blindly skipping 2 bytes (wrong for lengths >= 128,
+    // and wrong for tokens that omit the TLV and return raw point bytes).
+    const uint8_t *point_buf = nullptr;
+    long point_len = 0;
+    bool parsed = false;
+    {
+        const unsigned char *pp = w.data();
+        long plen = long(w.size());
+        int ptag = 0, pclass = 0;
+        long payload_len = 0;
+        int ret = ASN1_get_object(&pp, &payload_len, &ptag, &pclass, plen);
+        if (ret >= 0 && ptag == V_ASN1_OCTET_STRING && pclass == V_ASN1_UNIVERSAL
+                && payload_len > 0 && (pp + payload_len) <= (w.data() + plen)) {
+            point_buf = pp;
+            point_len = payload_len;
+            parsed = true;
+        }
+    }
+    if (!parsed) {
+        // Fallback: some tokens return raw point bytes (0x04 || x || y)
+        // without DER OCTET STRING wrapping.
+        point_buf = w.data();
+        point_len = long(w.size());
+    }
+    if (EC_POINT_oct2point(group, pub_key_point, point_buf, size_t(point_len), NULL) != 1) {
+        LOG_DBG("PKCS11: EC_POINT_oct2point error");
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     // Associate the Point with an EC_KEY: Finally, set up an EC_KEY structure and assign the point as the public key.
     EC_KEY *key = EC_KEY_new();
+    if (!key) {
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EC_KEY_set_group(key, group);
     EC_KEY_set_public_key(key, pub_key_point);
     EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    if (!evp_pkey) {
+        EC_KEY_free(key);
+        EC_POINT_free(pub_key_point);
+        EC_GROUP_free(group);
+        return CRYPTO_ERROR;
+    }
     EVP_PKEY_assign_EC_KEY(evp_pkey, key);
     val = Crypto::toPublicKeyDerLong(evp_pkey);
     EVP_PKEY_free(evp_pkey);
@@ -410,25 +457,79 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 libcdoc::result_t
 libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
-	if(!d) return CRYPTO_ERROR;
+    if(!d) return CRYPTO_ERROR;
 
     int result = connectToKey(idx, true);
     if (result != OK) return result;
 
-	CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
-	auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
-	if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	CK_ULONG size = 0;
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
-		d->logout();
-		return CRYPTO_ERROR;
-	}
-	dst.resize(size);
-	if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) return CRYPTO_ERROR;
-	d->logout();
+    if (!oaep) {
+        // If oaep is false, dst must be pre-allocated to the expected length.
+        // This is required to apply the implicit-rejection countermeasure on padding failure.
+        if (dst.empty()) {
+            LOG_ERROR("PKCS11Backend::decryptRSA: dst must be pre-allocated for PKCS#1 v1.5 decryption");
+            return CRYPTO_ERROR;
+        }
+        // Use raw RSA (CKM_RSA_X_509) so libcdoc can apply RFC 8017 implicit
+        // rejection in user space. CKM_RSA_PKCS lets the token strip the
+        // padding, but most PKCS#11 tokens leak the success/failure bit
+        // through CKR_ENCRYPTED_DATA_INVALID vs CKR_OK and through the time
+        // taken; the only portable mitigation is to never let the token see
+        // the padding decision. CKM_RSA_X_509 is a baseline mechanism
+        // supported by every PKCS#11 token that supports RSA.
+        CK_MECHANISM mech { CKM_RSA_X_509, nullptr, 0 };
+        if (d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+
+        CK_ULONG em_size = 0;
+        if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), nullptr, &em_size) != CKR_OK) {
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+        std::vector<uint8_t> em(size_t(em_size), 0);
+        if (d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), em.data(), &em_size) != CKR_OK) {
+            libcdoc::cleanse(em);
+            d->logout();
+            return CRYPTO_ERROR;
+        }
+        em.resize(size_t(em_size));
+        d->logout();
+
+        // Derive a per-(key, ct) synthetic plaintext from the raw RSA
+        // output (EM). EM is private-key-dependent and unpredictable to
+        // attackers who do not know the private key.
+        std::vector<uint8_t> synth = libcdoc::Crypto::syntheticPlaintextFromEM(em, data, dst.size());
+
+        int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
+        libcdoc::cleanse(em);
+        libcdoc::cleanse(synth);
+        return rv;
+    }
+
+    CK_RSA_PKCS_OAEP_PARAMS params { CKM_SHA256, CKG_MGF1_SHA256, 0, nullptr, 0 };
+    auto mech = oaep ? CK_MECHANISM{ CKM_RSA_PKCS_OAEP, &params, sizeof(params) } : CK_MECHANISM{ CKM_RSA_PKCS, nullptr, 0 };
+    if(d->f->C_DecryptInit(d->session, &mech, d->key) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    CK_ULONG size = 0;
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), 0, &size) != CKR_OK) {
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    if(d->f->C_Decrypt(d->session, CK_CHAR_PTR(data.data()), CK_ULONG(data.size()), dst.data(), &size) != CKR_OK) {
+        // Always logout - failing to do so would leak the open session and
+        // (worse) reveal whether the second C_Decrypt failed for "padding"
+        // vs another reason via observable side-effects on the next call.
+        libcdoc::cleanse(dst);
+        dst.clear();
+        d->logout();
+        return CRYPTO_ERROR;
+    }
+    dst.resize(size);
+    d->logout();
     return OK;
 }
 

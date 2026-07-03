@@ -119,8 +119,10 @@ struct CDOC_EXPORT NetworkBackend {
         std::string username;
         /**
          * @brief Proxy password
+         * 
+         * It is the implementer's responsibility to ensure that the buffer remains valid during CDocWriter getFMK and beginEncryption calls
          */
-        std::string password;
+        std::string_view password;
     };
 
     NetworkBackend() = default;
