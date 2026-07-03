@@ -29,6 +29,7 @@
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
+#include <openssl/asn1.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
@@ -379,8 +380,8 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
 		return CRYPTO_ERROR;
 	}
     std::vector<uint8_t> w = d->attribute(d->session, handle, CKA_EC_POINT);
-    if (w.size() < 2) {
-        LOG_DBG("PKCS11: getValue CKA_EC_POINT too short");
+    if (w.empty()) {
+        LOG_DBG("PKCS11: getValue CKA_EC_POINT empty");
         d->logout();
         return CRYPTO_ERROR;
     }
@@ -396,7 +397,33 @@ libcdoc::PKCS11Backend::getPublicKey(std::vector<uint8_t>& val, int slot, const 
         EC_GROUP_free(group);
         return CRYPTO_ERROR;
     }
-    if (EC_POINT_oct2point(group, pub_key_point, w.data() + 2, w.size() - 2, NULL) != 1) {
+    // CKA_EC_POINT is DER-encoded per PKCS#11: an OCTET STRING TLV wrapping
+    // the ANSI X9.62 point. Parse the TLV with ASN1_get_object to extract the
+    // payload rather than blindly skipping 2 bytes (wrong for lengths >= 128,
+    // and wrong for tokens that omit the TLV and return raw point bytes).
+    const uint8_t *point_buf = nullptr;
+    long point_len = 0;
+    bool parsed = false;
+    {
+        const unsigned char *pp = w.data();
+        long plen = long(w.size());
+        int ptag = 0, pclass = 0;
+        long payload_len = 0;
+        int ret = ASN1_get_object(&pp, &payload_len, &ptag, &pclass, plen);
+        if (ret >= 0 && ptag == V_ASN1_OCTET_STRING && pclass == V_ASN1_UNIVERSAL
+                && payload_len > 0 && (pp + payload_len) <= (w.data() + plen)) {
+            point_buf = pp;
+            point_len = payload_len;
+            parsed = true;
+        }
+    }
+    if (!parsed) {
+        // Fallback: some tokens return raw point bytes (0x04 || x || y)
+        // without DER OCTET STRING wrapping.
+        point_buf = w.data();
+        point_len = long(w.size());
+    }
+    if (EC_POINT_oct2point(group, pub_key_point, point_buf, size_t(point_len), NULL) != 1) {
         LOG_DBG("PKCS11: EC_POINT_oct2point error");
         EC_POINT_free(pub_key_point);
         EC_GROUP_free(group);
@@ -469,31 +496,10 @@ libcdoc::PKCS11Backend::decryptRSA(std::vector<uint8_t> &dst, const std::vector<
         em.resize(size_t(em_size));
         d->logout();
 
-        // Build a synthetic seed that does not require access to the private
-        // key (which never leaves the token). HMAC the ciphertext with a
-        // public-but-token-bound value (CKA_ID concatenated with the modulus)
-        // so the seed is stable per (token-key, ct) pair while still being
-        // unpredictable to attackers.
-        std::vector<uint8_t> seed_key;
-        {
-            std::vector<uint8_t> id_attr = d->attribute(d->session, d->key, CKA_ID);
-            std::vector<uint8_t> mod_attr = d->attribute(d->session, d->key, CKA_MODULUS);
-            seed_key.reserve(id_attr.size() + mod_attr.size() + 16);
-            const std::string_view tag{"cdoc1-rsa-implicit-reject-pkcs11"};
-            seed_key.insert(seed_key.end(), tag.begin(), tag.end());
-            seed_key.insert(seed_key.end(), id_attr.begin(), id_attr.end());
-            seed_key.insert(seed_key.end(), mod_attr.begin(), mod_attr.end());
-        }
-        std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
-        libcdoc::cleanse(seed_key);
-        std::vector<uint8_t> synth = libcdoc::Crypto::expand(
-            prk, "cdoc1-rsa-implicit-reject", int(dst.size()));
-        libcdoc::cleanse(prk);
-        if (synth.size() != dst.size()) {
-            // Last-resort fallback: fixed zero seed. Worse than ideal but still
-            // length-uniform with the real-success path.
-            synth.assign(dst.size(), 0);
-        }
+        // Derive a per-(key, ct) synthetic plaintext from the raw RSA
+        // output (EM). EM is private-key-dependent and unpredictable to
+        // attackers who do not know the private key.
+        std::vector<uint8_t> synth = libcdoc::Crypto::syntheticPlaintextFromEM(em, data, dst.size());
 
         int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
         libcdoc::cleanse(em);

@@ -80,7 +80,10 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     dst->write(headerHMAC.data(), headerHMAC.size());
 
     std::vector<uint8_t> nonce;
-    crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN);
+    if (auto rv = crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN); rv < 0)
+        return rv;
+    if (nonce.size() != libcdoc::CDoc2::NONCE_LEN)
+        FAIL("RNG failure: nonce too short", libcdoc::CRYPTO_ERROR);
     LOG_TRACE_KEY("nonce: {}", nonce);
     auto cipher = std::make_unique<EncryptionConsumer>(*dst, EVP_chacha20_poly1305(), Crypto::Key(std::move(cek), std::move(nonce)));
     for(const auto &aad: {libcdoc::CDoc2::PAYLOAD, std::move(header), std::move(headerHMAC)}) {
@@ -236,7 +239,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     FAIL("Missing keyserver URL for ID " + rcpt.server_id, libcdoc::CONFIGURATION_ERROR);
             }
             if(rcpt.pk_type == libcdoc::Algorithm::RSA) {
-                crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
+                if (auto rv = crypto->random(kek, libcdoc::CDoc2::KEY_LEN); rv < 0)
+                    FAIL("RNG failure", rv);
                 if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
                     FAIL("Internal error", err);
                 auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt.rcpt_key);
@@ -356,11 +360,15 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             //# KEK_i computation:
             //KeyMaterialSalt_i = CSRNG(256)
             std::vector<uint8_t> key_material_salt;
-            crypto->random(key_material_salt, libcdoc::CDoc2::KEY_LEN);
+            if (auto rv = crypto->random(key_material_salt, libcdoc::CDoc2::KEY_LEN); rv < 0)
+                FAIL("RNG failure", rv);
 
             //KeyMaterial_i = CSRNG(256)
             std::vector<uint8_t> key_material;
-            crypto->random(key_material, libcdoc::CDoc2::KEY_LEN);
+            if (auto rv = crypto->random(key_material, libcdoc::CDoc2::KEY_LEN); rv < 0) {
+                libcdoc::cleanse(key_material_salt);
+                FAIL("RNG failure", rv);
+            }
             // key_material is split-share-input material; wipe on exit.
             libcdoc::Cleanser key_material_guard(key_material);
 
@@ -395,7 +403,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
 
             for (int i = 1; i < N_SHARES; i++) {
                 // KEK_i_share_j = CSRNG(256)
-                crypto->random(kek_shares[i], libcdoc::CDoc2::KEY_LEN);
+                if (auto rv = crypto->random(kek_shares[i], libcdoc::CDoc2::KEY_LEN); rv < 0)
+                    FAIL("RNG failure", rv);
             }
             // KEK_i_share_1 = XOR(KEK_i, KEK_i_share_2, KEK_i_share_3,..., KEK_i_share_n)
             kek_shares[0] = std::move(kek);
@@ -410,7 +419,6 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::vector<std::vector<uint8_t>> transaction_ids(N_SHARES);
             for (int i = 0; i < N_SHARES; i++) {
                 std::string send_url = urls[i];
-                LOG_TRACE("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
                 int result = network->sendShare(transaction_ids[i], send_url, RecipientInfo_i, kek_shares[i]);
                 if (result < 0)
                     FAIL(network->getLastErrorStr(result), result);

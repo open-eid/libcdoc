@@ -240,38 +240,10 @@ libcdoc::WinBackend::decryptRSA(std::vector<uint8_t>& dst, const std::vector<uin
         }
         em.resize(em_size);
 
-        // Build a stable synthetic seed from a token-bound public value (the
-        // public key blob) plus the ciphertext. The private key never leaves
-        // CNG's keystore, but the public modulus is exportable and serves the
-        // same role of "private to this key, public-immutable" that OpenSSL's
-        // i2d_PrivateKey gives us elsewhere.
-        std::vector<uint8_t> seed_key;
-        {
-            DWORD blob_size = 0;
-            if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr, nullptr, 0, &blob_size, 0) == ERROR_SUCCESS &&
-                    blob_size > 0) {
-                std::vector<uint8_t> blob(blob_size, 0);
-                if (NCryptExportKey(d->key, 0, BCRYPT_RSAPUBLIC_BLOB, nullptr, blob.data(), blob_size, &blob_size, 0) == ERROR_SUCCESS) {
-                    blob.resize(blob_size);
-                    const std::string_view tag{"cdoc1-rsa-implicit-reject-cng"};
-                    seed_key.reserve(tag.size() + blob.size());
-                    seed_key.insert(seed_key.end(), tag.begin(), tag.end());
-                    seed_key.insert(seed_key.end(), blob.begin(), blob.end());
-                }
-            }
-            // If export failed, fall back to a fixed tag - still length-uniform
-            // but slightly less unpredictable. Better than leaking the failure.
-            if (seed_key.empty()) {
-                const std::string_view tag{"cdoc1-rsa-implicit-reject-cng-fallback"};
-                seed_key.assign(tag.begin(), tag.end());
-            }
-        }
-        std::vector<uint8_t> prk = libcdoc::Crypto::sign_hmac(seed_key, data);
-        libcdoc::cleanse(seed_key);
-        std::vector<uint8_t> synth = libcdoc::Crypto::expand(prk, "cdoc1-rsa-implicit-reject", int(dst.size()));
-        libcdoc::cleanse(prk);
-        if (synth.size() != dst.size()) 
-            synth.assign(dst.size(), 0);
+        // Derive a per-(key, ct) synthetic plaintext from the raw RSA
+        // output (EM). EM is private-key-dependent and unpredictable to
+        // attackers who do not know the private key.
+        std::vector<uint8_t> synth = libcdoc::Crypto::syntheticPlaintextFromEM(em, data, dst.size());
 
         int rv = libcdoc::Crypto::rsaImplicitRejectFromEM(dst, em, data, synth, dst.size());
         libcdoc::cleanse(em);
@@ -415,11 +387,11 @@ libcdoc::WinBackend::sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, co
     BCRYPT_PSS_PADDING_INFO rsaPSS { BCRYPT_SHA256_ALGORITHM, 32 };
     switch(algorithm) {
         case libcdoc::CryptoBackend::HashAlgorithm::SHA_256:
-            rsaPSS = { BCRYPT_SHA256_ALGORITHM, 32 }; break;
+            rsaPSS = { NCRYPT_SHA256_ALGORITHM, 32 }; break;
         case libcdoc::CryptoBackend::HashAlgorithm::SHA_384:
-            rsaPSS = { BCRYPT_SHA384_ALGORITHM, 48 }; break;
+            rsaPSS = { NCRYPT_SHA384_ALGORITHM, 48 }; break;
         case libcdoc::CryptoBackend::HashAlgorithm::SHA_512:
-            rsaPSS = { BCRYPT_SHA512_ALGORITHM, 64 }; break;
+            rsaPSS = { NCRYPT_SHA512_ALGORITHM, 64 }; break;
         case libcdoc::CryptoBackend::HashAlgorithm::SHA_224:
             // SHA-224 is not supported by CNG's RSA-PSS implementation.
             LOG_ERROR("WinBackend: RSA-PSS with SHA-224 is not supported by CNG");

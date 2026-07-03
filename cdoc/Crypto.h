@@ -182,6 +182,10 @@ public:
      * @param expected_len length of plaintext the caller expects to receive
      * @return OK on success
      */
+    static std::vector<uint8_t> syntheticPlaintextFromEM(const std::vector<uint8_t>& em,
+                                                         const std::vector<uint8_t>& ct,
+                                                         size_t out_len);
+
     static int rsaImplicitRejectFromEM(std::vector<uint8_t>& dst,
                                        const std::vector<uint8_t>& em,
                                        const std::vector<uint8_t>& ct,
