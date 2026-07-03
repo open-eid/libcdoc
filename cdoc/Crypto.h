@@ -58,8 +58,8 @@ public:
 
         Key() {}
 		~Key() {
-			std::fill(key.begin(), key.end(), 0);
-			std::fill(iv.begin(), iv.end(), 0);
+			libcdoc::cleanse(key);
+			libcdoc::cleanse(iv);
 		}
         Key(std::vector<uint8_t> _key, std::vector<uint8_t> _iv) : key(std::move(_key)), iv(std::move(_iv)) {}
         Key(size_t keySize, size_t ivSize) : key(keySize), iv(ivSize) {}
@@ -98,6 +98,100 @@ public:
 	static std::vector<uint8_t> random(uint32_t len = 32);
 	static int xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs);
 
+    /**
+     * @brief Decrypt an RSA PKCS#1 v1.5 ciphertext with implicit rejection.
+     *
+     * Implements the decryption procedure of RFC 8017 section 7.2.2 with the
+     * "implicit rejection" countermeasure described by Bleichenbacher /
+     * RFC 8017 Appendix B / OpenSSL's @c EVP_PKEY_CTX_set_rsa_implicit_rejection.
+     * On successful unpadding produces the recovered plaintext; on padding
+     * failure produces a deterministic synthetic plaintext derived from the
+     * private key and the ciphertext, of the requested @p expected_len bytes,
+     * indistinguishable from a real decryption to an attacker who does not
+     * already know the private key.
+     *
+     * The function ALWAYS returns @c OK and ALWAYS produces exactly
+     * @p expected_len output bytes for any well-formed ciphertext (size equal
+     * to the modulus length). The caller MUST treat the output as a candidate
+     * key whose validity can only be confirmed by a downstream authenticated
+     * step (AES-GCM tag, HMAC, ...). It MUST NOT branch on the output's
+     * structure or surface a different error for "decryption failed" vs
+     * "key was wrong" - doing so reintroduces the very oracle this function
+     * exists to remove.
+     *
+     * On OpenSSL >= 3.2 this delegates to OpenSSL's native implementation; on
+     * older OpenSSL versions it implements the same algorithm in software.
+     *
+     * @param dst        destination buffer (resized to @p expected_len)
+     * @param priv       RSA private key
+     * @param ct         ciphertext (must equal modulus length)
+     * @param expected_len length of plaintext the caller expects to receive
+     * @return OK on success, CRYPTO_ERROR only for unrecoverable, non-padding
+     *         failures (e.g. ct size mismatch with modulus)
+     */
+    static int decryptRSAv15_implicitReject(std::vector<uint8_t>& dst,
+                                            EVP_PKEY *priv,
+                                            const std::vector<uint8_t>& ct,
+                                            size_t expected_len);
+
+    /**
+     * @brief Apply a delay proportional to the number of consecutive
+     *        decrypt failures recorded for a given (process, key) pair.
+     *
+     * Bleichenbacher / cross-protocol attacks against RSA-PKCS#1 v1.5 require
+     * a large number of adaptive queries against the same victim
+     * ciphertext-key pair. This helper introduces an exponentially-growing
+     * sleep on consecutive decrypt failures, which dramatically increases
+     * the wall-clock cost of a remote oracle attack while remaining
+     * essentially invisible during normal use (one or two failures only).
+     *
+     * The throttle is per-process and is designed to be advisory: long-
+     * running services that decrypt many containers should additionally
+     * implement per-recipient rate limits in their host application.
+     *
+     * @param scope an arbitrary string that scopes the failure counter; use
+     *              the recipient identifier or "default" if you don't have
+     *              one. Different scopes have independent counters.
+     */
+    static void rsaOracleThrottleOnFailure(const std::string& scope);
+
+    /**
+     * @brief Reset the consecutive-failure counter for the given scope.
+     *
+     * Should be called after any successful authenticated decrypt to
+     * prevent the throttle from punishing legitimate retries.
+     */
+    static void rsaOracleThrottleOnSuccess(const std::string& scope);
+
+    /**
+     * @brief Constant-time PKCS#1 v1.5 unpadding from a pre-decrypted EM block.
+     *
+     * Same semantics as @ref decryptRSAv15_implicitReject, but skips the raw
+     * RSA decryption step. Intended for backends (PKCS#11, CNG) that obtain
+     * the EM block via raw RSA (CKM_RSA_X_509 / BCRYPT_PAD_NONE) and need to
+     * apply the constant-time unpadding in user space.
+     *
+     * @param dst          destination buffer (resized to @p expected_len)
+     * @param em           EM block as returned by raw RSA decryption
+     * @param ct           original ciphertext (used as input to the synthetic
+     *                     plaintext derivation - MUST be the *same* bytes the
+     *                     caller decrypted, so that retries on the same
+     *                     ciphertext yield the same synthetic output)
+     * @param synth_seed   private-key-derived seed used to make synthetic
+     *                     output unpredictable to attackers
+     * @param expected_len length of plaintext the caller expects to receive
+     * @return OK on success
+     */
+    static std::vector<uint8_t> syntheticPlaintextFromEM(const std::vector<uint8_t>& em,
+                                                         const std::vector<uint8_t>& ct,
+                                                         size_t out_len);
+
+    static int rsaImplicitRejectFromEM(std::vector<uint8_t>& dst,
+                                       const std::vector<uint8_t>& em,
+                                       const std::vector<uint8_t>& ct,
+                                       const std::vector<uint8_t>& synth_seed,
+                                       size_t expected_len);
+
     static bool isError(int retval, const char* funcName, const char* file, int line)
     {
         if (retval < 1) {
@@ -113,6 +207,7 @@ public:
 struct EncryptionConsumer final : public DataConsumer {
     EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key);
     EncryptionConsumer(DataConsumer &dst, const EVP_CIPHER *cipher, const Crypto::Key &key);
+    ~EncryptionConsumer() { libcdoc::cleanse(buf); }
     CDOC_DISABLE_MOVE_COPY(EncryptionConsumer)
     result_t write(const uint8_t *src, size_t size) noexcept final;
     result_t writeAAD(const std::vector<uint8_t> &data) noexcept;
@@ -129,6 +224,7 @@ private:
 struct DecryptionSource final : public DataSource {
     DecryptionSource(DataSource &src, const std::string &method, const std::vector<unsigned char> &key, size_t ivLen = 0);
     DecryptionSource(DataSource &src, const EVP_CIPHER *cipher, const std::vector<unsigned char> &key, size_t ivLen = 0);
+    ~DecryptionSource() { libcdoc::cleanse(tag); }
     CDOC_DISABLE_MOVE_COPY(DecryptionSource)
 
     result_t read(unsigned char* dst, size_t size) noexcept final;

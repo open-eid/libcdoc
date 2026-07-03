@@ -19,6 +19,7 @@
 #include "CDoc.h"
 #include "Crypto.h"
 #include "Utils.h"
+#include "utils/ct.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -28,13 +29,26 @@
 
 #include <openssl/aes.h>
 #include <openssl/err.h>
+#include <openssl/hmac.h>
 #include <openssl/kdf.h>
+#include <openssl/opensslv.h>
 #include <openssl/rand.h>
+#include <openssl/rsa.h>
 #include <openssl/sha.h>
 #include <openssl/x509.h>
 
+#if OPENSSL_VERSION_NUMBER >= 0x30200000L
+#include <openssl/core_names.h>
+#include <openssl/params.h>
+#endif
+
 #include <array>
+#include <chrono>
 #include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
 
 using namespace libcdoc;
 
@@ -47,21 +61,29 @@ const std::string Crypto::AGREEMENT_MTH = "http://www.w3.org/2009/xmlenc11#ECDH-
 
 std::vector<uint8_t> Crypto::AESWrap(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data, bool encrypt)
 {
-	AES_KEY aes;
-    // fixme: Fix SSL_FAILED, current solution is idiotic
-    if (encrypt && !SSL_FAILED(AES_set_encrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_encrypt_key") ||
-        !encrypt && !SSL_FAILED(AES_set_decrypt_key(key.data(), int(key.size()) * 8, &aes), "AES_set_decrypt_key"))
+    // Note: AES_set_{encrypt,decrypt}_key return 0 on success and a negative
+    // value on failure - the opposite convention from OpenSSL's EVP_* APIs that
+    // SSL_FAILED is designed for. Check the return value directly.
+    AES_KEY aes;
+    const int key_bits = int(key.size()) * 8;
+    const int key_init_rv = encrypt
+        ? AES_set_encrypt_key(key.data(), key_bits, &aes)
+        : AES_set_decrypt_key(key.data(), key_bits, &aes);
+    if (key_init_rv != 0) {
+        LOG_SSL_ERROR(encrypt ? "AES_set_encrypt_key" : "AES_set_decrypt_key");
         return {};
+    }
 
-	std::vector<uint8_t> result(data.size() + 8);
-	int size = encrypt ?
-		AES_wrap_key(&aes, nullptr, result.data(), data.data(), data.size()) :
-		AES_unwrap_key(&aes, nullptr, result.data(), data.data(), data.size());
-	if(size > 0)
-		result.resize(size_t(size));
-	else
-		result.clear();
-	return result;
+    std::vector<uint8_t> result(data.size() + 8);
+    const int size = encrypt
+        ? AES_wrap_key(&aes, nullptr, result.data(), data.data(), data.size())
+        : AES_unwrap_key(&aes, nullptr, result.data(), data.data(), data.size());
+    if (size <= 0) {
+        result.clear();
+        return result;
+    }
+    result.resize(size_t(size));
+    return result;
 }
 
 const EVP_CIPHER *Crypto::cipher(const std::string &algo)
@@ -120,10 +142,10 @@ std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyD
 std::vector<uint8_t> Crypto::concatKDF(const std::string &hashAlg, uint32_t keyDataLen, const std::vector<uint8_t> &z,
 	const std::vector<uint8_t> &AlgorithmID, const std::vector<uint8_t> &PartyUInfo, const std::vector<uint8_t> &PartyVInfo)
 {
-    LOG_DBG("Ksr {}", toHex(z));
-    LOG_DBG("AlgorithmID {}", toHex(AlgorithmID));
-    LOG_DBG("PartyUInfo {}", toHex(PartyUInfo));
-    LOG_DBG("PartyVInfo {}", toHex(PartyVInfo));
+    LOG_TRACE_KEY("Ksr {}", z);
+    LOG_TRACE_KEY("AlgorithmID {}", AlgorithmID);
+    LOG_TRACE_KEY("PartyUInfo {}", PartyUInfo);
+    LOG_TRACE_KEY("PartyVInfo {}", PartyVInfo);
 
 	std::vector<uint8_t> otherInfo;
 	otherInfo.insert(otherInfo.cend(), AlgorithmID.cbegin(), AlgorithmID.cend());
@@ -138,14 +160,15 @@ Crypto::encrypt(EVP_PKEY *pub, int padding, const std::vector<uint8_t> &data)
     auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(pub, nullptr));
 	size_t size = 0;
     if (SSL_FAILED(EVP_PKEY_encrypt_init(ctx.get()), "EVP_PKEY_encrypt_init") ||
-        SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding") ||
-        SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
+        SSL_FAILED(EVP_PKEY_CTX_set_rsa_padding(ctx.get(), padding), "EVP_PKEY_CTX_set_rsa_padding"))
 		return {};
 	if(padding == RSA_PKCS1_OAEP_PADDING) {
         if (SSL_FAILED(EVP_PKEY_CTX_set_rsa_oaep_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_oaep_md") ||
             SSL_FAILED(EVP_PKEY_CTX_set_rsa_mgf1_md(ctx.get(), EVP_sha256()), "EVP_PKEY_CTX_set_rsa_mgf1_md"))
 			return {};
 	}
+    if (SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), nullptr, &size, data.data(), data.size()), "EVP_PKEY_encrypt"))
+		return {};
 	std::vector<uint8_t> result(int(size), 0);
     if(SSL_FAILED(EVP_PKEY_encrypt(ctx.get(), result.data(), &size,
             data.data(), data.size()), "EVP_PKEY_encrypt"))
@@ -202,27 +225,30 @@ std::vector<uint8_t> Crypto::deriveSharedSecret(EVP_PKEY *pkey, EVP_PKEY *peerPK
 		return sharedSecret;
 
 	sharedSecret.resize(sharedSecretLen);
-	if(EVP_PKEY_derive(ctx.get(), sharedSecret.data(), &sharedSecretLen) <= 0)
+	if(EVP_PKEY_derive(ctx.get(), sharedSecret.data(), &sharedSecretLen) <= 0) {
 		sharedSecret.clear();
+		return sharedSecret;
+	}
+	sharedSecret.resize(sharedSecretLen);
 	return sharedSecret;
 }
 
 Crypto::Key Crypto::generateKey(const std::string &method)
 {
 	const EVP_CIPHER *c = cipher(method);
-#ifdef WIN32
-	RAND_screen();
-#else
-	RAND_load_file("/dev/urandom", 1024);
-#endif
-    Key key(EVP_CIPHER_key_length(c), EVP_CIPHER_iv_length(c));
-	uint8_t salt[PKCS5_SALT_LEN], indata[128];
-	RAND_bytes(salt, sizeof(salt));
-	RAND_bytes(indata, sizeof(indata));
-    if (SSL_FAILED(EVP_BytesToKey(c, EVP_sha256(), salt, indata, sizeof(indata), 1, key.key.data(), key.iv.data()), "EVP_BytesToKey"))
+    if (!c) {
+        LOG_ERROR("generateKey: unsupported cipher method {}", method);
         return {};
-    else
-        return key;
+    }
+    Key key(EVP_CIPHER_key_length(c), EVP_CIPHER_iv_length(c));
+    if (RAND_status() != 1) {
+        LOG_ERROR("generateKey: OpenSSL PRNG not seeded");
+        return {};
+    }
+    if (SSL_FAILED(RAND_bytes(key.key.data(), int(key.key.size())), "RAND_bytes") ||
+        SSL_FAILED(RAND_bytes(key.iv.data(), int(key.iv.size())), "RAND_bytes"))
+        return {};
+    return key;
 }
 
 uint32_t Crypto::keySize(const std::string &algo)
@@ -438,6 +464,327 @@ void Crypto::LogSslError(const char* funcName, const char* file, int line)
         // Get next error code
         errorCode = ERR_get_error();
     }
+}
+
+namespace {
+
+// Per-scope consecutive-failure counter. Process-wide. The mutex protects a
+// small map keyed by scope string; lock contention is negligible because
+// throttle invocations only happen on the failed-decrypt path which is
+// already an attacker-budget-limited code path.
+std::mutex g_throttle_mutex;
+std::unordered_map<std::string, unsigned int> g_throttle_failures;
+
+constexpr std::chrono::milliseconds kThrottleBase{50};
+constexpr std::chrono::milliseconds kThrottleCap{5000};
+
+} // anonymous namespace
+
+void Crypto::rsaOracleThrottleOnFailure(const std::string& scope)
+{
+    unsigned int failures = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_throttle_mutex);
+        failures = ++g_throttle_failures[scope];
+    }
+
+    // delay = base * 2^(failures-1), capped at kThrottleCap. Computed on a
+    // wider integer to avoid overflow for very large failure counts.
+    auto delay = kThrottleBase;
+    for (unsigned int i = 1; i < failures && delay < kThrottleCap; ++i) {
+        delay *= 2;
+    }
+    if (delay > kThrottleCap) delay = kThrottleCap;
+
+    LOG_WARN("RSA decrypt failure (scope={}, consecutive={}); throttling for {} ms",
+             scope, failures, delay.count());
+    std::this_thread::sleep_for(delay);
+}
+
+void Crypto::rsaOracleThrottleOnSuccess(const std::string& scope)
+{
+    std::lock_guard<std::mutex> lk(g_throttle_mutex);
+    g_throttle_failures.erase(scope);
+}
+
+namespace {
+
+// Derive a per-(privkey, ciphertext) deterministic byte string used as the
+// "synthetic plaintext" when PKCS#1 v1.5 unpadding fails. We follow the
+// recipe in RFC 8017 section 7.2.2 and OpenSSL 3.2's implicit-rejection
+// implementation: HMAC-SHA-256(privkey_seed, ciphertext) seeded into HKDF
+// expand. The output is deterministic-of-(key, ct) so repeating the same
+// query yields the same synthetic output (this is what defeats the
+// distinguisher); but unpredictable to an attacker who does not know the
+// private key.
+std::vector<uint8_t> syntheticPlaintext(EVP_PKEY *priv,
+                                        const std::vector<uint8_t> &ct,
+                                        size_t out_len)
+{
+    if (!priv || out_len == 0) return std::vector<uint8_t>(out_len, 0);
+
+    // Use the private key's PKCS#8 DER as the HMAC key. It is private to the
+    // decryption process and stable across calls.
+    int der_len = i2d_PrivateKey(priv, nullptr);
+    if (der_len <= 0)
+        return std::vector<uint8_t>(out_len, 0);
+    std::vector<uint8_t> mac_key(size_t(der_len), 0);
+    {
+        unsigned char *p = mac_key.data();
+        if (i2d_PrivateKey(priv, &p) != der_len) {
+            libcdoc::cleanse(mac_key);
+            return std::vector<uint8_t>(out_len, 0);
+        }
+    }
+
+    std::vector<uint8_t> prk = Crypto::sign_hmac(mac_key, ct);
+    libcdoc::cleanse(mac_key);
+    if (prk.empty())
+        return std::vector<uint8_t>(out_len, 0);
+
+    auto out = Crypto::expand(prk, "cdoc1-rsa-implicit-reject", int(out_len));
+    libcdoc::cleanse(prk);
+    if (out.size() != out_len) {
+        libcdoc::cleanse(out);
+        return std::vector<uint8_t>(out_len, 0);
+    }
+    return out;
+}
+
+// Constant-time PKCS#1 v1.5 unpadding. Walks the entire EM block in a
+// data-independent fashion regardless of where (or whether) the 0x00
+// separator is found, the value of the leading bytes, or the eventual
+// message length. Produces a single byte mask `good` (0xFF on valid
+// padding, 0x00 otherwise) and a copy of either the recovered message
+// or the synthetic plaintext into `dst`. dst is always exactly
+// expected_len bytes long.
+void unpadPKCS1v15CT(const std::vector<uint8_t> &em,
+                     const std::vector<uint8_t> &synth,
+                     size_t expected_len,
+                     std::vector<uint8_t> &dst)
+{
+    using namespace libcdoc::ct;
+
+    dst.assign(expected_len, 0);
+
+    // Need at least 0x00 || 0x02 || PS(>=8) || 0x00 || M
+    // -> EM length must be >= 11 + expected_len.
+    if (em.size() < 11u + expected_len) {
+        // Caller-side guarantees this in normal use because the modulus is
+        // always larger than expected_len. Still, fall back to synthetic
+        // output rather than reading out-of-bounds.
+        for (size_t i = 0; i < expected_len; ++i)
+            dst[i] = synth[i];
+        return;
+    }
+
+    // Initial header check.
+    uint8_t good = 0xFF;
+    good &= eq8(em[0], 0x00);
+    good &= eq8(em[1], 0x02);
+
+    // Find the index of the first 0x00 byte at index >= 2.
+    // We must walk every byte of EM regardless of where the byte happens
+    // to be, otherwise a timing channel leaks the position of the first
+    // 0x00 (the classic "Manger / Bardou" oracle).
+    size_t first_zero_idx = 0;
+    uint8_t found_zero = 0x00;
+    for (size_t i = 2; i < em.size(); ++i) {
+        uint8_t is_zero = eq8(em[i], 0x00);
+        // latch the first index at which is_zero is set
+        uint8_t latch = uint8_t(is_zero & ~found_zero);
+        // "if latch then first_zero_idx = i". We can't branch; do it
+        // arithmetically. (i fits comfortably in size_t.)
+        const size_t mask_size = (latch == 0xFF) ? ~size_t(0) : size_t(0);
+        first_zero_idx = (i & mask_size) | (first_zero_idx & ~mask_size);
+        found_zero = uint8_t(found_zero | is_zero);
+    }
+    good &= found_zero;
+
+    // PS must be at least 8 bytes -> first 0x00 index >= 10.
+    good &= ge_size(first_zero_idx, 10);
+
+    // Message starts after the separator and runs to the end of EM.
+    // (We don't need ge here because if found_zero is 0xFF then
+    // first_zero_idx <= em.size()-1.)
+    size_t msg_off = first_zero_idx + 1;
+    size_t msg_len = (msg_off <= em.size()) ? (em.size() - msg_off) : 0;
+
+    // Check that the message length matches what the caller expects.
+    good &= eq32(uint32_t(msg_len), uint32_t(expected_len));
+
+    // Constant-time copy: walk every possible message offset, and for
+    // each output position i select em[msg_off + i] if it is in range,
+    // otherwise 0. We then conditionally mux it against the synthetic
+    // plaintext using `good`.
+    //
+    // Important: the inner read em[src_idx] must not depend on `good` in
+    // a way that the compiler could turn into a conditional load. We
+    // therefore always perform the read and clamp src_idx to a valid
+    // range (em.size() - 1). When good==0 we discard the value.
+    for (size_t i = 0; i < expected_len; ++i) {
+        size_t src_idx = msg_off + i;
+        // Clamp: if src_idx >= em.size() use em[em.size()-1] (always in
+        // range since em.size() >= 11+expected_len > 0). The clamped value
+        // is replaced by synth[i] below when good == 0, so the actual
+        // bytes read here never reach the caller.
+        size_t in_range = size_t(ge_size(em.size() - 1, src_idx));   // 0 or 0xFF
+        size_t mask = in_range & ~size_t(0);
+        size_t safe_idx = (src_idx & mask) | ((em.size() - 1) & ~mask);
+        uint8_t real = em[safe_idx];
+        uint8_t synthetic = synth[i];
+        dst[i] = uint8_t((real & good) | (synthetic & uint8_t(~good)));
+    }
+}
+
+} // anonymous namespace
+
+std::vector<uint8_t> Crypto::syntheticPlaintextFromEM(const std::vector<uint8_t>& em,
+                                                      const std::vector<uint8_t>& ct,
+                                                      size_t out_len)
+{
+    if (em.empty() || ct.empty() || out_len == 0)
+        return std::vector<uint8_t>(out_len, 0);
+
+    std::vector<uint8_t> seed_key;
+    {
+        const std::string_view tag{"cdoc1-rsa-implicit-reject"};
+        seed_key.reserve(tag.size() + em.size());
+        seed_key.insert(seed_key.end(), tag.begin(), tag.end());
+        seed_key.insert(seed_key.end(), em.begin(), em.end());
+    }
+    std::vector<uint8_t> prk = Crypto::sign_hmac(seed_key, ct);
+    libcdoc::cleanse(seed_key);
+    if (prk.empty())
+        return std::vector<uint8_t>(out_len, 0);
+
+    auto synth = Crypto::expand(prk, "cdoc1-rsa-implicit-reject", int(out_len));
+    libcdoc::cleanse(prk);
+    if (synth.size() != out_len) {
+        libcdoc::cleanse(synth);
+        return std::vector<uint8_t>(out_len, 0);
+    }
+    return synth;
+}
+
+int Crypto::rsaImplicitRejectFromEM(std::vector<uint8_t>& dst,
+                                    const std::vector<uint8_t>& em,
+                                    const std::vector<uint8_t>& /*ct*/,
+                                    const std::vector<uint8_t>& synth_seed,
+                                    size_t expected_len)
+{
+    // The caller passes a key-derived synthetic seed already sized to
+    // `expected_len`. For token backends (PKCS#11, CNG) the seed is
+    // produced by syntheticPlaintextFromEM(); for the software path by
+    // syntheticPlaintext() to be consistent with OpenSSL implementation.
+    // Both derive from private-key-dependent
+    // material that the caller has access to.
+    if (synth_seed.size() != expected_len)
+        return CRYPTO_ERROR;
+
+    unpadPKCS1v15CT(em, synth_seed, expected_len, dst);
+    return OK;
+}
+
+int Crypto::decryptRSAv15_implicitReject(std::vector<uint8_t>& dst,
+                                         EVP_PKEY *priv,
+                                         const std::vector<uint8_t>& ct,
+                                         size_t expected_len)
+{
+    if (!priv || expected_len == 0)
+        return CRYPTO_ERROR;
+
+    auto ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(priv, nullptr));
+    if (!ctx) {
+        LOG_SSL_ERROR("EVP_PKEY_CTX_new");
+        return CRYPTO_ERROR;
+    }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30200000L
+    // Native fast path: OpenSSL 3.2+ implements the implicit-rejection
+    // countermeasure internally, with platform-specific constant-time
+    // primitives, when this control is set AFTER EVP_PKEY_decrypt_init.
+    //
+    // Behaviour with implicit rejection enabled: a successful PKCS#1 v1.5
+    // unpad returns the original plaintext (length = M length). A failed
+    // unpad returns a deterministic synthetic message of length
+    // (modulus_bytes - 11) - the maximum unpad length for the modulus.
+    // Either way EVP_PKEY_decrypt returns 1.
+    //
+    // We allocate a buffer of (modulus_bytes - 11) so both cases fit, then
+    // accept the result iff outlen == expected_len. A wrong-length
+    // unpadding (real bug or wrong-key-with-coincidentally-good-padding)
+    // is treated as a padding failure: fall through to the software path
+    // which produces a synthetic plaintext of expected_len bytes.
+    if (EVP_PKEY_decrypt_init(ctx.get()) == 1 &&
+        EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_PKCS1_PADDING) == 1) {
+        unsigned int impl_reject = 1;
+        OSSL_PARAM params[] = {
+            OSSL_PARAM_construct_uint(OSSL_ASYM_CIPHER_PARAM_IMPLICIT_REJECTION,
+                                      &impl_reject),
+            OSSL_PARAM_END
+        };
+        if (EVP_PKEY_CTX_set_params(ctx.get(), params) == 1) {
+            const size_t mod_size = size_t(EVP_PKEY_get_size(priv));
+            if (mod_size > 11 + expected_len && ct.size() == mod_size) {
+                // Allocate enough room for the worst-case (synthetic)
+                // output, then ask the API how many bytes it wrote.
+                std::vector<uint8_t> tmp(mod_size, 0);
+                size_t outlen = tmp.size();
+                int rv = EVP_PKEY_decrypt(ctx.get(), tmp.data(), &outlen,
+                                          ct.data(), ct.size());
+                if (rv == 1 && outlen == expected_len) {
+                    dst.assign(tmp.begin(), tmp.begin() + outlen);
+                    libcdoc::cleanse(tmp);
+                    return OK;
+                }
+                libcdoc::cleanse(tmp);
+                // Length didn't match - fall through to software path so we
+                // produce a synthetic plaintext of the correct length.
+            }
+        }
+    }
+    // Reset the context for the fall-through software path.
+    ctx = make_unique_ptr<EVP_PKEY_CTX_free>(EVP_PKEY_CTX_new(priv, nullptr));
+    if (!ctx) {
+        LOG_SSL_ERROR("EVP_PKEY_CTX_new");
+        return CRYPTO_ERROR;
+    }
+#endif
+
+    // Software path: raw RSA decrypt + constant-time unpadding.
+    if (EVP_PKEY_decrypt_init(ctx.get()) != 1 ||
+        EVP_PKEY_CTX_set_rsa_padding(ctx.get(), RSA_NO_PADDING) != 1) {
+        LOG_SSL_ERROR("EVP_PKEY_decrypt_init/RSA_NO_PADDING");
+        return CRYPTO_ERROR;
+    }
+
+    const size_t mod_size = size_t(EVP_PKEY_get_size(priv));
+    if (mod_size == 0 || ct.size() != mod_size) {
+        // Genuine input error - return CRYPTO_ERROR rather than synthetic
+        // bytes. The shape of this failure is independent of any padding
+        // bits, so it does not feed an oracle.
+        return CRYPTO_ERROR;
+    }
+
+    std::vector<uint8_t> em(mod_size, 0);
+    size_t em_len = mod_size;
+    int rv = EVP_PKEY_decrypt(ctx.get(), em.data(), &em_len,
+                              ct.data(), ct.size());
+    if (rv != 1 || em_len != mod_size) {
+        // Raw RSA can fail if ct >= modulus. Produce a synthetic plaintext
+        // anyway so the timing/return shape matches a "bad padding" path
+        // and does not leak the cause.
+        libcdoc::cleanse(em);
+        dst = syntheticPlaintext(priv, ct, expected_len);
+        return OK;
+    }
+
+    std::vector<uint8_t> synth = syntheticPlaintext(priv, ct, expected_len);
+    unpadPKCS1v15CT(em, synth, expected_len, dst);
+    libcdoc::cleanse(em);
+    libcdoc::cleanse(synth);
+    return OK;
 }
 
 EncryptionConsumer::EncryptionConsumer(DataConsumer &dst, const std::string &method, const Crypto::Key &key)

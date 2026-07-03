@@ -51,23 +51,23 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     if(auto rv = crypto->random(rnd, libcdoc::CDoc2::KEY_LEN); rv < 0)
         return rv;
     std::vector<uint8_t> fmk = libcdoc::Crypto::extract(rnd, {libcdoc::CDoc2::SALT.cbegin(), libcdoc::CDoc2::SALT.cend()});
-    std::fill(rnd.begin(), rnd.end(), 0);
+    libcdoc::cleanse(rnd);
     LOG_TRACE_KEY("fmk: {}", fmk);
 
     std::vector<uint8_t> header;
     if(auto rv = buildHeader(header, recipients, fmk); rv < 0)
     {
-        std::fill(fmk.begin(), fmk.end(), 0);
+        libcdoc::cleanse(fmk);
         return rv;
     }
 
     auto hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
     auto cek = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::CEK);
-    std::fill(fmk.begin(), fmk.end(), 0);
+    libcdoc::cleanse(fmk);
     LOG_TRACE_KEY("cek: {}", cek);
     LOG_TRACE_KEY("hhk: {}", hhk);
     std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
-    std::fill(hhk.begin(), hhk.end(), 0);
+    libcdoc::cleanse(hhk);
     LOG_TRACE_KEY("hmac: {}", headerHMAC);
 
     uint32_t hs = uint32_t(header.size());
@@ -80,7 +80,10 @@ CDoc2Writer::writeHeader(const std::vector<libcdoc::Recipient> &recipients)
     dst->write(headerHMAC.data(), headerHMAC.size());
 
     std::vector<uint8_t> nonce;
-    crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN);
+    if (auto rv = crypto->random(nonce, libcdoc::CDoc2::NONCE_LEN); rv < 0)
+        return rv;
+    if (nonce.size() != libcdoc::CDoc2::NONCE_LEN)
+        FAIL("RNG failure: nonce too short", libcdoc::CRYPTO_ERROR);
     LOG_TRACE_KEY("nonce: {}", nonce);
     auto cipher = std::make_unique<EncryptionConsumer>(*dst, EVP_chacha20_poly1305(), Crypto::Key(std::move(cek), std::move(nonce)));
     for(const auto &aad: {libcdoc::CDoc2::PAYLOAD, std::move(header), std::move(headerHMAC)}) {
@@ -208,11 +211,23 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
     flatbuffers::FlatBufferBuilder builder;
     std::vector<flatbuffers::Offset<cdoc20::header::RecipientRecord>> fb_rcpts;
 
+    // xor_key is XOR(fmk, kek). It is published in the header as the
+    // "encrypted FMK" so it is not itself a long-term secret, but while in
+    // scope it is bitwise-paired with the secret KEK and we wipe it on
+    // exit anyway as a hygiene measure.
     std::vector<uint8_t> xor_key;
+    libcdoc::Cleanser xor_key_guard(xor_key);
+
     for (unsigned int rcpt_idx = 0; rcpt_idx < recipients.size(); rcpt_idx++) {
         const libcdoc::Recipient& rcpt = recipients.at(rcpt_idx);
         if (rcpt.isPKI()) {
             std::vector<uint8_t> key_material, kek;
+            // Per-iteration RAII cleanse: even if FAIL(...) (which expands
+            // to `return fail(...);`) shortcuts the loop, both buffers are
+            // wiped during stack unwind. The same applies to all other
+            // iteration-local secrets below.
+            libcdoc::Cleanser key_material_guard(key_material);
+            libcdoc::Cleanser kek_guard(kek);
             std::string send_url;
             if(rcpt.isKeyServer()) {
                 if(!conf)
@@ -224,7 +239,8 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                     FAIL("Missing keyserver URL for ID " + rcpt.server_id, libcdoc::CONFIGURATION_ERROR);
             }
             if(rcpt.pk_type == libcdoc::Algorithm::RSA) {
-                crypto->random(kek, libcdoc::CDoc2::KEY_LEN);
+                if (auto rv = crypto->random(kek, libcdoc::CDoc2::KEY_LEN); rv < 0)
+                    FAIL("RNG failure", rv);
                 if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
                     FAIL("Internal error", err);
                 auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt.rcpt_key);
@@ -259,8 +275,10 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
                 }
                 auto ephKey = libcdoc::Crypto::genECKey(publicKey.get());
                 std::vector<uint8_t> sharedSecret = libcdoc::Crypto::deriveSharedSecret(ephKey.get(), publicKey.get());
+                libcdoc::Cleanser sharedSecret_guard(sharedSecret);
                 key_material = libcdoc::Crypto::toPublicKeyDer(ephKey.get());
                 std::vector<uint8_t> kekPm = libcdoc::Crypto::extract(sharedSecret, std::vector<uint8_t>(libcdoc::CDoc2::KEKPREMASTER.cbegin(), libcdoc::CDoc2::KEKPREMASTER.cend()));
+                libcdoc::Cleanser kekPm_guard(kekPm);
                 std::string info_str = libcdoc::CDoc2::getSaltForExpand(key_material, rcpt.rcpt_key);
 
                 kek = libcdoc::Crypto::expand(kekPm, info_str, fmk.size());
@@ -290,6 +308,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
         } else if (rcpt.isSymmetric()) {
             std::string info_str = libcdoc::CDoc2::getSaltForExpand(rcpt.getLabel({}));
             std::vector<uint8_t> kek_pm(libcdoc::CDoc2::KEY_LEN);
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
             std::vector<uint8_t> salt;
             int64_t result = crypto->random(salt, libcdoc::CDoc2::KEY_LEN);
             if (result < 0)
@@ -302,6 +321,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             if (result < 0)
                 FAIL(crypto->getLastErrorStr(result), result);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str, libcdoc::CDoc2::KEY_LEN);
+            libcdoc::Cleanser kek_guard(kek);
 
             LOG_DBG("Label: {}", rcpt.label);
             LOG_DBG("KDF iter: {}", rcpt.kdf_iter);
@@ -340,19 +360,27 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             //# KEK_i computation:
             //KeyMaterialSalt_i = CSRNG(256)
             std::vector<uint8_t> key_material_salt;
-            crypto->random(key_material_salt, libcdoc::CDoc2::KEY_LEN);
+            if (auto rv = crypto->random(key_material_salt, libcdoc::CDoc2::KEY_LEN); rv < 0)
+                FAIL("RNG failure", rv);
 
             //KeyMaterial_i = CSRNG(256)
             std::vector<uint8_t> key_material;
-            crypto->random(key_material, libcdoc::CDoc2::KEY_LEN);
+            if (auto rv = crypto->random(key_material, libcdoc::CDoc2::KEY_LEN); rv < 0) {
+                libcdoc::cleanse(key_material_salt);
+                FAIL("RNG failure", rv);
+            }
+            // key_material is split-share-input material; wipe on exit.
+            libcdoc::Cleanser key_material_guard(key_material);
 
             //KEK_i_pm = HKDF_Extract(KeyMaterialSalt_i, KeyMaterial_i)
             std::vector<uint8_t> kek_pm = libcdoc::Crypto::extract(key_material_salt, key_material);
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
 
             // KEK_i = HKDF_Expand(KEK_i_pm, "CDOC2kek" + FMKEncryptionMethod + RecipientInfo_i, L)
             std::string info_str = std::string("CDOC2kek") + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + RecipientInfo_i;
             LOG_DBG("Info: {}", info_str);
             std::vector<uint8_t> kek = libcdoc::Crypto::expand(kek_pm, info_str);
+            libcdoc::Cleanser kek_guard(kek);
             LOG_TRACE_KEY("kek: {}", kek);
             if (kek.empty()) return libcdoc::CRYPTO_ERROR;
             if (auto err = libcdoc::Crypto::xor_data(xor_key, fmk, kek); err != libcdoc::OK)
@@ -361,9 +389,22 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             // # Splitting KEK_i into shares
             // for j in (2, 3, ..., n):
             std::vector<std::vector<uint8_t>> kek_shares(N_SHARES);
+            // Each individual share is itself sensitive: combined with the
+            // remaining shares it reconstructs KEK_i (and thus the FMK).
+            // Wipe every kek_shares[i] on exit. The lambda runs from the
+            // destructor of `shares_guard` regardless of how we leave
+            // scope (early return, exception).
+            struct KekSharesCleanser {
+                std::vector<std::vector<uint8_t>>& v;
+                ~KekSharesCleanser() noexcept {
+                    for (auto &s : v) libcdoc::cleanse(s);
+                }
+            } shares_guard{kek_shares};
+
             for (int i = 1; i < N_SHARES; i++) {
                 // KEK_i_share_j = CSRNG(256)
-                crypto->random(kek_shares[i], libcdoc::CDoc2::KEY_LEN);
+                if (auto rv = crypto->random(kek_shares[i], libcdoc::CDoc2::KEY_LEN); rv < 0)
+                    FAIL("RNG failure", rv);
             }
             // KEK_i_share_1 = XOR(KEK_i, KEK_i_share_2, KEK_i_share_3,..., KEK_i_share_n)
             kek_shares[0] = std::move(kek);
@@ -378,7 +419,7 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::vector<std::vector<uint8_t>> transaction_ids(N_SHARES);
             for (int i = 0; i < N_SHARES; i++) {
                 std::string send_url = urls[i];
-                LOG_DBG("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
+                LOG_TRACE_KEY("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
                 int result = network->sendShare(transaction_ids[i], send_url, RecipientInfo_i, kek_shares[i]);
                 if (result < 0)
                     FAIL(network->getLastErrorStr(result), result);

@@ -1442,7 +1442,7 @@ public:
 
   void set_proxy(const std::string &host, int port);
   void set_proxy_basic_auth(const std::string &username,
-                            const std::string &password);
+                            const std::string_view &password);
   void set_proxy_bearer_token_auth(const std::string &token);
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
   void set_proxy_digest_auth(const std::string &username,
@@ -1875,7 +1875,7 @@ public:
 
   void set_proxy(const std::string &host, int port);
   void set_proxy_basic_auth(const std::string &username,
-                            const std::string &password);
+                            const std::string_view &password);
   void set_proxy_bearer_token_auth(const std::string &token);
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
   void set_proxy_digest_auth(const std::string &username,
@@ -8786,7 +8786,7 @@ inline void ClientImpl::set_proxy(const std::string &host, int port) {
 }
 
 inline void ClientImpl::set_proxy_basic_auth(const std::string &username,
-                                             const std::string &password) {
+                                             const std::string_view &password) {
   proxy_basic_auth_username_ = username;
   proxy_basic_auth_password_ = password;
 }
@@ -10190,7 +10190,7 @@ inline void Client::set_proxy(const std::string &host, int port) {
   cli_->set_proxy(host, port);
 }
 inline void Client::set_proxy_basic_auth(const std::string &username,
-                                         const std::string &password) {
+                                         const std::string_view &password) {
   cli_->set_proxy_basic_auth(username, password);
 }
 inline void Client::set_proxy_bearer_token_auth(const std::string &token) {

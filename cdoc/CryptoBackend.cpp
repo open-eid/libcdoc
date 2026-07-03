@@ -47,9 +47,18 @@ CryptoBackend::getLastErrorStr(result_t code) const
 libcdoc::result_t
 CryptoBackend::random(std::vector<uint8_t>& dst, unsigned int size)
 {
-	dst.resize(size);
-	int result = RAND_bytes(dst.data(), size);
-    return (result < 0) ? OPENSSL_ERROR : OK;
+    // RAND_bytes returns 1 on success, 0 if the PRNG could not gather enough
+    // entropy, and -1 if the requested method is not supported. Any value
+    // other than 1 means the buffer must NOT be used as random material.
+    dst.resize(size);
+    const int rv = RAND_bytes(dst.data(), size);
+    if (rv != 1) {
+        LOG_SSL_ERROR("RAND_bytes");
+        libcdoc::cleanse(dst);
+        dst.clear();
+        return OPENSSL_ERROR;
+    }
+    return OK;
 }
 
 libcdoc::result_t
@@ -83,21 +92,21 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
         int result = getSecret(secret, idx);
 		if (result) return result;
 
-        LOG_DBG("Secret: {}", toHex(secret));
+        LOG_TRACE_KEY("Secret: {}", secret);
 
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
-		std::fill(secret.begin(), secret.end(), 0);
+		libcdoc::cleanse(secret);
 		if (key_material.empty()) return OPENSSL_ERROR;
 	} else {
         int result = getSecret(key_material, idx);
 		if (result) return result;
-        LOG_DBG("Secret: {}", toHex(key_material));
+        LOG_TRACE_KEY("Secret: {}", key_material);
         if (key_material.size() != 32) {
             return INVALID_PARAMS;
         }
 	}
 
-    LOG_DBG("Key material: {}", toHex(key_material));
+    LOG_TRACE_KEY("Key material: {}", key_material);
 
     return OK;
 }
@@ -106,14 +115,18 @@ libcdoc::result_t
 CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                            int32_t kdf_iter, unsigned int idx)
 {
-	if (salt.empty()) return INVALID_PARAMS;
-	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
-	std::vector<uint8_t> key_material;
+    if (salt.empty()) return INVALID_PARAMS;
+    if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
+    std::vector<uint8_t> key_material;
     int result = getKeyMaterial(key_material, pw_salt, kdf_iter, idx);
-	if (result) return result;
-	kek_pm = libcdoc::Crypto::extract(key_material, salt);
-	std::fill(key_material.begin(), key_material.end(), 0);
-	if (kek_pm.empty()) return OPENSSL_ERROR;
+    if (result) return result;
+    kek_pm = libcdoc::Crypto::extract(key_material, salt);
+    libcdoc::cleanse(key_material);
+    if (kek_pm.empty()) return OPENSSL_ERROR;
+    if (kek_pm.size() != 32) {
+        LOG_ERROR("KEK has incorrect size: {} (expected {})", kek_pm.size(), 32);
+        return INVALID_PARAMS;
+    }
 
     LOG_TRACE_KEY("Extract: {}", kek_pm);
 

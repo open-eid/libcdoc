@@ -19,6 +19,8 @@
 #include "XmlReader.h"
 
 #include "Crypto.h"
+#include "Io.h"
+#include "Utils.h"
 
 #include <libxml/xmlreader.h>
 
@@ -41,6 +43,22 @@ static std::string tostring(pcxmlChar tmp)
     return result;
 }
 
+#if LIBXML_VERSION < 21300
+static xmlParserInputPtr
+nullExternalEntityLoader(const char *, const char *, xmlParserCtxtPtr)
+{
+    return nullptr;
+}
+
+struct XmlInit {
+    XmlInit() {
+        xmlSetExternalEntityLoader(nullExternalEntityLoader);
+        xmlSubstituteEntitiesDefault(0);
+    }
+};
+static XmlInit xmlInit;
+#endif
+
 XMLReader::XMLReader(libcdoc::DataSource &src)
     : d(xmlReaderForIO([](void *context, char *buffer, int len) -> int {
         auto *src = reinterpret_cast<DataSource *>(context);
@@ -56,6 +74,7 @@ XMLReader::~XMLReader() noexcept
 
 std::string XMLReader::attribute(const char *attr) const
 {
+    if (!d) return {};
     xmlChar *tmp = xmlTextReaderGetAttribute(d, pcxmlChar(attr));
     std::string result = tostring(tmp);
     xmlFree(tmp);
@@ -64,27 +83,32 @@ std::string XMLReader::attribute(const char *attr) const
 
 bool XMLReader::isEndElement() const
 {
+    if (!d) return false;
     return xmlTextReaderNodeType(d) == XML_READER_TYPE_END_ELEMENT;
 }
 
 bool XMLReader::isElement(const char *elem) const
 {
+    if (!d) return false;
     return xmlStrEqual(xmlTextReaderConstLocalName(d), pcxmlChar(elem)) == 1;
 }
 
 bool XMLReader::read()
 {
+    if (!d) return false;
     return xmlTextReaderRead(d) == 1;
 }
 
 std::vector<uint8_t> XMLReader::readBase64()
 {
+    if (!d) return {};
     xmlTextReaderRead(d);
     return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d));
 }
 
 std::string XMLReader::readText()
 {
+    if (!d) return {};
     xmlTextReaderRead(d);
     return tostring(xmlTextReaderConstValue(d));
 }

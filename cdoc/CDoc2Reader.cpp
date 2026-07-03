@@ -32,6 +32,7 @@
 
 #include "header_generated.h"
 
+// TODO: Port to new OpenSSL
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/evp.h>
@@ -141,13 +142,21 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     LOG_DBG("CDoc2Reader::num locks: {}", priv->locks.size());
     const Lock& lock = priv->locks.at(lock_idx);
     LOG_DBG("Label: {}", lock.label);
+
+    // RAII-cleanse `kek` on every exit from this function (including
+    // exceptions). All early returns below previously had to remember to
+    // call libcdoc::cleanse(kek) - which several of them did not. With the
+    // guard the wipe is unconditional.
     std::vector<uint8_t> kek;
+    libcdoc::Cleanser kek_guard(kek);
+
     if (lock.type == Lock::Type::PASSWORD) {
         // Password
         LOG_DBG("password");
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
         LOG_DBG("info: {}", toHex(info_str));
         std::vector<uint8_t> kek_pm;
+        libcdoc::Cleanser kek_pm_guard(kek_pm);
         if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), lock.getBytes(Lock::PW_SALT), lock.getInt(Lock::KDF_ITER), lock_idx); rv != libcdoc::OK) {
             setLastError(crypto->getLastErrorStr(rv));
             LOG_ERROR("{}", last_error);
@@ -162,6 +171,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
         std::string info_str = libcdoc::CDoc2::getSaltForExpand(lock.label);
         LOG_DBG("info: {}", toHex(info_str));
         std::vector<uint8_t> kek_pm;
+        libcdoc::Cleanser kek_pm_guard(kek_pm);
         if (auto rv = crypto->extractHKDF(kek_pm, lock.getBytes(Lock::SALT), {}, 0, lock_idx); rv != libcdoc::OK) {
             setLastError(crypto->getLastErrorStr(rv));
             LOG_ERROR("{}", last_error);
@@ -173,6 +183,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     } else if ((lock.type == Lock::Type::PUBLIC_KEY) || (lock.type == Lock::Type::SERVER)) {
         // Public/private key
         std::vector<uint8_t> key_material;
+        // SERVER path fetches key_material over the network; PUBLIC_KEY
+        // takes it from the lock. Either way it gets fed into ECDH or RSA
+        // and is sensitive enough to wipe in-scope.
+        libcdoc::Cleanser key_material_guard(key_material);
         if(lock.type == Lock::Type::SERVER) {
             if(!conf) {
                 setLastError("Configuration is missing");
@@ -201,8 +215,8 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             key_material = lock.getBytes(Lock::Params::KEY_MATERIAL);
         }
 
-        LOG_DBG("Public key: {}", toHex(lock.getBytes(Lock::Params::RCPT_KEY)));
-        LOG_DBG("Key material: {}", toHex(key_material));
+        LOG_TRACE_KEY("Public key: {}", lock.getBytes(Lock::Params::RCPT_KEY));
+        LOG_TRACE_KEY("Key material: {}", key_material);
 
         if (lock.isRSA()) {
             int result = crypto->decryptRSA(kek, key_material, true, lock_idx);
@@ -213,6 +227,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             }
         } else {
             std::vector<uint8_t> kek_pm;
+            libcdoc::Cleanser kek_pm_guard(kek_pm);
             int result = crypto->deriveHMACExtract(kek_pm, key_material, toUint8Vector(libcdoc::CDoc2::KEKPREMASTER), lock_idx);
             if (result < 0) {
                 setLastError(crypto->getLastErrorStr(result));
@@ -317,6 +332,10 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
                 LOG_ERROR("Cannot fetch share {}", i);
                 return result;
             }
+            // Each individual share is itself sensitive: combined with the
+            // remaining shares it reconstructs the KEK. Wipe it after
+            // XOR-ing it into kek so it does not linger on the heap.
+            libcdoc::Cleanser share_guard(share.share);
             if (auto err = libcdoc::Crypto::xor_data(kek, kek, share.share); err != libcdoc::OK) {
                 setLastError("Failed to derive kek");
                 LOG_ERROR("Failed to derive kek");
@@ -341,18 +360,27 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
     if (auto err = libcdoc::Crypto::xor_data(fmk, lock.encrypted_fmk, kek); err != libcdoc::OK) {
         setLastError(t_("Failed to decrypt/derive fmk"));
         LOG_ERROR("{}", last_error);
+        // Wipe any partial XOR result before surfacing the error.
+        libcdoc::cleanse(fmk);
+        fmk.clear();
         return err;
     }
     std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, libcdoc::CDoc2::HMAC);
+    libcdoc::Cleanser hhk_guard(hhk);
 
     LOG_TRACE_KEY("xor: {}", lock.encrypted_fmk);
     LOG_TRACE_KEY("fmk: {}", fmk);
     LOG_TRACE_KEY("hhk: {}", hhk);
     LOG_TRACE_KEY("hmac: {}", priv->headerHMAC);
 
-    if(libcdoc::Crypto::sign_hmac(hhk, priv->header_data) != priv->headerHMAC) {
+    if(!libcdoc::constant_time_compare(libcdoc::Crypto::sign_hmac(hhk, priv->header_data), priv->headerHMAC)) {
         setLastError(t_("Wrong decryption key (user key)"));
         LOG_ERROR("{}", last_error);
+        // Authentication failed: the FMK we computed is for the wrong
+        // recipient. Wipe it before returning so the caller cannot leak
+        // it (e.g. via a logging hook that sees "fmk" in scope).
+        libcdoc::cleanse(fmk);
+        fmk.clear();
         return libcdoc::WRONG_KEY;
     }
     setLastError({});
@@ -609,7 +637,7 @@ CDoc2Reader::Private::buildLock(Lock& lock, const cdoc20::header::RecipientRecor
             std::string urls = join(strs, ";");
             LOG_DBG("Keyshare urls: {}", urls);
             std::vector<uint8_t> salt = toUint8Vector(capsule->salt());
-            LOG_DBG("Keyshare salt: {}", toHex(salt));
+            LOG_TRACE_KEY("Keyshare salt: {}", salt);
             std::string recipient_id = capsule->recipient_id()->str();
             LOG_DBG("Keyshare recipient id: {}", recipient_id);
             lock.type = Lock::SHARE_SERVER;
@@ -647,7 +675,7 @@ CDoc2Reader::CDoc2Reader(libcdoc::DataSource *src, bool take_ownership)
         LOG_ERROR("{}", last_error);
         return;
     }
-    uint32_t header_len = (c[0] << 24) | (c[1] << 16) | c[2] << 8 | c[3];
+    uint32_t header_len = (uint32_t(c[0]) << 24) | (uint32_t(c[1]) << 16) | uint32_t(c[2]) << 8 | c[3];
     if (constexpr uint32_t MAX_LEN = (1 << 20); header_len > MAX_LEN) {
         LOG_ERROR("{}", last_error);
         return;

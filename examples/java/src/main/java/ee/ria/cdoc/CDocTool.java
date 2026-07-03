@@ -301,7 +301,7 @@ public class CDocTool {
         try {
             long result = wrtr.beginEncryption();
             System.out.format("beginEncryption: %d\n", result);
-            Recipient rcpt = Recipient.makeSymmetric(label, 65535);
+            Recipient rcpt = Recipient.makeSymmetric(label, 600000);
             result = wrtr.addRecipient(rcpt);
             System.out.format("addRecipient: %d\n", result);
             for (String name : files) {
@@ -415,7 +415,7 @@ public class CDocTool {
 
             CDocWriter wrtr = CDocWriter.createWriter(2, container, conf, crypto, null);
             System.gc();
-            Recipient rcpt = Recipient.makeSymmetric(label, 65535);
+            Recipient rcpt = Recipient.makeSymmetric(label, 600000);
             long result = wrtr.addRecipient(rcpt);
             System.gc();
             System.out.format("addRecipient: %d\n", result);

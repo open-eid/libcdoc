@@ -124,7 +124,7 @@ load_certs(ToolConf& conf, const std::string& filename)
 }
 
 static void
-inputSecret(std::vector<uint8_t>& secret, std::string_view text)
+inputSecret(SecureBytes& secret, std::string_view text)
 {
     cout << text;
 #ifdef _WIN32
@@ -305,14 +305,16 @@ parse_rcpt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& rcpts, int& arg_idx, 
 
 #ifndef NDEBUG
         // For debugging
-        cout << "Method: " << method << endl;
-        cout << "Slot: " << rcpt.p11.slot << endl;
-        if (!rcpt.secret.empty())
-            cout << "Pin: " << string(rcpt.secret.cbegin(), rcpt.secret.cend()) << endl;
+        LOG_DBG("Method: {}", method);
+        LOG_DBG("Slot: {}", rcpt.p11.slot);
+        if (!rcpt.secret.empty()) {
+            string str(rcpt.secret.cbegin(), rcpt.secret.cend());
+            LOG_TRACE("Pin: {}", str);
+        }
         if (!rcpt.p11.key_id.empty())
-            cout << "Key ID: " << toHex(rcpt.p11.key_id) << endl;
+            LOG_DBG("Key ID: {}", toHex(rcpt.p11.key_id));
         if (!rcpt.p11.key_label.empty())
-            cout << "Key label: " << rcpt.p11.key_label << endl;
+            LOG_DBG("Key label: {}", rcpt.p11.key_label);
 #endif
     } else if (method == "share") {
         // label:share:RECIPIENT_ID
@@ -334,7 +336,7 @@ struct LockData {
     int64_t slot = -1;
     vector<uint8_t> key_id;
     string key_label;
-    vector<uint8_t> secret;
+    SecureBytes secret;
 
     int validate(ToolConf& conf) {
         if (lock_idx == 0) {
@@ -709,7 +711,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    libcdoc::setLogLevel(LEVEL_TRACE);
+    libcdoc::setLogLevel(LEVEL_WARNING);
 
     string_view command(argv[1]);
 

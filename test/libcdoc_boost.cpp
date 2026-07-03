@@ -25,6 +25,7 @@
 #include <CryptoBackend.h>
 #include <Lock.h>
 #include <Recipient.h>
+#include <Tar.h>
 #include <Utils.h>
 #include <cdoc/Crypto.h>
 
@@ -312,6 +313,7 @@ decrypt(const std::vector<std::string>& files, const std::string& container, con
     libcdoc::RcptInfo rcpt {.type=libcdoc::RcptInfo::LOCK, .secret=key, .lock_idx=idx};
     decrypt(files, container, dir, rcpt, remove);
 }
+
 static int
 unicode_to_utf8 (unsigned int uval, uint8_t *d, uint64_t size)
 {
@@ -391,7 +393,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(CDoc2EncryptErrors, EncryptFixture,
     BOOST_TEST(wrt->finishEncryption() == libcdoc::WORKFLOW_ERROR);
 
     // Add recipient
-    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test-recipient", 65536);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test-recipient", 600000);
     BOOST_TEST(wrt->addRecipient(rcpt) == libcdoc::OK);
     // Encryption cannot proceed before beginEncryption is called
     BOOST_TEST(wrt->addFile("testfile", 1024) == libcdoc::WORKFLOW_ERROR);
@@ -660,7 +662,7 @@ BOOST_FIXTURE_TEST_CASE_WITH_DECOR(EncryptWithPasswordAndLabel, FixtureBase, * u
     // Create writer
     libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &pipec, false, nullptr, &pcrypto, nullptr);
     BOOST_TEST(writer != nullptr);
-    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 65536);
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeSymmetric("test", 600000);
     BOOST_TEST(writer->addRecipient(rcpt) == libcdoc::OK);
     BOOST_TEST(writer->beginEncryption() == libcdoc::OK);
 
@@ -859,6 +861,120 @@ BOOST_FIXTURE_TEST_CASE(NonAsciiFilename, PaxFixture)
     BOOST_TEST(fs::exists(outDir / namePath));
 }
 
+// Build a single 512-byte ustar header block with the given typeflag,
+// name and declared size. The checksum is computed correctly so the
+// header passes Header::verify(). Returns a 512-byte vector.
+static std::vector<uint8_t>
+makeTarHeader(char typeflag, std::string_view name, int64_t size)
+{
+    std::vector<uint8_t> block(512, 0);
+
+    // name (100 bytes, NUL-terminated within the field)
+    std::copy(name.begin(),
+              name.begin() + std::min<size_t>(name.size(), 99),
+              block.begin());
+
+    // mode "0000600\0", uid "0000000\0", gid "0000000\0"
+    auto write_octal_field = [&](size_t offset, size_t width, int64_t value) {
+        std::string s(width - 1, '0');
+        for (size_t i = 0; i < width - 1 && value > 0; ++i) {
+            s[width - 2 - i] = char('0' + (value & 7));
+            value >>= 3;
+        }
+        std::copy(s.begin(), s.end(), block.begin() + offset);
+        // trailing NUL is already zero-filled
+    };
+    write_octal_field(100, 8, 0600);             // mode
+    write_octal_field(108, 8, 0);                // uid
+    write_octal_field(116, 8, 0);                // gid
+    write_octal_field(124, 12, size);            // size  <-- attacker-tamperable
+    write_octal_field(136, 12, 0);               // mtime
+
+    // chksum field: 8 spaces during checksum calculation
+    std::fill(block.begin() + 148, block.begin() + 156, uint8_t(' '));
+
+    // typeflag
+    block[156] = uint8_t(typeflag);
+
+    // ustar magic + version
+    constexpr std::string_view magic{"ustar\0", 6};
+    std::copy(magic.begin(), magic.end(), block.begin() + 257);
+    block[263] = '0';
+    block[264] = '0';
+
+    // Compute and write the checksum: unsigned sum of all bytes with
+    // chksum replaced by spaces. Field is 6 octal digits + NUL + space.
+    int64_t sum = 0;
+    for (uint8_t b : block) sum += b;
+    std::string chk(7, '0');
+    for (size_t i = 0; i < 6 && sum > 0; ++i) {
+        chk[5 - i] = char('0' + (sum & 7));
+        sum >>= 3;
+    }
+    chk[6] = '\0';
+    std::copy(chk.begin(), chk.end(), block.begin() + 148);
+    block[155] = ' ';
+
+    return block;
+}
+
+BOOST_AUTO_TEST_CASE(RejectsOversizedPaxExtendedHeader)
+{
+    // Craft a valid 'x' (extended PAX) header that declares a 100 MiB
+    // payload. The traditional ustar size field is 12 bytes (11 octal
+    // digits + NUL), capping the directly-encoded size at ~8 GiB minus
+    // one; we pick a value comfortably below that ceiling but still
+    // many orders of magnitude above the 64 KiB cap on auxiliary
+    // headers. Without H-2 in place, TarSource::readPaxHeader would
+    // happily allocate 100 MiB and try to read 100 MiB from the stream
+    // - times every malicious 'x' header, which is the DoS the cap
+    // exists to prevent.
+    constexpr int64_t kBadSize = 100LL * 1024 * 1024;
+    std::vector<uint8_t> stream = makeTarHeader('x', "PaxHeaders/x", kBadSize);
+
+    libcdoc::VectorSource src(stream);
+    libcdoc::TarSource tar_src(&src, /*take_ownership=*/false);
+    std::string name;
+    int64_t size = 0;
+    libcdoc::result_t rv = tar_src.next(name, size);
+
+    BOOST_CHECK_EQUAL(rv, libcdoc::DATA_FORMAT_ERROR);
+    BOOST_CHECK(tar_src.isError());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsOversizedGlobalPaxHeader)
+{
+    // Same defence on the 'g' (global PAX) skip path. next() must reject
+    // the header without spinning the upstream source through 100 MiB.
+    constexpr int64_t kBadSize = 100LL * 1024 * 1024;
+    std::vector<uint8_t> stream = makeTarHeader('g', "PaxHeaders/g", kBadSize);
+
+    libcdoc::VectorSource src(stream);
+    libcdoc::TarSource tar_src(&src, /*take_ownership=*/false);
+    std::string name;
+    int64_t size = 0;
+    libcdoc::result_t rv = tar_src.next(name, size);
+
+    BOOST_CHECK_EQUAL(rv, libcdoc::DATA_FORMAT_ERROR);
+    BOOST_CHECK(tar_src.isError());
+}
+
+BOOST_AUTO_TEST_CASE(AllowsReasonablePaxHeaderSize)
+{
+    // Sanity check: a PAX header with a small, plausible size (one
+    // 'path' record for a 50-byte name) must still parse. We do not
+    // include the actual data in the stream, so readPaxHeader will
+    // surface INPUT_STREAM_ERROR after the cap check passes - the
+    // important thing is that DATA_FORMAT_ERROR is NOT returned.
+    std::vector<uint8_t> stream = makeTarHeader('x', "PaxHeaders/x", 60);
+    libcdoc::VectorSource src(stream);
+    libcdoc::TarSource tar_src(&src, /*take_ownership=*/false);
+    std::string name;
+    int64_t size = 0;
+    libcdoc::result_t rv = tar_src.next(name, size);
+    BOOST_CHECK_NE(rv, libcdoc::DATA_FORMAT_ERROR);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(StreamingDecryption)
@@ -904,6 +1020,266 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(constructor, Buf, BufTypes)
 
         BOOST_CHECK_EQUAL_COLLECTIONS(plaintext.begin(), plaintext.end(), decrypted_text.begin(), decrypted_text.end());
     }
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Regression coverage for libcdoc::sanitiseExtractedFilename(). All inputs
+// here come from attacker-controlled archive headers (tar / DDoc); the
+// helper is the single chokepoint that decides whether an entry can ever
+// reach the filesystem.
+BOOST_AUTO_TEST_SUITE(SanitiseExtractedFilename)
+
+BOOST_AUTO_TEST_CASE(PassesThroughOrdinaryNames)
+{
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("hello.txt"), "hello.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a-b_c.dat"), "a-b_c.dat");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("file with spaces.txt"),
+                      "file with spaces.txt");
+    // Non-ASCII (UTF-8) names must round-trip - libcdoc treats names as
+    // opaque UTF-8.
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("\xC3\xB5\xC3\xA4\xC3\xB6.txt"),
+                      "\xC3\xB5\xC3\xA4\xC3\xB6.txt");
+}
+
+BOOST_AUTO_TEST_CASE(StripsLeadingDirectoryComponents)
+{
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a/b/c.txt"), "c.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a\\b\\c.txt"), "c.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("/etc/passwd"), "passwd");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("../foo.txt"), "foo.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a/../foo.txt"), "foo.txt");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsTraversalAndEmpty)
+{
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(""), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("."), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(".."), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("../"), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("..\\"), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("foo/.."), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("/"), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a/b/"), "");
+}
+
+BOOST_AUTO_TEST_CASE(StripsWindowsDriveRelativeNames)
+{
+    // "C:foo" with NO slash is a drive-relative path on Windows. On POSIX
+    // it would normally pass through, but libcdoc applies the same filter
+    // on every platform so a malicious archive cannot rely on platform-
+    // specific quirks.
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("C:foo.txt"), "foo.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("z:bar"), "bar");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("C:"), "");
+    // After a slash strip, the drive prefix on the leaf is also handled.
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a/C:foo"), "foo");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsControlCharsAndNul)
+{
+    // Embedded NUL is a Windows API truncation hazard.
+    std::string with_nul("foo\0bar.txt", 11);
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(with_nul), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(std::string("a\x01" "b")), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(std::string("a\x1F" "b")), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(std::string("a\nb")), "");
+    // Tab is allowed (whitespace, not a control character that breaks
+    // filesystems on the platforms libcdoc supports).
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("a\tb"), "a\tb");
+}
+
+BOOST_AUTO_TEST_CASE(TrimsTrailingDotsAndSpaces)
+{
+    // Windows silently strips trailing dots/spaces when creating files,
+    // so "evil.exe " and "evil.exe." both resolve to "evil.exe". Strip
+    // them before composing the path so we can't be tricked into
+    // colliding with a legitimate name.
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("foo.txt..."), "foo.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("foo.txt   "), "foo.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("foo.txt . . "), "foo.txt");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("..."), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("   "), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("  hello  "), "hello");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsReservedWindowsDeviceNames)
+{
+    // On Windows these are device handles regardless of working
+    // directory. They would not actually create a file at base/CON, but
+    // would open the console device and any subsequent write goes there.
+    for (auto name : {"CON", "PRN", "AUX", "NUL",
+                      "com1", "Com2", "LPT1", "lpt9"}) {
+        BOOST_TEST_INFO("name=" << name);
+        BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename(name), "");
+    }
+    // Reserved name with extension is also reserved on Windows.
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("CON.txt"), "");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("nul.tar.gz"), "");
+    // Names that *contain* a reserved word as a substring are NOT
+    // reserved (e.g. "console.log").
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("console.log"), "console.log");
+    BOOST_CHECK_EQUAL(libcdoc::sanitiseExtractedFilename("nullable"), "nullable");
+}
+
+BOOST_AUTO_TEST_CASE(TruncatesOverlongNames)
+{
+    std::string long_stem(300, 'a');
+    auto result = libcdoc::sanitiseExtractedFilename(long_stem + ".dat");
+    BOOST_CHECK_LE(result.size(), 255u);
+    BOOST_CHECK(result.ends_with(".dat"));     // extension preserved
+    // No-extension version simply truncates.
+    auto truncated = libcdoc::sanitiseExtractedFilename(std::string(400, 'b'));
+    BOOST_CHECK_EQUAL(truncated.size(), 255u);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Coverage for libcdoc::Cleanser, the RAII guard used by CDoc2Reader::getFMK
+// and CDoc2Writer::buildHeader to wipe short-lived KEK / FMK material on
+// every exit including exceptions.
+BOOST_AUTO_TEST_SUITE(CleanserGuard)
+
+BOOST_AUTO_TEST_CASE(WipesVectorOnScopeExit)
+{
+    std::vector<uint8_t> secret(32, 0xAA);
+    {
+        libcdoc::Cleanser guard(secret);
+        BOOST_CHECK_EQUAL(secret.front(), 0xAA);     // not yet wiped
+    }
+    // After the scope exits the destructor runs OPENSSL_cleanse on the
+    // current allocation; the vector keeps its size but every byte is 0.
+    BOOST_CHECK_EQUAL(secret.size(), 32u);
+    for (uint8_t b : secret)
+        BOOST_CHECK_EQUAL(b, 0u);
+}
+
+BOOST_AUTO_TEST_CASE(WipesArrayOnScopeExit)
+{
+    std::array<uint8_t, 16> secret{};
+    secret.fill(0x55);
+    {
+        libcdoc::Cleanser guard(secret);
+    }
+    for (uint8_t b : secret)
+        BOOST_CHECK_EQUAL(b, 0u);
+}
+
+BOOST_AUTO_TEST_CASE(WipesOnException)
+{
+    // The whole point of the RAII guard: on an exception thrown out of
+    // the protected scope, the destructor still fires and the secret is
+    // wiped before the exception unwinds past the caller. This is the
+    // failure mode where the audit found the missing cleanses in
+    // CDoc2Reader::getFMK.
+    std::vector<uint8_t> secret(8, 0xCC);
+    auto throws = [&]{
+        libcdoc::Cleanser guard(secret);
+        throw std::runtime_error("boom");
+    };
+    BOOST_CHECK_THROW(throws(), std::runtime_error);
+    for (uint8_t b : secret)
+        BOOST_CHECK_EQUAL(b, 0u);
+}
+
+BOOST_AUTO_TEST_CASE(EmptyVectorIsHarmless)
+{
+    // Edge case: cleanse() short-circuits on an empty container. The
+    // guard must not crash or call OPENSSL_cleanse with a null pointer.
+    std::vector<uint8_t> empty;
+    {
+        libcdoc::Cleanser guard(empty);
+    }
+    BOOST_CHECK(empty.empty());
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Coverage for libcdoc::parseEtsiRecipientId. The helper is the input-
+// validation chokepoint for the Mobile-ID / Smart-ID code paths;
+// signMID in particular previously called rcpt_id.substr(11, 11)
+// without checking the input, which threw std::out_of_range on short
+// ids and silently truncated medium-length ones.
+BOOST_AUTO_TEST_SUITE(EtsiRecipientIdParsing)
+
+BOOST_AUTO_TEST_CASE(AcceptsCanonicalEstonian)
+{
+    auto p = libcdoc::parseEtsiRecipientId("etsi/PNOEE-30303039914");
+    BOOST_TEST_REQUIRE(p.valid());
+    BOOST_CHECK_EQUAL(p.country, "EE");
+    BOOST_CHECK_EQUAL(p.national_id, "30303039914");
+}
+
+BOOST_AUTO_TEST_CASE(AcceptsOtherCountryCodes)
+{
+    // The PNO format is shared across SK markets; all that matters is
+    // that the country code is two ASCII letters.
+    auto p = libcdoc::parseEtsiRecipientId("etsi/PNOLT-12345678901");
+    BOOST_TEST_REQUIRE(p.valid());
+    BOOST_CHECK_EQUAL(p.country, "LT");
+    BOOST_CHECK_EQUAL(p.national_id, "12345678901");
+}
+
+BOOST_AUTO_TEST_CASE(NormalisesCountryToUpperCase)
+{
+    auto p = libcdoc::parseEtsiRecipientId("etsi/PNOee-30303039914");
+    BOOST_TEST_REQUIRE(p.valid());
+    BOOST_CHECK_EQUAL(p.country, "EE");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsShortInput)
+{
+    // The previous implementation in signMID threw std::out_of_range
+    // for any input shorter than 11 characters. The helper must reject
+    // these cleanly with .valid() == false.
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNO").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE-").valid());
+    // 11 characters but not the right shape.
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/short!").valid());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsBadPrefix)
+{
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("ETSI/PNOEE-30303039914").valid());   // case-sensitive prefix
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/IDEE-30303039914").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("foo/PNOEE-30303039914").valid());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsNonLetterCountryCode)
+{
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNO12-30303039914").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNO-E-30303039914").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOE -30303039914").valid());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsMissingSeparator)
+{
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE.30303039914").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE/30303039914").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEEX0303039914").valid());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsNonDigitNationalId)
+{
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE-30303039 14").valid());
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId("etsi/PNOEE-3030303991a").valid());
+    // Embedded NUL.
+    BOOST_CHECK(!libcdoc::parseEtsiRecipientId(std::string("etsi/PNOEE-3030\0039914", 22)).valid());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsOversizedNationalId)
+{
+    // 32-byte national id is the documented upper bound; one byte more
+    // is rejected.
+    auto p32 = libcdoc::parseEtsiRecipientId("etsi/PNOEE-" + std::string(32, '1'));
+    BOOST_CHECK(p32.valid());
+    auto p33 = libcdoc::parseEtsiRecipientId("etsi/PNOEE-" + std::string(33, '1'));
+    BOOST_CHECK(!p33.valid());
+    auto pHuge = libcdoc::parseEtsiRecipientId("etsi/PNOEE-" + std::string(1024, '1'));
+    BOOST_CHECK(!pHuge.valid());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
