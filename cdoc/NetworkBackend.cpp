@@ -464,6 +464,12 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
 
 #ifdef HAS_KEYSHARES
 libcdoc::result_t
+libcdoc::NetworkBackend::authenticateForShares(std::vector<uint8_t>& dst)
+{
+    return NOT_IMPLEMENTED;
+}
+
+libcdoc::result_t
 libcdoc::NetworkBackend::fetchNonce(std::vector<uint8_t>& dst, const std::string& url, const std::string& share_id)
 {
     LOG_DBG("Get nonce from: {}", url);
@@ -608,9 +614,9 @@ rsa_sign(int type, const unsigned char *m, unsigned int m_len, unsigned char *si
 
 #ifdef HAS_KEYSHARES
 libcdoc::result_t
-libcdoc::NetworkBackend::showVerificationCode(unsigned int code)
+libcdoc::NetworkBackend::showFeedback(SIDMIDFeedback& feedback)
 {
-    LOG_INFO("Verification code: {:04d}", code);
+    LOG_INFO("Verification code: {:04d} url: {}", feedback.code, feedback.url);
     return OK;
 }
 
@@ -836,8 +842,9 @@ libcdoc::NetworkBackend::signSID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     // Generate code
     uint8_t b[32];
     SHA256(digest.data(), digest.size(), b);
-    unsigned int code = ((b[30] << 8) | b[31]) % 10000;
-    result = showVerificationCode(code);
+    SIDMIDFeedback fb;
+    fb.code = ((b[30] << 8) | b[31]) % 10000;
+    result = showFeedback(fb);
     if (result != OK) return result;
 
     picojson::object aio1 = {
@@ -962,8 +969,9 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     }
 
     // Generate verification code. digest is guaranteed non-empty above.
-    unsigned int code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
-    result = showVerificationCode(code);
+    SIDMIDFeedback fb;
+    fb.code = (((digest[0] & 0xfc) << 5) | (digest[digest.size() - 1] & 0x7f));
+    result = showFeedback(fb);
     if (result != OK) return result;
 
     picojson::object qobj = {
@@ -991,7 +999,7 @@ libcdoc::NetworkBackend::signMID(std::vector<uint8_t>& dst, std::vector<uint8_t>
     LOG_DBG("Response: {}", rsp.body);
 
     picojson::value v;
-    parse_err = picojson::parse(v, rsp.body);
+    std::string parse_err = picojson::parse(v, rsp.body);
     if (!parse_err.empty()) {
         error = FORMAT("JSON parse error: {}", parse_err);
         LOG_ERROR("{}", error);

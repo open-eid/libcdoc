@@ -50,6 +50,7 @@ add_library(cdoc
     CDoc2Writer.cpp CDoc2Writer.h
     DDocReader.cpp DDocReader.h
     DDocWriter.cpp DDocWriter.h
+    KeyShares.cpp KeyShares.h
     # KeyShares.cpp KeyShares.h
     XmlReader.cpp XmlReader.h
     XmlWriter.cpp XmlWriter.h
@@ -79,6 +80,9 @@ target_include_directories(cdoc PUBLIC
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# Enable SID/MID
+target_compile_definitions(cdoc PRIVATE HAS_KEYSHARES)
+
 if(NOT BUILD_SHARED_LIBS)
     target_compile_definitions(cdoc PUBLIC cdoc_STATIC)
 endif()
@@ -102,6 +106,10 @@ target_link_libraries(cdoc PRIVATE
 if(BUILD_TOOLS)
     add_executable(cdoc-tool cdoc-tool.cpp)
     target_include_directories(cdoc-tool PRIVATE ${OPENSSL_INCLUDE_DIR})
+
+    # Enable SID/MID
+    target_compile_definitions(cdoc-tool PRIVATE HAS_KEYSHARES)
+
     target_link_libraries(cdoc-tool cdoc_ver cdoc OpenSSL::SSL)
     target_link_options(cdoc-tool PRIVATE
         $<$<PLATFORM_ID:Windows>: /MANIFEST:NO /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/cdoc-tool.manifest>

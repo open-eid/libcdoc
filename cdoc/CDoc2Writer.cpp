@@ -419,7 +419,6 @@ CDoc2Writer::buildHeader(std::vector<uint8_t>& header, const std::vector<libcdoc
             std::vector<std::vector<uint8_t>> transaction_ids(N_SHARES);
             for (int i = 0; i < N_SHARES; i++) {
                 std::string send_url = urls[i];
-                LOG_TRACE_KEY("Sending share: {} {} {}", i, send_url, libcdoc::toHex(kek_shares[i]));
                 int result = network->sendShare(transaction_ids[i], send_url, RecipientInfo_i, kek_shares[i]);
                 if (result < 0)
                     FAIL(network->getLastErrorStr(result), result);
@@ -479,6 +478,14 @@ CDoc2Writer::addRecipient(const libcdoc::Recipient& rcpt)
         if(!rcpt.validate())
             FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
         break;
+#ifdef HAS_KEYSHARES
+    case Recipient::KEYSHARE:
+        if (!network)
+            FAIL("KeyShares require NetworkBackend", libcdoc::WORKFLOW_ERROR);
+        if (!rcpt.validate())
+            FAIL("Invalid recipient parameters", libcdoc::WRONG_ARGUMENTS);
+        break;
+#endif
     default:
         FAIL("Invalid recipient type", WRONG_ARGUMENTS);
     }
