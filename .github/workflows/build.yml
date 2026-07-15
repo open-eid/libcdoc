@@ -14,7 +14,7 @@ jobs:
     container: ubuntu:${{ matrix.container }}
     strategy:
       matrix:
-        container: ['22.04', '24.04', '25.10', '26.04']
+        container: ['22.04', '24.04', '26.04']
         arch: ['amd64', 'arm64']
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -63,8 +63,6 @@ jobs:
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
         echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
         echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-        git -C $VCPKG_INSTALLATION_ROOT fetch origin f77737496dabd44c63ecc599dc0f4d6cff30d0d5
-        git -C $VCPKG_INSTALLATION_ROOT reset --hard f77737496dabd44c63ecc599dc0f4d6cff30d0d5
     - name: Cache vcpkg
       uses: actions/cache@v5
       with:
