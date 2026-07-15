@@ -43,22 +43,6 @@ static std::string tostring(pcxmlChar tmp)
     return result;
 }
 
-#if LIBXML_VERSION < 21300
-static xmlParserInputPtr
-nullExternalEntityLoader(const char *, const char *, xmlParserCtxtPtr)
-{
-    return nullptr;
-}
-
-struct XmlInit {
-    XmlInit() {
-        xmlSetExternalEntityLoader(nullExternalEntityLoader);
-        xmlSubstituteEntitiesDefault(0);
-    }
-};
-static XmlInit xmlInit;
-#endif
-
 XMLReader::XMLReader(libcdoc::DataSource &src)
     : d(xmlReaderForIO([](void *context, char *buffer, int len) -> int {
         auto *src = reinterpret_cast<DataSource *>(context);
@@ -96,13 +80,24 @@ bool XMLReader::isElement(const char *elem) const
 bool XMLReader::read()
 {
     if (!d) return false;
-    return xmlTextReaderRead(d) == 1;
+    if (xmlTextReaderRead(d) != 1)
+        return false;
+    switch(xmlTextReaderNodeType(d))
+    {
+    case XML_READER_TYPE_DOCUMENT_TYPE:
+    case XML_READER_TYPE_ENTITY_REFERENCE:
+        return false;
+    default:
+        return true;
+    }
 }
 
 std::vector<uint8_t> XMLReader::readBase64()
 {
     if (!d) return {};
     xmlTextReaderRead(d);
+    if (xmlTextReaderNodeType(d) == XML_READER_TYPE_ENTITY_REFERENCE)
+        return {};
     return libcdoc::Crypto::decodeBase64(xmlTextReaderConstValue(d));
 }
 
@@ -110,5 +105,7 @@ std::string XMLReader::readText()
 {
     if (!d) return {};
     xmlTextReaderRead(d);
+    if (xmlTextReaderNodeType(d) == XML_READER_TYPE_ENTITY_REFERENCE)
+        return {};
     return tostring(xmlTextReaderConstValue(d));
 }
