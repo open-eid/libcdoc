@@ -27,7 +27,10 @@
 #include <Recipient.h>
 #include <Tar.h>
 #include <Utils.h>
+#include <XmlReader.h>
 #include <cdoc/Crypto.h>
+
+#include <libxml/parser.h>
 
 #include "pipe.h"
 
@@ -72,6 +75,16 @@ const std::vector<uint8_t> Password = {'P', 'r', 'o', 'o', 'v', '1', '2', '3'};
 constexpr string_view AESKey = "E165475C6D8B9DD0B696EE2A37D7176DFDF4D7B510406648E70BAE8E80493E5E"sv;
 
 constexpr string_view CDOC2HEADER = "CDOC\x02"sv;
+
+struct XMLSource {
+    explicit XMLSource(std::string_view xml)
+        : data(xml.cbegin(), xml.cend())
+        , source(data)
+    {}
+
+    std::vector<uint8_t> data;
+    libcdoc::VectorSource source;
+};
 
 const map<string, string> ExpectedParsedLabel {
     {"v", "1"},
@@ -1131,6 +1144,66 @@ BOOST_AUTO_TEST_CASE(TruncatesOverlongNames)
     // No-extension version simply truncates.
     auto truncated = libcdoc::sanitiseExtractedFilename(std::string(400, 'b'));
     BOOST_CHECK_EQUAL(truncated.size(), 255u);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(XMLReaderEntityHandling)
+
+BOOST_AUTO_TEST_CASE(ReadsPlainXml)
+{
+    XMLSource input("<root a=\"value\"><child>text</child></root>");
+    libcdoc::XMLReader reader(input.source);
+
+    BOOST_REQUIRE(reader.read());
+    BOOST_TEST(reader.isElement("root"));
+    BOOST_TEST(reader.attribute("a") == "value");
+
+    BOOST_REQUIRE(reader.read());
+    BOOST_TEST(reader.isElement("child"));
+    BOOST_TEST(reader.readText() == "text");
+}
+
+static void rejectsUnsupportedXml(std::string_view xml)
+{
+    XMLSource input(xml);
+    libcdoc::XMLReader reader(input.source);
+    BOOST_CHECK(!reader.read());
+}
+
+BOOST_AUTO_TEST_CASE(RejectsDoctype)
+{
+    rejectsUnsupportedXml("<!DOCTYPE root><root/>");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsInternalEntityInAttribute)
+{
+    rejectsUnsupportedXml("<!DOCTYPE root [<!ENTITY xxe 'SECRET'>]><root a='&xxe;'/>");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsInternalEntityInText)
+{
+    rejectsUnsupportedXml("<!DOCTYPE root [<!ENTITY xxe 'SECRET'>]><root>&xxe;</root>");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsExternalEntityInAttribute)
+{
+    rejectsUnsupportedXml("<!DOCTYPE root [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><root a='&xxe;'/>");
+}
+
+BOOST_AUTO_TEST_CASE(RejectsExternalEntityInText)
+{
+    rejectsUnsupportedXml("<!DOCTYPE root [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><root>&xxe;</root>");
+}
+
+BOOST_AUTO_TEST_CASE(DoesNotChangeGlobalExternalEntityLoader)
+{
+    auto loader = xmlGetExternalEntityLoader();
+    XMLSource input("<root/>");
+    libcdoc::XMLReader reader(input.source);
+
+    BOOST_REQUIRE(reader.read());
+    BOOST_TEST(xmlGetExternalEntityLoader() == loader);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

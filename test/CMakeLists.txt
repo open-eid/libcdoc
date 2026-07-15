@@ -2,10 +2,12 @@ add_executable(unittests
     libcdoc_boost.cpp
     ../cdoc/Crypto.cpp
     ../cdoc/Tar.cpp
+    ../cdoc/XmlReader.cpp
 )
 
 target_link_libraries(unittests
     OpenSSL::SSL
+    LibXml2::LibXml2
     cdoc
     Boost::unit_test_framework
 )
