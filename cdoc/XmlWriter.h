@@ -18,14 +18,12 @@
 
 #pragma once
 
-#include "utils/memory.h"
-
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
-
-struct _xmlTextWriter;
+#include <string_view>
+#include <vector>
 
 namespace libcdoc {
 
@@ -34,21 +32,31 @@ struct DataConsumer;
 class XMLWriter
 {
 public:
-    struct NS { const char *prefix, *ns; };
+    struct NS { std::string_view prefix, ns; };
 
-    XMLWriter(DataConsumer &dst);
     virtual ~XMLWriter() noexcept;
 
-    int64_t writeStartElement(NS ns, const char *name, const std::map<const char *, std::string> &attr);
+protected:
+    // XMLWriter is a base class for concrete writers (DDOCWriter, CDoc1Writer);
+    // the element-building vocabulary is only used by subclasses.
+    XMLWriter(DataConsumer &dst);
+
+    int64_t writeStartElement(NS ns, std::string_view name, const std::map<std::string_view, std::string> &attr);
     int64_t writeEndElement(NS ns);
-    int64_t writeElement(NS ns, const char *name, const std::function<int64_t()> &f = nullptr);
-    int64_t writeElement(NS ns, const char *name, const std::map<const char *, std::string> &attr, const std::function<int64_t()> &f = nullptr);
-    int64_t writeBase64Element(NS ns, const char *name, const std::function<int64_t(DataConsumer &)> &f, const std::map<const char *, std::string> &attr = {});
-    int64_t writeBase64Element(NS ns, const char *name, const std::vector<unsigned char> &data, const std::map<const char *, std::string> &attr = {});
-    int64_t writeTextElement(NS ns, const char *name, const std::map<const char *, std::string> &attr, const std::string &data);
+    int64_t writeElement(NS ns, std::string_view name, const std::function<int64_t()> &f = nullptr);
+    int64_t writeElement(NS ns, std::string_view name, const std::map<std::string_view, std::string> &attr, const std::function<int64_t()> &f = nullptr);
+    int64_t writeBase64Element(NS ns, std::string_view name, const std::function<int64_t(DataConsumer &)> &f, const std::map<std::string_view, std::string> &attr = {});
+    int64_t writeBase64Element(NS ns, std::string_view name, const std::vector<unsigned char> &data, const std::map<std::string_view, std::string> &attr = {});
+    int64_t writeTextElement(NS ns, std::string_view name, const std::map<std::string_view, std::string> &attr, std::string_view data);
 
 private:
-    unique_free_t<_xmlTextWriter> w;
+    int64_t write(std::string_view str);
+    int64_t writeBase64(const uint8_t *src, size_t len); // encodes directly to dst
+    void escape(std::string_view in, bool attribute);    // XML-escapes into buf
+
+    DataConsumer &dst;
+    std::string buf;                     // reusable scratch for building tags/text
+    std::vector<std::string> stack;      // open element qualified names, for end tags
     std::map<std::string_view, int> nsmap;
 };
 
