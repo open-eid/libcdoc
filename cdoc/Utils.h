@@ -184,7 +184,7 @@ std::string buildURL(const std::string& host, int port);
  * @return a relative file name guaranteed not to contain path-traversal
  *         elements, or an empty string when no safe name can be produced.
  */
-CDOC_EXPORT std::string sanitiseExtractedFilename(std::string_view name);
+std::string sanitiseExtractedFilename(std::string_view name);
 
 /**
  * @brief Parsed components of an ETSI Smart-ID / Mobile-ID recipient identifier.
@@ -231,7 +231,7 @@ struct EtsiRecipientId {
  * @param rcpt_id the recipient identifier to parse
  * @return parsed components; check @ref EtsiRecipientId::valid() to test
  */
-CDOC_EXPORT EtsiRecipientId parseEtsiRecipientId(std::string_view rcpt_id);
+EtsiRecipientId parseEtsiRecipientId(std::string_view rcpt_id);
 
 struct urlEncode {
     std::string_view src;
