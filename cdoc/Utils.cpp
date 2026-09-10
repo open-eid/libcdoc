@@ -39,11 +39,61 @@ toBase64(const uint8_t *data, size_t len)
     return result;
 }
 
+std::string
+toBase64URL(const std::string& data)
+{
+    return jwt::base::details::encode(data, jwt::alphabet::base64url::data(), "");
+}
+
+std::string
+toBase64URL(const uint8_t *data, size_t len)
+{
+    return toBase64URL(std::string(reinterpret_cast<const char *>(data), len));
+}
+
 std::vector<uint8_t>
 fromBase64(std::string_view data)
 {
-    std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
-    return std::vector<uint8_t>(str.cbegin(), str.cend());
+    // jwt::base::details::decode throws std::runtime_error on malformed
+    // input (characters outside the alphabet, bad padding, bad length).
+    // The decoded data comes from remote servers and containers, i.e. it
+    // is untrusted, so a decode failure must not crash the process. An
+    // empty result signals a format error to the callers.
+    try {
+        std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
+        return std::vector<uint8_t>(str.cbegin(), str.cend());
+    } catch (const std::exception &e) {
+        LOG_WARN("fromBase64: invalid base64 input: {}", e.what());
+        return {};
+    }
+}
+
+static std::string
+strip(std::string input)
+{
+    // Remove trailing '=' padding characters (used in Base64URL encoding)
+    while (!input.empty() && input.back() == '=') {
+        input.pop_back();
+    }
+    return input;
+}
+
+std::vector<uint8_t>
+fromBase64URL(std::string_view data)
+{
+    // Same contract as fromBase64: the input is untrusted (server-issued
+    // tokens and disclosures) and jwt::base::decode throws std::runtime_error
+    // on malformed input, so failures are signalled with an empty result
+    // instead of an exception escaping into the caller.
+    try {
+        auto stripped = strip(std::string(data));
+        auto padded = jwt::base::pad<jwt::alphabet::base64url>(stripped);
+        auto str = jwt::base::decode<jwt::alphabet::base64url>(padded);
+        return std::vector<uint8_t>(str.cbegin(), str.cend());
+    } catch (const std::exception &e) {
+        LOG_WARN("fromBase64URL: invalid base64url input: {}", e.what());
+        return {};
+    }
 }
 
 double
@@ -56,12 +106,16 @@ getTime()
 #define timegm _mkgmtime
 #endif
 
+// N17: return -1 on parse failure so callers can distinguish garbage
+// from a valid timestamp. Previously a malformed ISO string produced
+// an undefined time_t via std::get_time without checking in.fail().
 double
 timeFromISO(const std::string& iso)
 {
     std::istringstream in{iso};
     std::tm t = {};
     in >> std::get_time(&t, "%Y-%m-%dT%TZ");
+    if (in.fail()) return -1;
     return timegm(&t);
 }
 
@@ -216,6 +270,26 @@ parseEtsiRecipientId(std::string_view rcpt_id)
 }
 
 std::string
+urlEncodeComponent(std::string_view value)
+{
+    static constexpr char UNRESERVED[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
+    static constexpr char HEX[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(value.size());
+    for (char c : value) {
+        if (memchr(UNRESERVED, c, sizeof(UNRESERVED) - 1)) {
+            out += c;
+        } else {
+            out += '%';
+            out += HEX[(static_cast<unsigned char>(c) >> 4) & 0x0F];
+            out += HEX[static_cast<unsigned char>(c) & 0x0F];
+        }
+    }
+    return out;
+}
+
+std::string
 sanitiseExtractedFilename(std::string_view name)
 {
     // 1. Reject anything whose UTF-8 is malformed or contains NUL/control
@@ -223,6 +297,7 @@ sanitiseExtractedFilename(std::string_view name)
     //    truncate at NUL while the filesystem treats the full name, which
     //    has historically been used to mask malicious extensions.
     if (name.empty()) return {};
+    if (!isValidUtf8(std::string(name))) return {};
     for (unsigned char c : name) {
         if (c == 0u) return {};
         if (c < 0x20u && c != '\t') return {};   // strip ASCII control bytes
@@ -246,6 +321,11 @@ sanitiseExtractedFilename(std::string_view name)
          (base[0] >= 'a' && base[0] <= 'z'))) {
         base = base.substr(2);
     }
+
+    // 3a. Reject any remaining ':' (NTFS Alternate Data Stream separator).
+    //     A name like "file.txt:evil.exe" would create the ADS "evil.exe"
+    //     on the file "file.txt" instead of a normal file.
+    if (base.find(':') != std::string_view::npos) return {};
 
     // 4. Trim trailing dots and whitespace. Windows silently strips these
     //    when creating files, so "evil.exe.." resolves to "evil.exe" and
@@ -287,8 +367,18 @@ sanitiseExtractedFilename(std::string_view name)
     //    A name longer than that would fail filesystem operations anyway;
     //    truncating up-front gives a uniform error mode. We truncate from
     //    the end while keeping the file extension if there is one.
+    //    Truncation respects UTF-8 character boundaries so a multi-byte
+    //    codepoint is never split in half.
     constexpr size_t MAX_BYTES = 255;
     if (base.size() > MAX_BYTES) {
+        // Find the last UTF-8 codepoint boundary at or before MAX_BYTES.
+        // A continuation byte has the pattern 10xxxxxx (0x80-0xBF).
+        auto utf8_boundary = [](std::string_view sv, size_t max_pos) -> size_t {
+            size_t pos = std::min(max_pos, sv.size());
+            while (pos > 0 && (uint8_t(sv[pos - 1]) & 0xC0) == 0x80)
+                --pos;
+            return pos;
+        };
         size_t dot = base.find_last_of('.');
         if (dot != std::string_view::npos &&
             dot > 0 &&
@@ -296,14 +386,15 @@ sanitiseExtractedFilename(std::string_view name)
             // Preserve a short extension; truncate the stem.
             std::string_view ext = base.substr(dot);
             std::string_view stem = base.substr(0, dot);
-            size_t keep_stem = MAX_BYTES - ext.size();
+            size_t keep_stem = utf8_boundary(stem, MAX_BYTES - ext.size());
             std::string out;
-            out.reserve(MAX_BYTES);
+            out.reserve(keep_stem + ext.size());
             out.assign(stem.data(), keep_stem);
             out.append(ext.data(), ext.size());
             return out;
         }
-        return std::string(base.substr(0, MAX_BYTES));
+        size_t keep = utf8_boundary(base, MAX_BYTES);
+        return std::string(base.substr(0, keep));
     }
 
     return std::string(base);

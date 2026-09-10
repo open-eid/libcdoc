@@ -84,6 +84,10 @@ print_usage(ostream& ofs)
     ofs << "    --pin PIN               - PKCS11 pin" << endl;
     ofs << "    --key-id                - PKCS11 key ID" << endl;
     ofs << "    --key-label             - PKCS11 key label" << endl;
+    ofs << "    --rp-server RP_SERVER   - RP server URL" << endl;
+    ofs << "    --auth-server AUTH_SERVER - Authentication server URL" << endl;
+    ofs << "    --phone NUMBER          - Phone number for MID signing (starting with + and country prefix)" << endl;
+    ofs << "                            - If the phone number is present user is authenticated with MobileID, otherwise with SmartId" << endl;
     ofs << endl;
     ofs << "cdoc-tool locks FILE" << endl;
     ofs << endl;
@@ -101,8 +105,15 @@ print_usage(ostream& ofs)
 static std::vector<uint8_t>
 fromB64(const std::string& data)
 {
-    std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
-    return std::vector<uint8_t>(str.cbegin(), str.cend());
+    // jwt::base::details::decode throws std::runtime_error on malformed
+    // base64; an invalid --accept certificate file must not crash the tool.
+    try {
+        std::string str = jwt::base::details::decode(data, jwt::alphabet::base64::rdata(), "=");
+        return std::vector<uint8_t>(str.cbegin(), str.cend());
+    } catch (const std::exception &e) {
+        LOG_WARN("Invalid base64: {}", e.what());
+        return {};
+    }
 }
 
 static void
@@ -115,7 +126,11 @@ load_certs(ToolConf& conf, const std::string& filename)
         for (auto part : parts) {
             if (part.size() > 3) {
                 std::vector<uint8_t> v = fromB64(part);
-                conf.accept_certs.push_back(v);
+                if (v.empty()) {
+                    LOG_WARN("Skipping invalid base64 line in {}", filename);
+                    continue;
+                }
+                conf.accept_certs.push_back(std::move(v));
             }
         }
     } else {
@@ -167,6 +182,18 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
         sdata.url = argv[arg_idx + 2];
         conf.servers.push_back(sdata);
         return 3;
+    } else if (arg == "--auth-server") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        conf.auth_server = argv[arg_idx + 1];
+        return 2;
+    } else if (arg == "--rp-server") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        conf.rp_server = argv[arg_idx + 1];
+        return 2;
+    } else if (arg == "--phone") {
+        if ((arg_idx + 1) >= argc) return RESULT_USAGE;
+        conf.phone = argv[arg_idx + 1];
+        return 2;
     } else if (arg == "--accept") {
         if ((arg_idx + 1) >= argc) return RESULT_USAGE;
         load_certs(conf, argv[arg_idx + 1]);

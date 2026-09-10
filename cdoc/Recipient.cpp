@@ -21,6 +21,7 @@
 #include "CDoc2.h"
 #include "Certificate.h"
 #include "Crypto.h"
+#include "CryptoBackend.h"
 #include "Lock.h"
 #include "Utils.h"
 
@@ -233,10 +234,28 @@ Recipient::validate() const
     switch(type) {
         case SYMMETRIC_KEY:
             // Either user-defined label or LABEL property is required
-            return !label.empty() || lbl_parts.contains(std::string(CDoc2::Label::LABEL));
+            if (label.empty() && !lbl_parts.contains(std::string(CDoc2::Label::LABEL)))
+                return false;
+            // N8: enforce PBKDF2 iteration bounds on the writer side.
+            // kdf_iter == 0 means a raw symmetric key (no PBKDF2); any
+            // password lock must use a bounded iteration count to avoid
+            // both trivially weak and CPU-exhausting containers.
+            if (kdf_iter != 0 &&
+                (kdf_iter < CryptoBackend::KDF_ITER_MIN_ENCRYPT ||
+                 kdf_iter > CryptoBackend::KDF_ITER_MAX_ENCRYPT))
+                return false;
+            return true;
         case PUBLIC_KEY:
             // Public key should not be empty
             return !rcpt_key.empty();
+#ifdef HAS_KEYSHARES
+        case KEYSHARE:
+            // S13: the recipient id must be a valid ETSI semantics identifier
+            // (PNO<CC>-<digits>, stored without the "etsi/" prefix). A malformed
+            // id would only fail late (at the share server) or, worse, bind the
+            // shares to a wrong identity.
+            return !server_id.empty() && libcdoc::parseEtsiRecipientId("etsi/" + id).valid();
+#endif
         default:
             return false;
     }
