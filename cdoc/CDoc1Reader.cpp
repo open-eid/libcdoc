@@ -357,6 +357,8 @@ CDoc1Reader::CDoc1Reader(libcdoc::DataSource *src, bool delete_on_close)
 			}
 		}
 	}
+    if(reader.hasError())
+        setLastError("Cannot parse container");
 }
 
 CDoc1Reader::~CDoc1Reader() noexcept
