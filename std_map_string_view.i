@@ -32,9 +32,14 @@
 // Note: $1 must be assigned as a whole (not populated through &$1) because
 // SWIG passes class-type by-value parameters through SwigValueWrapper, which
 // allocates the underlying object on assignment.
-%typemap(in) std::map<std::string_view, std::string_view> (
-        std::map<std::string, std::string> $1_store,
-        std::map<std::string_view, std::string_view> $1_view) %{
+//
+// The temporaries are declared inside the typemap body (not in the
+// parenthesized declaration list after the typemap name) because some SWIG
+// versions only emit the first variable from a multi-variable declaration,
+// causing "not declared in this scope" errors.
+%typemap(in) std::map<std::string_view, std::string_view> %{
+    std::map<std::string, std::string> arg_store;
+    std::map<std::string_view, std::string_view> arg_view;
     if (!$input) {
         SWIG_JavaThrowException(jenv, SWIG_JavaNullPointerException, "null map");
         return $null;
@@ -56,19 +61,19 @@
             jobject entry = jenv->CallObjectMethod(iterator, mid_next);
             jstring jkey = (jstring) jenv->CallObjectMethod(entry, mid_getKey);
             jstring jval = (jstring) jenv->CallObjectMethod(entry, mid_getValue);
-            $1_store.emplace(SWIG_JavaJstringToUtf8(jenv, jkey), SWIG_JavaJstringToUtf8(jenv, jval));
+            arg_store.emplace(SWIG_JavaJstringToUtf8(jenv, jkey), SWIG_JavaJstringToUtf8(jenv, jval));
             jenv->DeleteLocalRef(jkey);
             jenv->DeleteLocalRef(jval);
             jenv->DeleteLocalRef(entry);
         }
         if (jenv->ExceptionCheck()) return $null;
     }
-    // std::map nodes are stable, so string_views into $1_store stay valid
+    // std::map nodes are stable, so string_views into arg_store stay valid
     // for the duration of the wrapped call.
-    for (const auto& [key, value] : $1_store) {
-        $1_view.emplace(key, value);
+    for (const auto& [key, value] : arg_store) {
+        arg_view.emplace(key, value);
     }
-    $1 = $1_view;
+    $1 = arg_view;
 %}
 
 // C++ std::map<std::string_view, std::string_view> -> Java Map
