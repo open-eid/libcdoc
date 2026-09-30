@@ -80,12 +80,19 @@ bool XMLReader::isElement(const char *elem) const
 bool XMLReader::read()
 {
     if (!d) return false;
-    if (xmlTextReaderRead(d) != 1)
+    if (int result = xmlTextReaderRead(d); result != 1)
+    {
+        error = result < 0;
+        if (error)
+            LOG_ERROR("XMLReader: failed to parse document");
         return false;
+    }
     switch(xmlTextReaderNodeType(d))
     {
     case XML_READER_TYPE_DOCUMENT_TYPE:
     case XML_READER_TYPE_ENTITY_REFERENCE:
+        error = true;
+        LOG_ERROR("XMLReader: document type declaration or entity reference is not allowed");
         return false;
     default:
         return true;
