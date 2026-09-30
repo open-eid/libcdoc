@@ -52,8 +52,8 @@ add_custom_command(
     OUTPUT ${JAVA_EXAMPLE_JAR}
     COMMENT "Building and testing Java example (CDocTool.jar) with Gradle"
     COMMAND ${GRADLE_WRAPPER}
+            --info
             --no-daemon
-            --quiet
             -PswigJavaDir=${JAVA_EXAMPLE_SWIG_DIR}
             -PjniLibDir=$<TARGET_FILE_DIR:cdoc_java>
             build
