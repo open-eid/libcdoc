@@ -48,15 +48,22 @@ endif()
 set(JAVA_EXAMPLE_SWIG_DIR ${CDOC_BINARY_DIR}/java)
 set(JAVA_EXAMPLE_JAR ${JAVA_EXAMPLE_DIR}/build/libs/CDocTool.jar)
 
+# When cross-compiling (e.g. Android), the JNI library targets a different
+# architecture than the build host, so Java tests cannot load it. Build the
+# example jar but skip the tests.
+if(SKIP_JAVA_TESTS)
+    set(GRADLE_SKIP_TESTS -x test)
+endif()
+
 add_custom_command(
     OUTPUT ${JAVA_EXAMPLE_JAR}
-    COMMENT "Building and testing Java example (CDocTool.jar) with Gradle"
+    COMMENT "Building Java example (CDocTool.jar) with Gradle"
     COMMAND ${GRADLE_WRAPPER}
             --info
             --no-daemon
             -PswigJavaDir=${JAVA_EXAMPLE_SWIG_DIR}
             -PjniLibDir=$<TARGET_FILE_DIR:cdoc_java>
-            build
+            build ${GRADLE_SKIP_TESTS}
     WORKING_DIRECTORY ${JAVA_EXAMPLE_DIR}
     DEPENDS cdoc_java
     VERBATIM

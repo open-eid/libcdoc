@@ -42,6 +42,7 @@ endif()
 include(GNUInstallDirs)
 
 option(LIBCDOC_WITH_DOCS "Generate documentation with Doxygen" ON)
+option(SKIP_JAVA_TESTS "Skip Java tests (useful when cross-compiling)" OFF)
 
 find_package(OpenSSL 3.0.0 REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -73,7 +74,9 @@ add_subdirectory(cdoc)
 # the SWIG-generated Java bindings. Correct also when libcdoc is included as
 # a subproject of a larger build.
 set(CDOC_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/cdoc)
-add_subdirectory(examples)
+if(NOT SKIP_JAVA_TESTS)
+    add_subdirectory(examples)
+endif()
 
 find_package(Boost COMPONENTS unit_test_framework QUIET)
 if (TARGET Boost::unit_test_framework)
