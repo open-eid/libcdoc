@@ -14,7 +14,7 @@ jobs:
     container: ubuntu:${{ matrix.container }}
     strategy:
       matrix:
-        container: ['22.04', '24.04', '26.04']
+        container: ['22.04', '24.04', '26.04', '26.10']
         arch: ['amd64', 'arm64']
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -83,7 +83,7 @@ jobs:
           libcdoc.${{ matrix.target }}
   macos:
     name: Build on macOS for ${{ matrix.target }}
-    runs-on: macos-latest
+    runs-on: xcode-27
     strategy:
       matrix:
         target: [macos, iphoneos, iphonesimulator]

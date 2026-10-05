@@ -35,13 +35,13 @@ std::string Certificate::getName(int NID) const
     std::string cn;
     if(!cert)
         return cn;
-    X509_NAME *name = X509_get_subject_name(cert.get());
+    const X509_NAME *name = X509_get_subject_name(cert.get());
     if(!name)
         return cn;
     int pos = X509_NAME_get_index_by_NID(name, NID, -1);
     if(pos == -1)
         return cn;
-    X509_NAME_ENTRY *e = X509_NAME_get_entry(name, pos);
+    const X509_NAME_ENTRY *e = X509_NAME_get_entry(name, pos);
     if(!e)
         return cn;
     char *data = nullptr;
