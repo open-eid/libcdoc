@@ -40,9 +40,11 @@ public:
 	bool read();
 	std::vector<uint8_t> readBase64();
 	std::string readText();
+    bool hasError() const { return error; }
 
 private:
     _xmlTextReader *d;
+    bool error = false;
 };
 
 } // namespace libcdoc
