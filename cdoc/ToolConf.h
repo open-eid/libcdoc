@@ -24,6 +24,7 @@
 #include "Utils.h"
 
 #include <sstream>
+#include <map>
 
 namespace libcdoc {
 
@@ -76,9 +77,9 @@ struct ToolConf : public JSONConfiguration {
     bool gen_label = false;
 
     /**
-     * @brief The list of accepted keyserver certificates (empty - accept all)
+     * @brief The map of accepted keyserver certificates (empty - accept all)
      */
-    std::vector<std::vector<uint8_t>> accept_certs;
+    std::map<std::string, std::vector<std::vector<uint8_t>>> accept_certs;
 
     std::string getValue(std::string_view domain, std::string_view param) const final {
         if (domain.empty()) {

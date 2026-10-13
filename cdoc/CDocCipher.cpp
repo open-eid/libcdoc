@@ -287,7 +287,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
     int rcpt_idx = -1;
 
-    std::vector<std::vector<uint8_t>> certs;
+    std::map<std::string, std::vector<std::vector<uint8_t>>> certs;
 
     explicit ToolNetwork(ToolCrypto *_crypto) : crypto(_crypto) {
     }
@@ -298,8 +298,10 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
         return crypto->p11->getCertificate(dst, long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
     }
 
-    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
-        dst = certs;
+    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst, const std::string& url) override final {
+        if (certs.contains(url)) {
+            dst = certs.at(url);
+        }
         return libcdoc::OK;
     }
 
