@@ -1,3 +1,16 @@
+/* SPDX-FileCopyrightText: SWIG contributors
+ * SPDX-License-Identifier: LicenseRef-SWIG-Library
+ *
+ * Adapted from the SWIG library file Lib/java/std_string.i. The SWIG library,
+ * under the Lib and Examples top level directories, is distributed under the
+ * following terms:
+ *
+ *   You may copy, modify, distribute, and make derivative works based on
+ *   this software, in source code or object code form, without
+ *   restriction. If you distribute the software to others, you may do
+ *   so according to the terms of your choice. This software is offered as
+ *   is, without warranty of any kind.
+ */
 /* -----------------------------------------------------------------------------
  * std_string_view.i
  *
