@@ -315,7 +315,9 @@ int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, 
     int64_t result = writer.beginEncryption();
     if (result != libcdoc::OK) return result;
     for (const std::string& file : files) {
-        std::filesystem::path path(file);
+        // The string is UTF-8; construct the path from u8string so that
+        // Windows interprets it as UTF-8 rather than the active code page.
+        std::filesystem::path path(std::u8string(reinterpret_cast<const char8_t*>(file.data()), file.size()));
         if (!std::filesystem::exists(path)) {
             LOG_ERROR("File does not exist: {}", file);
             return 1;
@@ -519,7 +521,7 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
         LOG_ERROR("Error on extracting FMK: {} {}", result, rdr->getLastErrorStr());
         return 1;
     }
-    filesystem::path base_path(base_pathname);
+    filesystem::path base_path(std::u8string(reinterpret_cast<const char8_t*>(base_pathname.data()), base_pathname.size()));
 
     /* Do pull */
     result = rdr->beginDecryption(fmk);
