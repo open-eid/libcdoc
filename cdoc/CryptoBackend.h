@@ -45,6 +45,22 @@ struct CDOC_EXPORT CryptoBackend {
 
 	static constexpr int ECC_KEY_LEN = 32;
 
+    // N8: PBKDF2 iteration bounds.
+    //
+    // The container carries an attacker-controlled int32 kdf_iterations
+    // field. Without bounds a malicious container can either:
+    //   - set kdf_iterations = 2^31-1 → CPU DoS (hours of PBKDF2 per attempt)
+    //   - set kdf_iterations > INT32_MAX → sign-wrap to negative → the raw
+    //     symmetric-key path is taken instead of the password path
+    //
+    // Encryption limits (writer side): passwords must use at least
+    // KDF_ITER_MIN_ENCRYPT iterations and at most KDF_ITER_MAX_ENCRYPT.
+    // Decryption limit (reader side): containers with more than
+    // KDF_ITER_MAX_DECRYPT iterations are rejected outright.
+    static constexpr int32_t KDF_ITER_MIN_ENCRYPT = 100000;
+    static constexpr int32_t KDF_ITER_MAX_ENCRYPT = 10000000;
+    static constexpr int32_t KDF_ITER_MAX_DECRYPT = 100000000;
+
     enum HashAlgorithm : uint32_t {
         SHA_224,
         SHA_256,
@@ -171,6 +187,22 @@ struct CDOC_EXPORT CryptoBackend {
     virtual result_t sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, unsigned int idx) {
         return NOT_IMPLEMENTED;
     }
+
+    /**
+     * @brief Validate that a certificate belongs to the given user (S8)
+     *
+     * The default implementation checks only that the certificate subject
+     * serialNumber matches the identity part of user_id (etsi/PNOEE-...).
+     * It deliberately does NOT check expiry, revocation status or chain
+     * trust: users must be able to decrypt their documents even after the
+     * signing certificate has expired. Implementations may override this to
+     * enforce expiry dates, OCSP lookups, trust lists etc.
+     *
+     * @param user_id recipient id (etsi/PNOEE-...)
+     * @param cert_der certificate in DER encoding
+     * @return error code or OK
+     */
+    virtual result_t validateCertificate(const std::string& user_id, const std::vector<uint8_t>& cert_der);
 
     virtual int test(libcdoc::Lock& lock) { return NOT_IMPLEMENTED; }
 };

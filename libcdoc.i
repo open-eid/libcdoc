@@ -38,6 +38,7 @@
 // Handle standard C++ types
 %include "std_string.i"
 %include "std_vector.i"
+%include "std_map.i"
 
 %include "typemaps.i"
 
@@ -65,14 +66,16 @@
 
 %ignore libcdoc::Configuration::KEYSERVER_SEND_URL;
 %ignore libcdoc::Configuration::KEYSERVER_FETCH_URL;
+%ignore libcdoc::Configuration::AUTH_SERVER;
+%ignore libcdoc::Configuration::RP_SERVER;
 %ignore libcdoc::Configuration::SHARE_SERVER_URLS;
 %ignore libcdoc::Configuration::SHARE_SIGNER;
-%ignore libcdoc::Configuration::SID_DOMAIN;
-%ignore libcdoc::Configuration::MID_DOMAIN;
-%ignore libcdoc::Configuration::BASE_URL;
-%ignore libcdoc::Configuration::RP_UUID;
-%ignore libcdoc::Configuration::RP_NAME;
+%ignore libcdoc::Configuration::SHARE_SIGNER_SID;
+%ignore libcdoc::Configuration::SHARE_SIGNER_MID;
 %ignore libcdoc::Configuration::PHONE_NUMBER;
+%ignore libcdoc::Configuration::DISPLAY_TEXT;
+%ignore libcdoc::Configuration::CDOC1_MAX_DECOMPRESSED_SIZE;
+%ignore libcdoc::Configuration::CDOC2_MAX_DECOMPRESSED_SIZE;
 
 %ignore libcdoc::PKCS11Backend::Handle;
 %ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label);
@@ -212,6 +215,19 @@
     }
     void setShare(const std::vector<uint8_t>& share) {
         $self->share = share;
+    }
+};
+
+// The params map is exposed through accessors so that language-specific
+// map typemaps (Java: java.util.Map<String,String>) apply. Wrapping the
+// member directly would produce an unusable opaque-pointer proxy.
+%ignore libcdoc::NetworkBackend::SessionData::params;
+%extend libcdoc::NetworkBackend::SessionData {
+    std::map<std::string, std::string> getParams() const {
+        return $self->params;
+    }
+    void setParams(const std::map<std::string, std::string>& params) {
+        $self->params = params;
     }
 };
 
@@ -497,17 +513,15 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 
 %typemap(out) std::map<std::string, std::string> %{
     jclass map_class = jenv->FindClass("java/util/Hashtable");
-    std::cerr << "Map class:" << (void *) map_class << std::endl;
     jmethodID mid_new = jenv->GetMethodID(map_class, "<init>", "()V");
-    std::cerr << "Mid_new:" << mid_new << std::endl;
     jmethodID mid_put = jenv->GetMethodID(map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    std::cerr << "Mid_put:" << mid_put << std::endl;
     jobject map = jenv->NewObject(map_class, mid_new);
-    std::cerr << "Map:" << (void *) map << std::endl;
     for(auto pair : *(&result)) {
         jstring key = jenv->NewStringUTF(pair.first.c_str());
         jstring val = jenv->NewStringUTF(pair.second.c_str());
         jenv->CallObjectMethod(map, mid_put, key, val);
+        jenv->DeleteLocalRef(key);
+        jenv->DeleteLocalRef(val);
     }
     jresult = map;
 %}
@@ -517,6 +531,87 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %typemap(javaout) std::map<std::string, std::string> {
     return $jnicall;
 }
+%typemap(javain) std::map<std::string, std::string> "$javainput"
+
+//
+// std::map<std::string, std::string>& (method arguments) <-> java.util.Map<String,String>
+//
+// fetchShare/signSID/signMID take the signature parameters as a string map.
+// The in-direction converts a Java Map to a temporary C++ map (read-only,
+// the convention for these parameters). The directorin-direction converts
+// C++ -> Java for upcalls into Java NetworkBackend implementations.
+//
+
+%fragment("SWIG_JavaMapToStringMap", "header") {
+static std::map<std::string, std::string> SWIG_JavaMapToStringMap(JNIEnv *jenv, jobject jmap) {
+    std::map<std::string, std::string> result;
+    if (!jmap)
+        return result;
+    jclass map_class = jenv->FindClass("java/util/Map");
+    jmethodID entry_set_mid = jenv->GetMethodID(map_class, "entrySet", "()Ljava/util/Set;");
+    jobject entry_set = jenv->CallObjectMethod(jmap, entry_set_mid);
+    jclass set_class = jenv->FindClass("java/util/Set");
+    jmethodID iterator_mid = jenv->GetMethodID(set_class, "iterator", "()Ljava/util/Iterator;");
+    jobject iterator = jenv->CallObjectMethod(entry_set, iterator_mid);
+    jclass iterator_class = jenv->FindClass("java/util/Iterator");
+    jmethodID has_next_mid = jenv->GetMethodID(iterator_class, "hasNext", "()Z");
+    jmethodID next_mid = jenv->GetMethodID(iterator_class, "next", "()Ljava/lang/Object;");
+    jclass entry_class = jenv->FindClass("java/util/Map$Entry");
+    jmethodID get_key_mid = jenv->GetMethodID(entry_class, "getKey", "()Ljava/lang/Object;");
+    jmethodID get_value_mid = jenv->GetMethodID(entry_class, "getValue", "()Ljava/lang/Object;");
+    while (jenv->CallBooleanMethod(iterator, has_next_mid)) {
+        jobject entry = jenv->CallObjectMethod(iterator, next_mid);
+        jstring jkey = (jstring) jenv->CallObjectMethod(entry, get_key_mid);
+        jstring jval = (jstring) jenv->CallObjectMethod(entry, get_value_mid);
+        const char *key_chars = jenv->GetStringUTFChars(jkey, nullptr);
+        std::string key(key_chars ? key_chars : "");
+        if (key_chars) jenv->ReleaseStringUTFChars(jkey, key_chars);
+        const char *val_chars = jenv->GetStringUTFChars(jval, nullptr);
+        std::string val(val_chars ? val_chars : "");
+        if (val_chars) jenv->ReleaseStringUTFChars(jval, val_chars);
+        result.emplace(std::move(key), std::move(val));
+        jenv->DeleteLocalRef(entry);
+        jenv->DeleteLocalRef(jkey);
+        jenv->DeleteLocalRef(jval);
+    }
+    jenv->DeleteLocalRef(entry_set);
+    jenv->DeleteLocalRef(iterator);
+    return result;
+}}
+
+%fragment("SWIG_StringMapToJavaMap", "header") {
+static jobject SWIG_StringMapToJavaMap(JNIEnv *jenv, const std::map<std::string, std::string> &data) {
+    jclass map_class = jenv->FindClass("java/util/HashMap");
+    jmethodID mid_new = jenv->GetMethodID(map_class, "<init>", "()V");
+    jmethodID mid_put = jenv->GetMethodID(map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    jobject jmap = jenv->NewObject(map_class, mid_new);
+    for (const auto &pair : data) {
+        jstring key = jenv->NewStringUTF(pair.first.c_str());
+        jstring val = jenv->NewStringUTF(pair.second.c_str());
+        jenv->CallObjectMethod(jmap, mid_put, key, val);
+        jenv->DeleteLocalRef(key);
+        jenv->DeleteLocalRef(val);
+    }
+    return jmap;
+}}
+
+// in: Java Map -> temporary C++ map (input-only parameters)
+%typemap(in, fragment="SWIG_JavaMapToStringMap") std::map<std::string, std::string>&,
+                                                  const std::map<std::string, std::string>& %{
+    std::map<std::string, std::string> $1_map = SWIG_JavaMapToStringMap(jenv, $input);
+    $1 = &$1_map;
+%}
+%typemap(jni) std::map<std::string, std::string>&, const std::map<std::string, std::string>& "jobject"
+%typemap(jtype) std::map<std::string, std::string>&, const std::map<std::string, std::string>& "java.util.Map<String,String>"
+%typemap(jstype) std::map<std::string, std::string>&, const std::map<std::string, std::string>& "java.util.Map<String,String>"
+%typemap(javain) std::map<std::string, std::string>&, const std::map<std::string, std::string>& "$javainput"
+
+// directorin: C++ map -> Java Map (upcall into a Java NetworkBackend)
+%typemap(directorin, descriptor="Ljava/util/Map;", fragment="SWIG_StringMapToJavaMap")
+        std::map<std::string, std::string>&, const std::map<std::string, std::string>& %{
+    $input = SWIG_StringMapToJavaMap(jenv, $1);
+%}
+%typemap(javadirectorin) std::map<std::string, std::string>&, const std::map<std::string, std::string>& "$jniinput"
 
 //
 // std::vector<std::vector<uint8_t>> <- CertificateList
@@ -646,14 +741,16 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %typemap(javacode) libcdoc::Configuration %{
     public static final String KEYSERVER_SEND_URL = "KEYSERVER_SEND_URL";
     public static final String KEYSERVER_FETCH_URL = "KEYSERVER_FETCH_URL";
+    public static final String AUTH_SERVER = "AUTH_SERVER";
+    public static final String RP_SERVER = "RP_SERVER";
     public static final String SHARE_SERVER_URLS = "SHARE_SERVER_URLS";
     public static final String SHARE_SIGNER = "SHARE_SIGNER";
-    public static final String SID_DOMAIN = "SMART_ID";
-    public static final String MID_DOMAIN = "MOBILE_ID";
-    public static final String BASE_URL = "BASE_URL";
-    public static final String RP_UUID = "RP_UUID";
-    public static final String RP_NAME = "RP_NAME";
+    public static final String SHARE_SIGNER_SID = "SMART_ID";
+    public static final String SHARE_SIGNER_MID = "MOBILE_ID";
     public static final String PHONE_NUMBER = "PHONE_NUMBER";
+    public static final String DISPLAY_TEXT = "DISPLAY_TEXT";
+    public static final String CDOC1_MAX_DECOMPRESSED_SIZE = "CDOC1_MAX_DECOMPRESSED_SIZE";
+    public static final String CDOC2_MAX_DECOMPRESSED_SIZE = "CDOC2_MAX_DECOMPRESSED_SIZE";
 %}
 
 %typemap(javaimports) ArrayList<byte[]> %{
@@ -665,6 +762,7 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %}
 %typemap(javaimports) libcdoc::NetworkBackend %{
     import java.util.ArrayList;
+    import java.util.Map;
 %}
 #endif
 

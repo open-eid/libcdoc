@@ -18,7 +18,9 @@
 
 #include "Crypto.h"
 #include "CryptoBackend.h"
+#include "Certificate.h"
 #include "Utils.h"
+#include "utils/memory.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 
@@ -66,20 +68,25 @@ CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint
 							   const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
                                unsigned int idx)
 {
-	std::vector<uint8_t> shared_secret;
-    int result = deriveECDH1(shared_secret, publicKey, idx);
+    // N22: ECDH shared_secret is key material; use SecureTarget so it is
+    // automatically cleansed after use instead of sitting in a plain vector.
+    SecureTarget shared_secret;
+    int result = deriveECDH1(shared_secret.getTarget(), publicKey, idx);
     if (result != OK) return result;
 	dst = libcdoc::Crypto::concatKDF(digest, ECC_KEY_LEN, shared_secret, algorithmID, partyUInfo, partyVInfo);
+    shared_secret.cleanse();
     return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 libcdoc::result_t
 CryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key, const std::vector<uint8_t> &salt, unsigned int idx)
 {
-	std::vector<uint8_t> shared_secret;
-    int result = deriveECDH1(shared_secret, public_key, idx);
+    // N22: same cleansing for the HKDF-extract path.
+    SecureTarget shared_secret;
+    int result = deriveECDH1(shared_secret.getTarget(), public_key, idx);
     if (result != OK) return result;
 	dst = libcdoc::Crypto::extract(shared_secret, salt);
+    shared_secret.cleanse();
     return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
@@ -112,10 +119,42 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 }
 
 libcdoc::result_t
+CryptoBackend::validateCertificate(const std::string& user_id, const std::vector<uint8_t>& cert_der)
+{
+    // Identity part of etsi/PNOEE-... (or used as-is if there is no prefix)
+    std::string id = user_id.starts_with("etsi/") ? user_id.substr(5) : user_id;
+    if (id.empty()) {
+        LOG_WARN("validateCertificate: empty user id");
+        return INVALID_PARAMS;
+    }
+    Certificate cert(cert_der);
+    if (!cert) {
+        LOG_WARN("validateCertificate: cannot parse certificate");
+        return CRYPTO_ERROR;
+    }
+    std::string serial = cert.getName(NID_serialNumber);
+    if (serial.empty()) {
+        LOG_WARN("validateCertificate: certificate subject has no serialNumber");
+        return CRYPTO_ERROR;
+    }
+    if (serial != id) {
+        LOG_WARN("validateCertificate: certificate identity '{}' does not match '{}'", serial, id);
+        return CRYPTO_ERROR;
+    }
+    return OK;
+}
+
+libcdoc::result_t
 CryptoBackend::extractHKDF(std::vector<uint8_t>& kek_pm, const std::vector<uint8_t>& salt, const std::vector<uint8_t>& pw_salt,
                            int32_t kdf_iter, unsigned int idx)
 {
     if (salt.empty()) return INVALID_PARAMS;
+    // N8: The container's kdf_iterations is attacker-controlled int32.
+    // Values < 0 (possible from sign-wrap when Lock::getInt reads 4
+    // big-endian bytes as unsigned > INT32_MAX) would silently take the
+    // raw-key path below, turning a password lock into a (failing)
+    // symmetric-key lock. Reject them here so the failure is explicit.
+    if (kdf_iter < 0) return INVALID_PARAMS;
     if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
     std::vector<uint8_t> key_material;
     int result = getKeyMaterial(key_material, pw_salt, kdf_iter, idx);
