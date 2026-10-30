@@ -295,6 +295,10 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
         const RcptInfo *rcpt = crypto->c_info.getRcpt(rcpt_idx);
         if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (!crypto->p11) {
+            LOG_ERROR("Key server authentication needs a PKCS11 key (--library)");
+            return libcdoc::CONFIGURATION_ERROR;
+        }
         return crypto->p11->getCertificate(dst, long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
     }
 
@@ -306,6 +310,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
     libcdoc::result_t signTLS(std::vector<uint8_t>& dst, libcdoc::CryptoBackend::HashAlgorithm algorithm, const std::vector<uint8_t> &digest) override final {
         const RcptInfo *rcpt = crypto->c_info.getRcpt(rcpt_idx);
         if (!rcpt) return libcdoc::INTERNAL_ERROR;
+        if (!crypto->p11) return libcdoc::CONFIGURATION_ERROR;
         return crypto->p11->sign(dst, algorithm, digest, rcpt_idx);
     }
 
