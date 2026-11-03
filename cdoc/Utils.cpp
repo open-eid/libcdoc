@@ -39,6 +39,18 @@ toBase64(const uint8_t *data, size_t len)
     return result;
 }
 
+std::string
+toBase64URL(const std::string& data)
+{
+    return jwt::base::details::encode(data, jwt::alphabet::base64url::data(), "");
+}
+
+std::string
+toBase64URL(const uint8_t *data, size_t len)
+{
+    return toBase64URL(std::string(reinterpret_cast<const char *>(data), len));
+}
+
 std::vector<uint8_t>
 fromBase64(std::string_view data)
 {
@@ -52,6 +64,34 @@ fromBase64(std::string_view data)
         return std::vector<uint8_t>(str.cbegin(), str.cend());
     } catch (const std::exception &e) {
         LOG_WARN("fromBase64: invalid base64 input: {}", e.what());
+        return {};
+    }
+}
+
+static std::string
+strip(std::string input)
+{
+    // Remove trailing '=' padding characters (used in Base64URL encoding)
+    while (!input.empty() && input.back() == '=') {
+        input.pop_back();
+    }
+    return input;
+}
+
+std::vector<uint8_t>
+fromBase64URL(std::string_view data)
+{
+    // Same contract as fromBase64: the input is untrusted (server-issued
+    // tokens and disclosures) and jwt::base::decode throws std::runtime_error
+    // on malformed input, so failures are signalled with an empty result
+    // instead of an exception escaping into the caller.
+    try {
+        auto stripped = strip(std::string(data));
+        auto padded = jwt::base::pad<jwt::alphabet::base64url>(stripped);
+        auto str = jwt::base::decode<jwt::alphabet::base64url>(padded);
+        return std::vector<uint8_t>(str.cbegin(), str.cend());
+    } catch (const std::exception &e) {
+        LOG_WARN("fromBase64URL: invalid base64url input: {}", e.what());
         return {};
     }
 }
@@ -74,8 +114,16 @@ timeFromISO(const std::string& iso)
 {
     std::istringstream in{iso};
     std::tm t = {};
-    in >> std::get_time(&t, "%Y-%m-%dT%TZ");
+    in >> std::get_time(&t, "%Y-%m-%dT%T");
     if (in.fail()) return -1;
+    // The key server adds fractions of a second, e.g. 2027-04-17T08:52:36.450774506Z
+    auto isDigit = [&in] { return in.peek() >= '0' && in.peek() <= '9'; };
+    if (in.peek() == '.') {
+        in.get();
+        if (!isDigit()) return -1;
+        while (isDigit()) in.get();
+    }
+    if (in.get() != 'Z') return -1;
     return timegm(&t);
 }
 
@@ -230,6 +278,26 @@ parseEtsiRecipientId(std::string_view rcpt_id)
 }
 
 std::string
+urlEncodeComponent(std::string_view value)
+{
+    static constexpr char UNRESERVED[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
+    static constexpr char HEX[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(value.size());
+    for (char c : value) {
+        if (memchr(UNRESERVED, c, sizeof(UNRESERVED) - 1)) {
+            out += c;
+        } else {
+            out += '%';
+            out += HEX[(static_cast<unsigned char>(c) >> 4) & 0x0F];
+            out += HEX[static_cast<unsigned char>(c) & 0x0F];
+        }
+    }
+    return out;
+}
+
+std::string
 sanitiseExtractedFilename(std::string_view name)
 {
     // 1. Reject anything whose UTF-8 is malformed or contains NUL/control
@@ -252,19 +320,9 @@ sanitiseExtractedFilename(std::string_view name)
                                 ? name
                                 : name.substr(last_sep + 1);
 
-    // 3. Reject Windows drive-letter prefixes that survived the slash split
-    //    (e.g. "C:foo.txt" with no slash is drive-relative on Windows and
-    //    refers to the current directory of drive C:, NOT the current
-    //    working directory). We strip "X:" if the prefix looks like one.
-    if (base.size() >= 2 && base[1] == ':' &&
-        ((base[0] >= 'A' && base[0] <= 'Z') ||
-         (base[0] >= 'a' && base[0] <= 'z'))) {
-        base = base.substr(2);
-    }
-
-    // 3a. Reject any remaining ':' (NTFS Alternate Data Stream separator).
-    //     A name like "file.txt:evil.exe" would create the ADS "evil.exe"
-    //     on the file "file.txt" instead of a normal file.
+    // 3. Reject ':' rather than stripping a possible drive-letter prefix.
+    //    The Java reference implementation rejects colons too; on Windows
+    //    they can select a drive or an NTFS alternate data stream.
     if (base.find(':') != std::string_view::npos) return {};
 
     // 4. Trim trailing dots and whitespace. Windows silently strips these
@@ -315,7 +373,7 @@ sanitiseExtractedFilename(std::string_view name)
         // A continuation byte has the pattern 10xxxxxx (0x80-0xBF).
         auto utf8_boundary = [](std::string_view sv, size_t max_pos) -> size_t {
             size_t pos = std::min(max_pos, sv.size());
-            while (pos > 0 && (uint8_t(sv[pos - 1]) & 0xC0) == 0x80)
+            while (pos > 0 && pos < sv.size() && (uint8_t(sv[pos]) & 0xC0) == 0x80)
                 --pos;
             return pos;
         };
