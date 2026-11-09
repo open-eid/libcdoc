@@ -31,6 +31,10 @@ struct CDOC_EXPORT NetworkBackend {
      * 
      */
 	static constexpr int NETWORK_ERROR = -300;
+    // The key server did not find the requested capsule (HTTP 404).
+    static constexpr int CAPSULE_NOT_FOUND = -304;
+    // The key server returned an unsuccessful HTTP response.
+    static constexpr int SERVER_ERROR = -305;
 #ifdef HAS_KEYSHARES
     // SID v3.1+ session endResult codes
     // (https://sk-eid.github.io/smart-id-documentation/rp-api/api_specification.html)

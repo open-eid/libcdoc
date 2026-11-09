@@ -1976,6 +1976,9 @@ public:
 
   SSL_CTX *ssl_context() const;
 
+  // libcdoc: trust only the certificates the caller added to the store
+  void set_load_system_certs(bool load) { load_system_certs_ = load; }
+
 private:
   bool create_and_connect_socket(Socket &socket, Error &error) override;
   void shutdown_ssl(Socket &socket, bool shutdown_gracefully) override;
@@ -1999,6 +2002,7 @@ private:
   SSL_CTX *ctx_;
   std::mutex ctx_mutex_;
   std::once_flag initialize_cert_;
+  bool load_system_certs_ = true;
 
   std::vector<std::string> host_components_;
 
@@ -9442,7 +9446,7 @@ inline bool SSLClient::load_certs() {
                                          ca_cert_dir_path_.c_str())) {
         ret = false;
       }
-    } else {
+    } else if (load_system_certs_) {
       auto loaded = false;
 #ifdef _WIN32
       loaded =

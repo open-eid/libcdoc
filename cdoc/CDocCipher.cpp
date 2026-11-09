@@ -574,7 +574,7 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
         LOG_ERROR("Error on extracting FMK: {} {}", result, rdr->getLastErrorStr());
         return 1;
     }
-    filesystem::path base_path(base_pathname);
+    filesystem::path base_path(std::u8string(reinterpret_cast<const char8_t*>(base_pathname.data()), base_pathname.size()));
 
     /* Do pull */
     result = rdr->beginDecryption(fmk);

@@ -145,6 +145,10 @@ libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
         return {};
 	case NETWORK_ERROR:
 		return "NetworkBackend: Network error";
+    case CAPSULE_NOT_FOUND:
+        return "NetworkBackend: Key capsule not found";
+    case SERVER_ERROR:
+        return "NetworkBackend: Server error";
 	default:
 		break;
 	}
@@ -178,6 +182,7 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
             if (!x509) return libcdoc::CRYPTO_ERROR;
             X509_STORE_add_cert(store, x509.handle());
         }
+        cli.set_load_system_certs(false);
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
     }
@@ -256,7 +261,7 @@ httpPost(httplib::SSLClient& cli, const std::string& path, httplib::Headers& hdr
     httplib::Result res = cli.Post(path, hdrs, req, "application/json");
     if (!res) {
         logRequestError(res);
-        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        error = FORMAT("Cannot connect to https://{}:{}{}: {}", cli.host(), cli.port(), path, httplib::to_string(res.error()));
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     int status = res->status;
@@ -278,7 +283,7 @@ httpPost(httplib::SSLClient& cli, const std::string& path, httplib::Headers& hdr
 // Get url and fetch JSON response
 //
 static libcdoc::result_t
-httpGet(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path, httplib::Response& rsp)
+httpGet(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path, httplib::Response& rsp, int* httpStatus = nullptr)
 {
     // Capture TLS and HTTP errors
     LOG_DBG("GET: {}", path);
@@ -288,10 +293,11 @@ httpGet(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path
     httplib::Result res = cli.Get(path, hdrs);
     if (!res) {
         logRequestError(res);
-        error = FORMAT("Cannot connect to https://{}:{}{}", cli.host(), cli.port(), path);
+        error = FORMAT("Cannot connect to https://{}:{}{}: {}", cli.host(), cli.port(), path, httplib::to_string(res.error()));
         return libcdoc::NetworkBackend::NETWORK_ERROR;
     }
     int status = res->status;
+    if (httpStatus) *httpStatus = status;
     LOG_DBG("Status: {}", status);
     LOG_TRACE("  Body: {}", res->body);
     for (auto h : res->headers) {
@@ -509,8 +515,12 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     std::string full = joinUrl(path, "/key-capsules/") + urlEncodeComponent(transaction_id);
     httplib::Headers hdrs;
     httplib::Response rsp;
-    result = httpGet(cli, hdrs, full, rsp);
-    if (result != libcdoc::OK) return result;
+    int httpStatus = 0;
+    result = httpGet(cli, hdrs, full, rsp, &httpStatus);
+    if (result != libcdoc::OK) {
+        if (httpStatus) return httpStatus == 404 ? CAPSULE_NOT_FOUND : SERVER_ERROR;
+        return result;
+    }
 
     picojson::value rsp_json;
     std::string parse_err = picojson::parse(rsp_json, rsp.body);
