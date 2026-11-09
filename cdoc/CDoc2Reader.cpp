@@ -128,6 +128,19 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
     return libcdoc::NOT_FOUND;
 }
 
+// Checked before the key operation, which would report a malformed value as a card or PIN error
+static bool
+isValidKeyMaterial(const libcdoc::Lock& lock, const std::vector<uint8_t>& key_material)
+{
+    const std::vector<uint8_t>& rcpt_key = lock.getBytes(libcdoc::Lock::Params::RCPT_KEY);
+    if (lock.isRSA()) {
+        auto key = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt_key);
+        return key && key_material.size() == size_t(EVP_PKEY_get_size(key.get()));
+    }
+    // Both are uncompressed points on the same curve
+    return !key_material.empty() && key_material.size() == rcpt_key.size() && key_material[0] == 0x04;
+}
+
 libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
@@ -208,6 +221,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             }
         } else if (lock.type == Lock::PUBLIC_KEY) {
             key_material = lock.getBytes(Lock::Params::KEY_MATERIAL);
+        }
+        if (!isValidKeyMaterial(lock, key_material)) {
+            setLastError(lock.type == Lock::Type::SERVER ? "Invalid key material from the key server" : "Invalid key material in the lock");
+            LOG_ERROR("{}", last_error);
+            return lock.type == Lock::Type::SERVER ? NetworkBackend::SERVER_ERROR : libcdoc::DATA_FORMAT_ERROR;
         }
 
         LOG_TRACE_KEY("Public key: {}", lock.getBytes(Lock::Params::RCPT_KEY));

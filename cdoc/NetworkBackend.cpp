@@ -34,7 +34,9 @@
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -223,6 +225,19 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
 #endif
     }
     return libcdoc::OK;
+}
+
+//
+// Parse a JSON response, rejecting anything after the value
+//
+static std::string
+parseJson(picojson::value& out, const std::string& body)
+{
+    std::string err;
+    auto end = picojson::parse(out, body.cbegin(), body.cend(), &err);
+    if (err.empty() && std::any_of(end, body.cend(), [](char c) { return !std::isspace(static_cast<unsigned char>(c)); }))
+        err = "unexpected data after the JSON value";
+    return err;
 }
 
 //
@@ -501,22 +516,22 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
         return result;
     }
 
+    // The server answered, so a malformed response is a server error, not a network error
     picojson::value rsp_json;
-    std::string parse_err = picojson::parse(rsp_json, rsp.body);
-    if (!parse_err.empty()) {
+    if (std::string parse_err = parseJson(rsp_json, rsp.body); !parse_err.empty()) {
         error = FORMAT("JSON parse error: {}", parse_err);
         LOG_ERROR("{}", error);
-        return NETWORK_ERROR;
+        return SERVER_ERROR;
     }
 
     libcdoc::result_t rv = libcdoc::OK;
     std::string ks = getJsonString(rsp_json, "ephemeral_key_material", rv);
-    if (rv != libcdoc::OK) return NETWORK_ERROR;
+    if (rv != libcdoc::OK) return SERVER_ERROR;
     dst = fromBase64(ks);
     if (dst.empty()) {
         error = FORMAT("Invalid base64 in 'ephemeral_key_material'");
         LOG_WARN("{}", error);
-        return NETWORK_ERROR;
+        return SERVER_ERROR;
     }
 
     return libcdoc::OK;
