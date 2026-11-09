@@ -268,7 +268,6 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             LOG_ERROR("{}", last_error);
             return libcdoc::CONFIGURATION_ERROR;
         }
-        // auth_url = "https://cdoc2-auth.dev.riaint.ee";
         // fixme:
         std::string signer_type = conf->getValue(Configuration::SHARE_SIGNER);
         LOG_DBG("Signer: {}", signer_type);
@@ -344,7 +343,6 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             LOG_ERROR("{}", last_error);
             return libcdoc::CONFIGURATION_ERROR;
         }
-        // rp_url = "https://cdoc2-rp.dev.riaint.ee/"
         /* Create tickets from shares */
         std::vector<std::string> auth_tokens;
         AuthenticationData auth;

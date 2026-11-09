@@ -25,6 +25,9 @@
 // requests automatically after a few seconds).
 //
 // Enable with:
+//   LIBCDOC_LIVE_SHARE_SERVERS="https://SHARE_SERVER_1,https://SHARE_SERVER_2" \
+//   LIBCDOC_LIVE_AUTH_SERVER=https://AUTH_SERVER \
+//   LIBCDOC_LIVE_RP_SERVER=https://RP_SERVER \
 //   LIBCDOC_LIVE_TESTS=1 ./build/.../test/unittests --run_test=LiveSidMid
 //
 // The RIA certificate-pinning infrastructure is still in development, so the
@@ -54,24 +57,17 @@ namespace utf = boost::unit_test;
 
 namespace {
 
-// The RIA dev servers (default - the test environment's MID endpoint is
-// currently broken). The test environment can be selected via environment
-// variables, e.g.:
-//   LIBCDOC_LIVE_SHARE_SERVERS="https://cdoc2-shares.test.riaint.ee,https://cdoc2-sharesexternal.test.riaint.ee" \
-//   LIBCDOC_LIVE_AUTH_SERVER=https://cdoc2-auth.test.riaint.ee \
-//   LIBCDOC_LIVE_RP_SERVER=https://cdoc2-rp.test.riaint.ee \
-//   LIBCDOC_LIVE_TESTS=1 ./unittests --run_test=LiveSidMid
+// The servers are internal, so they are not part of the sources
 std::string
-envOr(const char *name, const char *fallback)
+env(const char *name)
 {
     const char *v = std::getenv(name);
-    return (v && *v) ? v : fallback;
+    return v ? v : "";
 }
 
-const std::string SHARE_SERVERS = envOr("LIBCDOC_LIVE_SHARE_SERVERS",
-    "https://cdoc2-shares.dev.riaint.ee,https://cdoc2-sharesexternal.dev.riaint.ee");
-const std::string AUTH_SERVER = envOr("LIBCDOC_LIVE_AUTH_SERVER", "https://cdoc2-auth.dev.riaint.ee");
-const std::string RP_SERVER = envOr("LIBCDOC_LIVE_RP_SERVER", "https://cdoc2-rp.dev.riaint.ee");
+const std::string SHARE_SERVERS = env("LIBCDOC_LIVE_SHARE_SERVERS");
+const std::string AUTH_SERVER = env("LIBCDOC_LIVE_AUTH_SERVER");
+const std::string RP_SERVER = env("LIBCDOC_LIVE_RP_SERVER");
 
 constexpr const char *SERVER_ID = "test-shares";
 
@@ -115,6 +111,8 @@ sidMidRoundtrip(const std::string& pno, const std::string& phone)
     BOOST_TEST_MESSAGE("Live SID/MID tests require a LIBCDOC_ALLOW_INSECURE_TLS=ON build");
     BOOST_FAIL("LIBCDOC_ALLOW_INSECURE_TLS is not enabled in this build");
 #endif
+    if (SHARE_SERVERS.empty() || AUTH_SERVER.empty() || RP_SERVER.empty())
+        BOOST_FAIL("Set LIBCDOC_LIVE_SHARE_SERVERS, LIBCDOC_LIVE_AUTH_SERVER and LIBCDOC_LIVE_RP_SERVER");
 
     const std::string payload_str = "Live keyshare roundtrip test payload\n";
     const std::vector<uint8_t> payload(payload_str.cbegin(), payload_str.cend());
