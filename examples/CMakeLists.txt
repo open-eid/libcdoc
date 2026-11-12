@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Estonian Information System Authority
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 # Java example (CDocTool) built with the Gradle wrapper in examples/java.
 #
 # The example compiles against the SWIG-generated Java bindings produced by
