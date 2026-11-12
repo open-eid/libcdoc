@@ -36,6 +36,8 @@ static File findSwigJavaDir(File root) {
         '../../build/cdoc/java',
         '../../../build/cdoc/java',
         '../../../build/client/libcdoc/cdoc/java',
+        // libcdoc as the DigiDoc4-Client submodule (client/libcdoc)
+        '../../../../build/client/libcdoc/cdoc/java',
     ]
     for (String rel : candidates) {
         File dir = new File(root, rel)
