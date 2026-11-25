@@ -59,6 +59,8 @@
 %ignore libcdoc::Configuration::PHONE_NUMBER;
 %ignore libcdoc::Configuration::CDOC1_MAX_DECOMPRESSED_SIZE;
 %ignore libcdoc::Configuration::CDOC2_MAX_DECOMPRESSED_SIZE;
+%ignore libcdoc::Configuration::ALLOW_PATHNAMES;
+%ignore libcdoc::Configuration::FILENAME_MODE;
 
 %ignore libcdoc::PKCS11Backend::Handle;
 %ignore libcdoc::PKCS11Backend::findCertificates(const std::string& label);
@@ -663,6 +665,8 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
     public static final String PHONE_NUMBER = "PHONE_NUMBER";
     public static final String CDOC1_MAX_DECOMPRESSED_SIZE = "CDOC1_MAX_DECOMPRESSED_SIZE";
     public static final String CDOC2_MAX_DECOMPRESSED_SIZE = "CDOC2_MAX_DECOMPRESSED_SIZE";
+    public static final String ALLOW_PATHNAMES = "ALLOW_PATHNAMES";
+    public static final String FILENAME_MODE = "FILENAME_MODE";
 %}
 
 %typemap(javaimports) ArrayList<byte[]> %{
@@ -691,6 +695,13 @@ static std::vector<unsigned char> SWIG_JavaArrayToVectorUnsignedChar(JNIEnv *jen
 %include "NetworkBackend.h"
 %include "PKCS11Backend.h"
 %include "Logger.h"
+
+// Entry-name helper exposed to bindings: CDocTool.java prepares names for
+// addFile() with this (the writer accepts only clean names). Declared here
+// because Utils.h is deliberately not wrapped as a whole.
+namespace libcdoc {
+    std::string repairFilename(std::string_view name);
+}
 
 // LockVector template must come after Lock.h is included so that
 // SWIG knows about the libcdoc::Lock class definition.

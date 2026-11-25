@@ -301,7 +301,7 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
 };
 
-int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, const vector<string>& files)
+int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, const vector<string>& files, bool allow_pathnames)
 {
     for (const libcdoc::Recipient& rcpt : rcpts) {
         int64_t result = writer.addRecipient(rcpt);
@@ -309,7 +309,7 @@ int CDocCipher::writer_push(CDocWriter& writer, const vector<Recipient>& rcpts, 
     }
     int64_t result = writer.beginEncryption();
     if (result != libcdoc::OK) return result;
-    FileListSource src({}, files);
+    FileListSource src({}, files, allow_pathnames);
     std::string name;
     int64_t size;
     while ((result = src.next(name, size)) == OK) {
@@ -449,10 +449,11 @@ int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipien
     if (!writer) return WRONG_ARGUMENTS;
 
     int result;
+    bool allow_pathnames = conf.getBoolean(libcdoc::Configuration::ALLOW_PATHNAMES, false);
     if (PUSH) {
-        result = writer_push(*writer, rcpts, conf.input_files);
+        result = writer_push(*writer, rcpts, conf.input_files, allow_pathnames);
     } else {
-        libcdoc::FileListSource src({}, conf.input_files);
+        libcdoc::FileListSource src({}, conf.input_files, allow_pathnames);
         result = writer->encrypt(src, rcpts);
     }
     if (result != OK) {
@@ -489,6 +490,10 @@ int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
     if (!conf.library.empty())
         crypto.connectLibrary(conf.library);
 
+    // The reader applies the configured FILENAME_MODE (default strict):
+    // non-conformant containers fail unless the caller asked for --safe or
+    // --lenient. The sink below still flattens and repairs every name, so
+    // what reaches disk is confined regardless of the mode.
     unique_ptr<CDocReader> rdr(CDocReader::createReader(conf.input_files[0], &conf, &crypto, &network));
     if (!rdr) {
         LOG_ERROR("Cannot create reader (invalid file?)");
@@ -536,10 +541,10 @@ int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
     recipient.lock_idx = lock_idx;
     network.rcpt_idx = lock_idx;
 
-    return Decrypt(rdr, lock_idx, conf.out);
+    return Decrypt(rdr, lock_idx, conf.out, conf.allow_overwrite);
 }
 
-int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_pathname)
+int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx, const string& base_pathname, bool allow_overwrite)
 {
     // N18: the FMK is key material; store it in a SecureTarget (self-cleaning)
     // and explicitly cleanse after the reader has consumed it.
@@ -563,20 +568,53 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
     }
     std::string name;
     int64_t size;
+    // Names already extracted in this run (case-folded): a container entry
+    // must never silently overwrite an earlier entry.
+    std::map<std::string, size_t> seen;
+    // Files created during this run: needed for delete-on-abort (spec
+    // §5.3.2) and to protect the run's own output from overwriting.
+    std::vector<filesystem::path> created;
+    auto delete_created = [&created]() {
+        for (auto it = created.rbegin(); it != created.rend(); ++it) {
+            std::error_code ec;
+            filesystem::remove(*it, ec);
+        }
+        created.clear();
+    };
+    // Per the CDoc2 standard the payload integrity test result is the main
+    // error: every extraction exit runs finishDecryption() (which drains
+    // the payload and verifies the AEAD tag) and prefers its status over
+    // the local error. Integrity failures and name policy aborts also
+    // remove the files written during the run (spec §5.3.2); plain
+    // output-side errors keep whatever was extracted. WORKFLOW_ERROR from
+    // finishDecryption() means no verdict is available (decryption never
+    // began) and does not mask the local error.
+    auto finish_with = [&](libcdoc::result_t local) -> int {
+        libcdoc::result_t fr = rdr->finishDecryption();
+        if (fr != libcdoc::OK && fr != libcdoc::WORKFLOW_ERROR) {
+            delete_created();
+            return int(fr);
+        }
+        if (local == libcdoc::DATA_FORMAT_ERROR) delete_created();
+        return int(local);
+    };
     result = rdr->nextFile(name, size);
     while (result == libcdoc::OK) {
         LOG_DBG("Got file: {} {}", name, size);
 
-        // Sanitise the attacker-controlled file name before composing the
-        // extraction path. See libcdoc::sanitiseExtractedFilename for the
-        // exact set of rejections (path separators, "..", drive letters,
-        // NUL bytes, reserved Windows device names, etc.).
-        std::string safeName = libcdoc::sanitiseExtractedFilename(name);
-        if (safeName.empty()) {
-            LOG_ERROR("Refusing unsafe entry name '{}'", name);
-            return 1;
-        }
-        filesystem::path fpath = base_path / filesystem::path(libcdoc::encodeName(safeName));
+        // Flatten to a repaired basename: directory components are dropped
+        // and every hazard is repaired rather than trusted (see
+        // Filename-handling-proposal.md §6).
+        std::string safeName = libcdoc::repairFilename(libcdoc::baseNameOf(name));
+        // Unique output name: rename on in-run clashes and - unless
+        // overwriting is explicitly allowed - on collisions with files
+        // already on disk. The existence probe honours the filesystem's
+        // own case/normalization folding (APFS NFC/NFD, NTFS case).
+        std::string uniqueName = libcdoc::uniqueExtractedFilename(
+            seen, safeName, base_path, allow_overwrite, created);
+        if (uniqueName != safeName)
+            LOG_WARN("Renamed clashing entry '{}' -> '{}'", safeName, uniqueName);
+        filesystem::path fpath = base_path / filesystem::path(libcdoc::encodeName(uniqueName));
 
         // Defence in depth: ensure the lexically-resolved target stays
         // under base_path, even if a previously-extracted entry placed a
@@ -597,14 +635,16 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
         if (canonicalTarget.parent_path() != canonicalBase) {
             LOG_ERROR("Refusing entry '{}': target {} escapes base {}",
                       name, canonicalTarget.string(), canonicalBase.string());
-            return 1;
+            return finish_with(libcdoc::DATA_FORMAT_ERROR);
         }
 
         std::ofstream ofs(fpath, std::ios_base::binary);
-        if (ofs.bad()) {
+        // fail() covers a failed open() (bad() misses failbit).
+        if (ofs.fail()) {
             LOG_ERROR("Cannot open file {} for writing", fpath.string());
-            return 1;
+            return finish_with(libcdoc::OUTPUT_STREAM_ERROR);
         }
+        created.push_back(fpath);
         int64_t n_copied = 0;
         while (n_copied < size) {
             uint8_t b[4096];
@@ -612,32 +652,29 @@ int CDocCipher::Decrypt(const unique_ptr<CDocReader>& rdr, unsigned int lock_idx
             int64_t n_read = rdr->readData(b, n_to_read);
             if (n_read < 0) {
                 LOG_ERROR("Cannot read {} from container: {}", name, rdr->getLastErrorStr());
-                return 1;
+                return finish_with(n_read);
             } else if (n_read == 0) {
                 break;
             }
             ofs.write((const char *) b, n_read);
             if (ofs.bad()) {
                 LOG_ERROR("Cannot write to  {}", fpath.string());
-                return 1;
+                return finish_with(libcdoc::OUTPUT_STREAM_ERROR);
             }
             n_copied += n_read;
         }
         if (n_copied != size) {
             LOG_ERROR("Cannot extract full {}: {}", name, rdr->getLastErrorStr());
-            return 1;
+            return finish_with(libcdoc::IO_ERROR);
         }        
         result = rdr->nextFile(name, size);
     }
     if (result != libcdoc::END_OF_STREAM) {
         LOG_ERROR("Error while decrypting files: {} {}", result, rdr->getLastErrorStr());
-        return 1;
+        return finish_with(result);
     }
-    result = rdr->finishDecryption();
-    if (result != libcdoc::OK) {
-        LOG_ERROR("Error finalizing decryption: ({}) {}", result, rdr->getLastErrorStr());
-        return 1;
-    }
+    if (int rv = finish_with(libcdoc::OK); rv != 0)
+        return rv;
     /*
     FileListConsumer fileWriter(base_pathname);
     result = rdr->decrypt(fmk, &fileWriter);
@@ -718,6 +755,15 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
         return 1;
     }
 
+    // Payload integrity takes precedence over local errors (CDOC2 §5.3.2):
+    // every extraction exit runs finishDecryption() and reports its status
+    // as the main error. WORKFLOW_ERROR means no verdict (never began) and
+    // does not mask the local error.
+    auto finish_with = [&](libcdoc::result_t local) -> int {
+        libcdoc::result_t fr = rdr->finishDecryption();
+        return int((fr != libcdoc::OK && fr != libcdoc::WORKFLOW_ERROR) ? fr : local);
+    };
+
     unique_ptr<CDocWriter> wrtr(CDocWriter::createWriter(conf.cdocVersion, conf.out, &conf, &crypto, &network));
 
     // Begin
@@ -764,7 +810,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
         result = wrtr->addFile(name, size);
         if (result != libcdoc::OK) {
             LOG_ERROR("Error adding file: {} {}", result, wrtr->getLastErrorStr());
-            return 1;
+            return finish_with(result);
         }
         int64_t n_copied = 0;
         while (n_copied < size) {
@@ -773,32 +819,29 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
             int64_t n_read = rdr->readData(b, n_to_read);
             if (n_read < 0) {
                 LOG_ERROR("Cannot read {} from container: {}", name, rdr->getLastErrorStr());
-                return 1;
+                return finish_with(n_read);
             } else if (n_read == 0) {
                 break;
             }
             int64_t nbytes = wrtr->writeData(b, n_read);
             if (nbytes < 0) {
                 LOG_ERROR("Error writing data: {} {}", result, wrtr->getLastErrorStr());
-                return 1;
+                return finish_with(nbytes);
             }
             n_copied += n_read;
         }
         if (n_copied != size) {
             LOG_ERROR("Cannot extract full {}: {}", name, rdr->getLastErrorStr());
-            return 1;
+            return finish_with(libcdoc::IO_ERROR);
         }        
         result = rdr->nextFile(name, size);
     }
     if (result != libcdoc::END_OF_STREAM) {
         LOG_ERROR("Error while decrypting files: {} {}", result, rdr->getLastErrorStr());
-        return 1;
+        return finish_with(result);
     }
-    result = rdr->finishDecryption();
-    if (result != libcdoc::OK) {
-        LOG_ERROR("Error finalizing decryption: ({}) {}", result, rdr->getLastErrorStr());
-        return 1;
-    }
+    if (int rv = finish_with(libcdoc::OK); rv != 0)
+        return rv;
     result = wrtr->finishEncryption();
     if (result != libcdoc::OK) {
         LOG_ERROR("Error finalizing encryption: ({}) {}", result, wrtr->getLastErrorStr());

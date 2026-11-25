@@ -71,6 +71,18 @@ struct CDOC_EXPORT Configuration {
      * Default: 20 GiB.
      */
     static constexpr char const *CDOC2_MAX_DECOMPRESSED_SIZE = "CDOC2_MAX_DECOMPRESSED_SIZE";
+    /**
+     * @brief Allow full pathnames in container filenames.
+     * When false (default), filenames are sanitized (directory components
+     * stripped) before being stored or returned to the caller.
+     * Default: false.
+     */
+    static constexpr char const *ALLOW_PATHNAMES = "ALLOW_PATHNAMES";
+    /**
+     * @brief Reader entry-name policy: "strict" (default), "safe" or
+     * "lenient" (libcdoc::FilenamePolicy in Utils.h).
+     */
+    static constexpr char const *FILENAME_MODE = "FILENAME_MODE";
 
 	Configuration() = default;
 	virtual ~Configuration() noexcept = default;

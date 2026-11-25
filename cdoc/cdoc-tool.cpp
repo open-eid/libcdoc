@@ -55,6 +55,7 @@ print_usage(ostream& ofs)
     ofs << "    [label]:share:ID                  - keyshares with given ID (personal code)" << endl;
     ofs << "  --v1                      - creates CDOC1 version container. Supported only for encryption with certificate." << endl;
     ofs << "  --genlabel                - Generate machine-readable label." << endl;
+    ofs << "  --allow-pathnames         - Allow full pathnames in container filenames (default: strip to basename)." << endl;
     ofs << endl;
     ofs << "cdoc-tool decrypt ARGUMENTS FILE [OUTPU_DIR]" << endl;
     ofs << "  Decrypt CDoc container using lock specified by label or number" << endl;
@@ -67,8 +68,11 @@ print_usage(ostream& ofs)
     ofs << "    --password PASSWORD     - lock's password" << endl;
     ofs << "    --secret SECRET         - secret (AES) key (hex encoded key value)" << endl;
     ofs << "    --pin PIN               - PKCS11 pin" << endl;
-    ofs << "    --key-id                - PKCS11 key ID (hex)" << endl;
+    ofs << "    --key-id                - PKCS11 key ID" << endl;
     ofs << "    --key-label             - PKCS11 key label" << endl;
+    ofs << "    --safe                  - extract non-conformant containers, with repaired file names" << endl;
+    ofs << "    --lenient               - extract with entry names as stored (no name checks)" << endl;
+    ofs << "    --overwrite             - allow replacing existing files (default: rename instead)" << endl;
     ofs << endl;
     ofs << "cdoc-tool locks FILE" << endl;
     ofs << endl;
@@ -186,6 +190,21 @@ parse_common(ToolConf& conf, int arg_idx, int argc, char *argv[])
         return 1;
     } else if (arg == "--genlabel") {
         conf.gen_label = true;
+        return 1;
+    } else if (arg == "--allow-pathnames") {
+        conf.params[libcdoc::Configuration::ALLOW_PATHNAMES] = "true";
+        return 1;
+    } else if (arg == "--safe") {
+        conf.params[libcdoc::Configuration::FILENAME_MODE] = "safe";
+        return 1;
+    } else if (arg == "--lenient") {
+        conf.params[libcdoc::Configuration::FILENAME_MODE] = "lenient";
+        return 1;
+    } else if (arg == "--overwrite") {
+        conf.allow_overwrite = true;
+        return 1;
+    } else if (arg == "--no-overwrite") {
+        // No-op alias: never overwriting existing files is the default.
         return 1;
     }
     return 0;
@@ -619,6 +638,8 @@ static int ParseAndDecrypt(int argc, char *argv[])
     RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
     if (int ret = cipher.Decrypt(conf, rcpt); ret != 0) {
         cerr << "Decryption failed" << endl;
+        if (ret == libcdoc::DATA_FORMAT_ERROR)
+            cerr << "The container has non-conformant entry names; retry with --safe to extract repaired names" << endl;
         return ret;
     } else {
         cout << "Container " << conf.input_files[0] << " decrypted successfully" << endl;
@@ -680,6 +701,8 @@ static int ParseAndReEncrypt(int argc, char *argv[])
     RcptInfo rcpt {.type=RcptInfo::LOCK, .label=ldata.lock_label, .secret=ldata.secret, .p11={ldata.slot, ldata.key_id, ldata.key_label}, .lock_idx=ldata.lock_idx - 1};
     if (int ret = cipher.ReEncrypt(conf, rcpt, rcpts); ret != 0) {
         cerr << "Re-encryption failed" << std::endl;
+        if (ret == libcdoc::DATA_FORMAT_ERROR)
+            cerr << "The container has non-conformant entry names; retry with --safe to re-encrypt with repaired names" << std::endl;
         return ret;
     } else {
         cout << "Successfully re-encrypted container " << conf.input_files[0] << " to " << conf.out << std::endl;
@@ -748,6 +771,7 @@ int main(int argc, char *argv[])
     }
 
     if (retVal == RESULT_USAGE) {
+        // We print usage information only in case the parse-function returned 2. Value 1 indicates other error.
         print_usage(cout);
     }
 

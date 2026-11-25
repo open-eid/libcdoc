@@ -8,6 +8,7 @@
 
 #include "Utils.h"
 
+#include <map>
 #include <sstream>
 
 namespace libcdoc {
@@ -58,11 +59,28 @@ struct ToolConf : public JSONConfiguration {
     bool gen_label = false;
 
     /**
+     * @brief Allow overwriting files that already exist on decryption.
+     * Default false: existing files are never clobbered, clashing extracted
+     * names are renamed ("name (N).ext"). Files created during the same
+     * run are never overwritten either way.
+     */
+    bool allow_overwrite = false;
+
+    /**
      * @brief The list of accepted keyserver certificates (empty - accept all)
      */
     std::vector<std::vector<uint8_t>> accept_certs;
 
+    /**
+     * @brief Generic key/value overrides (e.g. ALLOW_PATHNAMES from --allow-pathnames)
+     */
+    std::map<std::string, std::string> params;
+
     std::string getValue(std::string_view domain, std::string_view param) const final {
+        if (domain.empty()) {
+            auto it = params.find(std::string(param));
+            if (it != params.end()) return it->second;
+        }
         for (auto& sdata : servers) {
             if (sdata.ID == domain) {
                 if (param == Configuration::KEYSERVER_SEND_URL) {
