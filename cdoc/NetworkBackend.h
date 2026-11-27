@@ -128,6 +128,18 @@ struct CDOC_EXPORT NetworkBackend {
      */
 	virtual std::string getLastErrorStr(result_t code) const;
 
+    /**
+     * @brief Get the textual description of an error code
+     *
+     * Static variant of getLastErrorStr() for use where no backend instance
+     * exists (e.g. the static checkProxyCredentials) and by language
+     * bindings to build exception messages. It maps the network-specific
+     * codes and falls back to libcdoc::getErrorStr().
+     * @param code The error code
+     * @return std::string error description
+     */
+    static std::string getErrorStr(int64_t code);
+
 	/**
 	 * @brief send key material to keyserver
      *
@@ -220,6 +232,18 @@ struct CDOC_EXPORT NetworkBackend {
     virtual result_t getProxyCredentials(ProxyCredentials& credentials) const {
         return NOT_IMPLEMENTED;
     }
+
+    /**
+     * @brief Validate proxy configuration coherence
+     *
+     * The proxy identity is all-or-nothing: user name and password are
+     * provided together, and credentials require a proxy host - credentials
+     * without a proxy would be sent to the destination server instead. A
+     * proxy host without credentials is allowed.
+     * @param credentials proxy configuration to validate
+     * @return OK or CONFIGURATION_ERROR
+     */
+    static result_t checkProxyCredentials(const ProxyCredentials& credentials);
 
     /**
      * @brief sign TLS digest with client's private key
