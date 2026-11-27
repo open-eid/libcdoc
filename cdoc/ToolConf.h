@@ -9,6 +9,7 @@
 #include "Utils.h"
 
 #include <sstream>
+#include <map>
 
 namespace libcdoc {
 
@@ -41,6 +42,18 @@ struct ToolConf : public JSONConfiguration {
     std::string library;
 
     std::vector<ServerData> servers;
+    std::string auth_server;
+    std::string rp_server;
+    std::string phone;
+
+    /**
+     * @brief File used to cache the SID/MID authentication session
+     *
+     * The session is valid for up to 24 hours. When set, a fresh matching
+     * session is loaded from the file instead of starting a new
+     * authentication, and every new session is saved there.
+     */
+    std::string session_file;
 
     /**
      * @brief Files to be encrypted, or file to be decrypted.
@@ -58,11 +71,22 @@ struct ToolConf : public JSONConfiguration {
     bool gen_label = false;
 
     /**
-     * @brief The list of accepted keyserver certificates (empty - accept all)
+     * @brief The map of accepted keyserver certificates (empty - accept all)
      */
-    std::vector<std::vector<uint8_t>> accept_certs;
+    std::map<std::string, std::vector<std::vector<uint8_t>>> accept_certs;
 
     std::string getValue(std::string_view domain, std::string_view param) const final {
+        if (domain.empty()) {
+            if (param == Configuration::AUTH_SERVER) {
+                return auth_server;
+            } else if (param == Configuration::RP_SERVER) {
+                return rp_server;
+            } else if (param == Configuration::PHONE_NUMBER) {
+                return phone;
+            } else if (param == Configuration::SHARE_SIGNER) {
+                return (phone.empty()) ? Configuration::SHARE_SIGNER_SID : Configuration::SHARE_SIGNER_MID;
+            }
+        }
         for (auto& sdata : servers) {
             if (sdata.ID == domain) {
                 if (param == Configuration::KEYSERVER_SEND_URL) {

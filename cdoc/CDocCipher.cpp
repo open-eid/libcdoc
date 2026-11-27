@@ -272,9 +272,41 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
 
     int rcpt_idx = -1;
 
-    std::vector<std::vector<uint8_t>> certs;
+    std::map<std::string, std::vector<std::vector<uint8_t>>> certs;
+
+    // When set, the SID/MID authentication session is cached in this file
+    // (see authenticateForShares below).
+    std::string session_file;
 
     explicit ToolNetwork(ToolCrypto *_crypto) : crypto(_crypto) {
+    }
+
+    // The SID/MID protocol allows reusing the authentication session for
+    // up to 24 hours: with a session file configured, a fresh matching
+    // session is loaded from it instead of asking the user to confirm a
+    // new authentication, and every new session is saved there.
+    libcdoc::result_t authenticateForShares(const std::string& url, const std::string& rcpt_id,
+        const std::string& phone, SessionData& session) override final {
+        if (!session_file.empty()) {
+            libcdoc::NetworkBackend::SessionCache cache;
+            if (cache.load(session_file, url, rcpt_id, phone)) {
+                session = std::move(cache.session);
+                LOG_INFO("Using cached SID/MID authentication session {}", session_file);
+                return libcdoc::OK;
+            }
+        }
+        libcdoc::result_t rv = NetworkBackend::authenticateForShares(url, rcpt_id, phone, session);
+        if (rv == libcdoc::OK && !session_file.empty()) {
+            libcdoc::NetworkBackend::SessionCache cache;
+            cache.url = url;
+            cache.rcpt_id = rcpt_id;
+            cache.phone = phone;
+            cache.created = (int64_t) time(nullptr);
+            cache.session = session;
+            if (!cache.save(session_file))
+                LOG_WARN("Cannot save SID/MID authentication session to {}", session_file);
+        }
+        return rv;
     }
 
     libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final {
@@ -287,8 +319,10 @@ struct ToolNetwork : public libcdoc::NetworkBackend {
         return crypto->p11->getCertificate(dst, long(rcpt->p11.slot), rcpt->secret, rcpt->p11.key_id, rcpt->p11.key_label);
     }
 
-    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final {
-        dst = certs;
+    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst, const std::string& url) override final {
+        if (certs.contains(url)) {
+            dst = certs.at(url);
+        }
         return libcdoc::OK;
     }
 
@@ -386,6 +420,12 @@ fill_recipients_from_rcpt_info(ToolConf& conf, ToolCrypto& crypto, std::vector<l
                 key.setLabelValue(CDoc2::Label::LABEL, rcpt.label);
 #ifdef HAS_KEYSHARES
         } else if (rcpt.type == RcptInfo::Type::SHARE) {
+            if (conf.servers.empty()) {
+                // S4: a share recipient without --server indexed servers[0]
+                // out of bounds.
+                LOG_ERROR("Keyshare recipient '{}' requires a share server (--server ID URL)", rcpt.label);
+                continue;
+            }
             LOG_DBG("Creating keyshare recipient:");
             key = libcdoc::Recipient::makeShare(std::move(label), conf.servers[0].ID, "PNOEE-" + rcpt.id);
 #endif
@@ -424,6 +464,7 @@ int CDocCipher::Encrypt(ToolConf& conf, std::vector<libcdoc::RcptInfo>& recipien
 
     ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
+    network.session_file = conf.session_file;
     network.certs = std::move(conf.accept_certs);
 
     if (!conf.library.empty()) {
@@ -484,6 +525,7 @@ int CDocCipher::Decrypt(ToolConf& conf, RcptInfo& recipient)
 
     ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
+    network.session_file = conf.session_file;
     network.certs = std::move(conf.accept_certs);
 
     if (!conf.library.empty())
@@ -658,6 +700,7 @@ CDocCipher::ReEncrypt(ToolConf& conf, RcptInfo& dec_info, std::vector<libcdoc::R
 
     ToolCrypto crypto(cipher);
     ToolNetwork network(&crypto);
+    network.session_file = conf.session_file;
     network.certs = conf.accept_certs;
 
     if (!conf.library.empty()) {
