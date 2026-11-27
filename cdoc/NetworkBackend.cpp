@@ -19,7 +19,9 @@
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -151,23 +153,29 @@ std::string
 libcdoc::NetworkBackend::getLastErrorStr(result_t code) const
 {
     if (!error.empty()) return error;
-	switch (code) {
+    return getErrorStr(code);
+}
+
+std::string
+libcdoc::NetworkBackend::getErrorStr(int64_t code)
+{
+    switch (code) {
     case OK:
         return {};
-	case NETWORK_ERROR:
-		return "NetworkBackend: Network error";
+    case NETWORK_ERROR:
+        return "NetworkBackend: Network error";
     case CAPSULE_NOT_FOUND:
         return "NetworkBackend: Key capsule not found";
     case SERVER_ERROR:
         return "NetworkBackend: Server error";
-	default:
-		break;
-	}
+    default:
+        break;
+    }
 #ifdef HAS_KEYSHARES
     std::string_view str = getMIDSIDDescription(code);
     if (!str.empty()) return std::string(str);
 #endif
-   return libcdoc::getErrorStr(code);
+    return libcdoc::getErrorStr(code);
 }
 
 //
@@ -184,7 +192,7 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
     }
     LOG_DBG("Num TLS certs {}", certs.size());
     if (!certs.empty()) {
-        SSL_CTX *ctx = cli.ssl_context();
+        SSL_CTX *ctx = static_cast<SSL_CTX *>(cli.tls_context());
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
         X509_STORE *store = SSL_CTX_get_cert_store(ctx);
         X509_STORE_set_flags(store, X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
@@ -193,7 +201,8 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
             if (!x509) return libcdoc::CRYPTO_ERROR;
             X509_STORE_add_cert(store, x509.handle());
         }
-        cli.set_load_system_certs(false);
+        // Trust only the certificates added above, not the system store.
+        cli.enable_system_ca(false);
         cli.enable_server_certificate_verification(true);
         cli.enable_server_hostname_verification(true);
     }
@@ -211,6 +220,19 @@ setPeerCertificates(httplib::SSLClient& cli, libcdoc::NetworkBackend *network, c
 }
 
 //
+// Parse a JSON response, rejecting anything after the value
+//
+static std::string
+parseJson(picojson::value& out, const std::string& body)
+{
+    std::string err;
+    auto end = picojson::parse(out, body.cbegin(), body.cend(), &err);
+    if (err.empty() && std::any_of(end, body.cend(), [](char c) { return !std::isspace(static_cast<unsigned char>(c)); }))
+        err = "unexpected data after the JSON value";
+    return err;
+}
+
+//
 // Log why a request failed. httplib does not report TLS errors, they stay in the OpenSSL error queue.
 //
 static void
@@ -224,6 +246,39 @@ logRequestError(const httplib::Result& res)
     }
 }
 
+static libcdoc::result_t
+requestError(httplib::SSLClient& cli, const std::string& path, const httplib::Result& res)
+{
+    logRequestError(res);
+    // The server did answer, so an oversized response is a server error
+    if (res.error() == httplib::Error::ExceedMaxPayloadSize) {
+        error = FORMAT("Response from https://{}:{}{} exceeds {} bytes", cli.host(), cli.port(), path, CDOC_MAX_RESPONSE_SIZE);
+        return libcdoc::NetworkBackend::SERVER_ERROR;
+    }
+    error = FORMAT("Cannot connect to https://{}:{}{}: {}", cli.host(), cli.port(), path, httplib::to_string(res.error()));
+    return libcdoc::NetworkBackend::NETWORK_ERROR;
+}
+
+libcdoc::result_t
+libcdoc::NetworkBackend::checkProxyCredentials(const ProxyCredentials& credentials)
+{
+    // The proxy identity is all-or-nothing (see declaration): a
+    // half-configured user name/password pair is rejected, and credentials
+    // without a proxy host are rejected so they can never end up at the
+    // destination server instead of the proxy.
+    const bool has_user = !credentials.username.empty();
+    const bool has_password = !credentials.password.empty();
+    if (has_user != has_password) {
+        LOG_ERROR("Proxy user name and password must be provided together");
+        return libcdoc::CONFIGURATION_ERROR;
+    }
+    if (has_user && credentials.host.empty()) {
+        LOG_ERROR("Proxy credentials provided without proxy host");
+        return libcdoc::CONFIGURATION_ERROR;
+    }
+    return libcdoc::OK;
+}
+
 //
 // Set proxy parameters
 //
@@ -234,14 +289,20 @@ setProxy(httplib::SSLClient& cli, libcdoc::NetworkBackend *network)
     switch (auto result = network->getProxyCredentials(cred)) {
     case libcdoc::NOT_IMPLEMENTED:
         return libcdoc::OK;
-    case libcdoc::OK:
-        if (!cred.host.empty()) {
-            cli.set_proxy(cred.host, cred.port);
+    case libcdoc::OK: {
+        if (auto result = libcdoc::NetworkBackend::checkProxyCredentials(cred); result != libcdoc::OK) {
+            return result;
         }
-        if (!cred.username.empty()) {
-            cli.set_proxy_basic_auth(cred.username, cred.password);
+        if (!cred.host.empty()) {
+            // Host and credentials are set together: authentication is only
+            // ever attached to a configured proxy, never to direct requests.
+            cli.set_proxy(cred.host, cred.port);
+            if (!cred.username.empty()) {
+                cli.set_proxy_basic_auth(cred.username, std::string(cred.password));
+            }
         }
         return libcdoc::OK;
+    }
     default: return result;
     }
 }
@@ -272,11 +333,8 @@ httpPost(httplib::SSLClient& cli, const std::string& path, httplib::Headers& hdr
         LOG_TRACE("    Header {}: {}", h.first, h.second);
     }
     httplib::Result res = cli.Post(path, hdrs, req, "application/json");
-    if (!res) {
-        logRequestError(res);
-        error = FORMAT("Cannot connect to https://{}:{}{}: {}", cli.host(), cli.port(), path, httplib::to_string(res.error()));
-        return libcdoc::NetworkBackend::NETWORK_ERROR;
-    }
+    if (!res)
+        return requestError(cli, path, res);
     int status = res->status;
     LOG_DBG("Status: {}", status);
     LOG_TRACE("  Body: {}", res->body);
@@ -304,11 +362,8 @@ httpGet(httplib::SSLClient& cli, httplib::Headers& hdrs, const std::string& path
         LOG_TRACE("    Header {}: {}", h.first, h.second);
     }
     httplib::Result res = cli.Get(path, hdrs);
-    if (!res) {
-        logRequestError(res);
-        error = FORMAT("Cannot connect to https://{}:{}{}: {}", cli.host(), cli.port(), path, httplib::to_string(res.error()));
-        return libcdoc::NetworkBackend::NETWORK_ERROR;
-    }
+    if (!res)
+        return requestError(cli, path, res);
     int status = res->status;
     if (httpStatus) *httpStatus = status;
     LOG_DBG("Status: {}", status);
@@ -462,8 +517,21 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
     std::unique_ptr<Private> d = std::make_unique<Private>(this, cert);
     if (!cert.empty() && (!d->x509 || !d->key)) return CRYPTO_ERROR;
 
-    httplib::SSLClient cli(host, port, d->x509.handle(), d->key.get());
-    SSL_CTX_set_min_proto_version(cli.ssl_context(), TLS1_3_VERSION);
+    httplib::SSLClient cli(host, port);
+    SSL_CTX *ctx = static_cast<SSL_CTX *>(cli.tls_context());
+    SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION);
+    // Install the client certificate directly into the context: the
+    // httplib client-cert constructors require PEM material, and our
+    // private key may live on a smart card (PKCS#11) where it cannot be
+    // serialized. These are the same operations the old
+    // (X509*, EVP_PKEY*) constructor performed.
+    if (SSL_CTX_use_certificate(ctx, d->x509.handle()) != 1 ||
+        SSL_CTX_use_PrivateKey(ctx, d->key.get()) != 1 ||
+        SSL_CTX_check_private_key(ctx) != 1) {
+        error = "Cannot install TLS client certificate";
+        LOG_ERROR("{}", error);
+        return CRYPTO_ERROR;
+    }
     if (result = applySSLTimeout(cli, this); result != OK) return result;
     result = setPeerCertificates(cli, this, buildURL(host, port));
     if (result != OK) return result;
@@ -486,22 +554,22 @@ libcdoc::NetworkBackend::fetchKey (std::vector<uint8_t>& dst, const std::string&
         return result;
     }
 
+    // The server answered, so a malformed response is a server error, not a network error
     picojson::value rsp_json;
-    std::string parse_err = picojson::parse(rsp_json, rsp.body);
-    if (!parse_err.empty()) {
+    if (std::string parse_err = parseJson(rsp_json, rsp.body); !parse_err.empty()) {
         error = FORMAT("JSON parse error: {}", parse_err);
         LOG_ERROR("{}", error);
-        return NETWORK_ERROR;
+        return SERVER_ERROR;
     }
 
     libcdoc::result_t rv = libcdoc::OK;
     std::string ks = getJsonString(rsp_json, "ephemeral_key_material", rv);
-    if (rv != libcdoc::OK) return NETWORK_ERROR;
+    if (rv != libcdoc::OK) return SERVER_ERROR;
     dst = fromBase64(ks);
     if (dst.empty()) {
         error = FORMAT("Invalid base64 in 'ephemeral_key_material'");
         LOG_WARN("{}", error);
-        return NETWORK_ERROR;
+        return SERVER_ERROR;
     }
 
     return libcdoc::OK;

@@ -20,6 +20,7 @@
 // TODO: Port to new OpenSSL
 #define OPENSSL_SUPPRESS_DEPRECATED
 
+#include <openssl/core_names.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 
@@ -113,6 +114,35 @@ CDoc2Reader::getLockForCert(const std::vector<uint8_t>& cert){
     return libcdoc::NOT_FOUND;
 }
 
+// Checked before the key operation, which would report a malformed value as a card or PIN error
+static bool
+isValidKeyMaterial(const libcdoc::Lock& lock, const std::vector<uint8_t>& key_material)
+{
+    const std::vector<uint8_t>& rcpt_key = lock.getBytes(libcdoc::Lock::Params::RCPT_KEY);
+    if (lock.isRSA()) {
+        auto key = libcdoc::Crypto::fromRSAPublicKeyDer(rcpt_key);
+        if (!key || key_material.size() != size_t(EVP_PKEY_get_size(key.get())))
+            return false;
+        BIGNUM *n = nullptr;
+        if (EVP_PKEY_get_bn_param(key.get(), OSSL_PKEY_PARAM_RSA_N, &n) != 1)
+            return false;
+        auto modulus = make_unique_ptr<BN_free>(n);
+        auto value = make_unique_ptr<BN_free>(BN_bin2bn(key_material.data(), int(key_material.size()), nullptr));
+        return value && BN_cmp(value.get(), modulus.get()) < 0;
+    }
+    if (key_material.empty() || key_material.size() != rcpt_key.size() || key_material[0] != 0x04)
+        return false;
+
+    int curve;
+    switch (lock.ec_type) {
+    case Curve::SECP_256_R1: curve = NID_X9_62_prime256v1; break;
+    case Curve::SECP_384_R1: curve = NID_secp384r1; break;
+    case Curve::SECP_521_R1: curve = NID_secp521r1; break;
+    default: return false;
+    }
+    return libcdoc::Crypto::fromECPublicKeyDer(key_material, curve) != nullptr;
+}
+
 libcdoc::result_t
 CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
 {
@@ -193,6 +223,11 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, unsigned int lock_idx)
             }
         } else if (lock.type == Lock::PUBLIC_KEY) {
             key_material = lock.getBytes(Lock::Params::KEY_MATERIAL);
+        }
+        if (!isValidKeyMaterial(lock, key_material)) {
+            setLastError(lock.type == Lock::Type::SERVER ? "Invalid key material from the key server" : "Invalid key material in the lock");
+            LOG_ERROR("{}", last_error);
+            return lock.type == Lock::Type::SERVER ? NetworkBackend::SERVER_ERROR : libcdoc::DATA_FORMAT_ERROR;
         }
 
         LOG_TRACE_KEY("Public key: {}", lock.getBytes(Lock::Params::RCPT_KEY));
